@@ -1,0 +1,28 @@
+[Unit]
+Description=Supermarket Backend (Spring Boot)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=supermarket
+Group=supermarket
+WorkingDirectory=/opt/supermarket
+# jar 内含 application.yml（OSS 真实 key 已烘焙其中，公共读，无需额外配置）
+ExecStart=/usr/bin/java -jar /opt/supermarket/app.jar --server.port=8080
+
+# 安全相关用环境变量注入，不要写进 jar / yml。
+# 上线前务必把下面两个 CHANGE_ME 改成强值：
+Environment=JWT_SECRET=CHANGE_ME_to_a_strong_random_32plus_byte_secret
+Environment=DB_USERNAME=supermarket
+Environment=DB_PASSWORD=CHANGE_ME_db_password
+
+# 以下保持默认即可（与 application.yml 默认值一致）
+Environment=APP_NEW_USER_COUPON_ID=5
+Environment=SPRING_PROFILES_ACTIVE=prod
+
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
