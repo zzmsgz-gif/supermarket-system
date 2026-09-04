@@ -1,0 +1,4145 @@
+<template>
+  <main class="app-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">S</span>
+          <div>
+            <strong>超市购物系统</strong>
+            <small>Supermarket Mall</small>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button :class="{ active: view === 'shop' }" @click="view = 'shop'">首页商品</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'cart' }" @click="view = 'cart'">购物车</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="view = 'orders'">我的订单</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="view = 'coupons'">优惠券</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="view = 'addresses'">收货地址</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="view = 'recharge'">账户充值</button>
+          <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="view = 'admin'">后台管理</button>
+        </nav>
+
+        <section class="account-panel">
+          <template v-if="session.user">
+            <div class="account-user">
+              <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @click="avatarInput?.click()" />
+              <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
+              <div class="account-meta">
+                <span>{{ session.user.nickname || session.user.username }}</span>
+                <small>{{ formatRole(session.user.role) }}</small>
+              </div>
+              <input ref="avatarInput" type="file" accept="image/*" hidden @change="onAvatarPick" />
+            </div>
+            <template v-if="!isAdmin">
+              <div class="wallet-box">
+                <span>账户余额</span>
+                <strong>{{ money(wallet.balance) }}</strong>
+              </div>
+              <button class="ghost recharge-entry" @click="view = 'recharge'">去充值</button>
+            </template>
+            <button class="ghost" @click="logout">退出登录</button>
+          </template>
+          <template v-else>
+            <div class="auth-guest">
+              <button @click="openAuth('login')">登录</button>
+              <button class="ghost" @click="openAuth('register')">注册</button>
+            </div>
+          </template>
+        </section>
+      </div>
+    </header>
+
+    <section class="content" :class="{ 'content-wide': view === 'admin' }">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">{{ currentTitle.eyebrow }}</p>
+          <h1>{{ currentTitle.title }}</h1>
+        </div>
+        <p class="status" :class="{ error: !!error }">{{ error || notice || '已连接本地后端 /api' }}</p>
+      </header>
+
+      <section v-if="view === 'shop'" class="shop-home">
+        <div class="search-hero">
+          <div class="hero-copy">
+            <span>超市精选</span>
+            <h2>{{ isAdmin ? '查看当前上架商品' : '新鲜好物，一站选购' }}</h2>
+          </div>
+          <div class="search-box">
+            <input v-model="filters.keyword" placeholder="搜索上架商品" @keyup.enter="loadProducts" />
+            <button @click="loadProducts">搜索</button>
+          </div>
+        </div>
+
+        <div class="shop-filters">
+          <div class="filter-group">
+            <label>价格</label>
+            <input v-model.number="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
+            <span class="dash">—</span>
+            <input v-model.number="filters.maxPrice" type="number" min="0" placeholder="最高" @keyup.enter="applyFilters" />
+          </div>
+          <div class="filter-group">
+            <label>品牌</label>
+            <input v-model="filters.brand" placeholder="按品牌筛选" @keyup.enter="applyFilters" />
+          </div>
+          <div class="filter-group">
+            <label>排序</label>
+            <select v-model="filters.sort" @change="applyFilters">
+              <option value="">综合</option>
+              <option value="price_asc">价格从低到高</option>
+              <option value="price_desc">价格从高到低</option>
+              <option value="sales_desc">销量优先</option>
+              <option value="new_desc">最新上架</option>
+            </select>
+          </div>
+          <button class="ghost" @click="resetFilters">重置</button>
+        </div>
+
+        <div class="shop-layout">
+          <aside class="category-panel">
+            <div class="category-title">商品分类</div>
+            <button :class="{ active: !filters.categoryId }" @click="chooseCategory('')">全部分类</button>
+            <button
+              v-for="category in categories"
+              :key="category.id"
+              :class="{ active: String(filters.categoryId) === String(category.id) }"
+              @click="chooseCategory(category.id)"
+            >
+              <span>{{ category.name }}</span>
+            </button>
+          </aside>
+
+          <div class="product-area">
+            <div class="product-head">
+              <strong>为你推荐</strong>
+              <select v-model="filters.categoryId" @change="loadProducts">
+                <option value="">全部分类</option>
+                <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+              </select>
+            </div>
+
+            <div class="product-grid">
+              <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+            </div>
+          </div>
+        </div>
+
+        <div class="home-channels">
+          <div class="channel" v-if="hotProducts.length">
+            <div class="channel-head">
+              <h3>🔥 热门推荐</h3>
+              <button class="ghost mini" @click="loadHot">换一批</button>
+            </div>
+              <div class="channel-row">
+                <ProductCard v-for="p in hotProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
+              </div>
+          </div>
+
+          <div class="channel" v-if="newProducts.length">
+            <div class="channel-head">
+              <h3>🆕 新品上架</h3>
+              <button class="ghost mini" @click="loadNew">换一批</button>
+            </div>
+              <div class="channel-row">
+                <ProductCard v-for="p in newProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
+              </div>
+          </div>
+
+          <div class="channel" v-if="guessProducts.length">
+            <div class="channel-head">
+              <h3>🤖 猜你喜欢</h3>
+              <button class="ghost mini" @click="loadGuess">换一批</button>
+            </div>
+              <div class="channel-row">
+                <ProductCard v-for="p in guessProducts" :key="p.id" :product="p" mode="compact" :badges="true" @open="openProductDetail" />
+              </div>
+          </div>
+
+          <div class="channel" v-if="dwellRankProducts.length">
+            <div class="channel-head">
+              <h3>👀 大家都在看</h3>
+              <button class="ghost mini" @click="loadDwellRank">换一批</button>
+            </div>
+              <div class="channel-row">
+                <ProductCard v-for="p in dwellRankProducts" :key="p.productId" :product="{ id: p.productId, name: p.productName, coverUrl: p.coverUrl }" mode="compact" :extra="'浏览 ' + p.viewCount + ' 次 · 均 ' + p.avgSeconds + 's'" @open="openProductDetail({ id: p.productId })" />
+              </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <section v-if="view === 'product'" class="data-panel product-detail">
+        <div class="detail-nav">
+          <button class="ghost" @click="backFromProduct">返回商品列表</button>
+          <span class="detail-crumb">商品列表 / {{ categoryName(productDetail.data?.categoryId) }} / {{ productDetail.data?.name || '' }}</span>
+        </div>
+
+        <div v-if="productDetail.loading || !productDetail.data" class="empty">商品信息加载中…</div>
+
+        <template v-else>
+          <div class="detail-grid">
+            <div class="detail-gallery">
+              <div class="detail-image">
+                <img v-if="currentGalleryImage" :src="currentGalleryImage" :alt="productDetail.data.name" />
+                <span v-else>{{ initials(productDetail.data.name) }}</span>
+                <span v-if="productDetail.data.isHot" class="corner-badge hot">热</span>
+                <span v-if="productDetail.data.isNew" class="corner-badge new">新</span>
+              </div>
+              <div class="gallery-thumbs" v-if="galleryImages.length > 1">
+                <button
+                  v-for="(img, i) in galleryImages"
+                  :key="i"
+                  type="button"
+                  class="thumb"
+                  :class="{ active: i === currentImageIndex }"
+                  @click="currentImageIndex = i"
+                >
+                  <img :src="img" :alt="商品图" />
+                </button>
+              </div>
+              <div class="gallery-note">商品编号 {{ productDetail.data.sku }}</div>
+            </div>
+
+            <div class="detail-info">
+              <div class="detail-tags">
+                <span class="tag">{{ categoryName(productDetail.data.categoryId) }}</span>
+                <span :class="['tag', productDetail.data.status === 'ON_SALE' ? 'ok' : 'muted']">{{ formatProductStatus(productDetail.data.status) }}</span>
+                <span v-if="Number(productDetail.data.stock) <= 0" class="tag warn">已售罄</span>
+              </div>
+              <h2>{{ productDetail.data.name }}</h2>
+              <p class="detail-subtitle">{{ productDetail.data.subtitle || '暂无副标题' }}</p>
+
+              <div class="detail-price">
+                <strong>{{ money(productDetail.data.price) }}</strong>
+                <span v-if="Number(productDetail.data.originalPrice) > Number(productDetail.data.price)" class="detail-origin">原价 {{ money(productDetail.data.originalPrice) }}</span>
+                <span v-if="discountSave(productDetail.data.originalPrice, productDetail.data.price) > 0" class="detail-discount">省 {{ money(discountSave(productDetail.data.originalPrice, productDetail.data.price)) }} · 约 {{ discountRate(productDetail.data.originalPrice, productDetail.data.price) }} 折</span>
+                <span class="detail-unit">/ {{ formatUnit(productDetail.data.unit) }}</span>
+              </div>
+              <div v-if="activeActivities.length" class="activity-banner">
+                <span class="activity-tag" v-for="act in activeActivities" :key="act.id">
+                  <template v-if="act.type === 'FULL_REDUCTION'">满{{ money(act.threshold) }}减{{ money(act.discount) }}</template>
+                  <template v-else>{{ (Number(act.discount) * 10).toFixed(1) }}折</template>
+                </span>
+              </div>
+
+              <dl class="detail-meta">
+                <div><dt>剩余库存</dt><dd>{{ productDetail.data.stock }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
+                <div><dt>累计销量</dt><dd>{{ productDetail.data.sales ?? 0 }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
+                <div><dt>所属分类</dt><dd>{{ categoryName(productDetail.data.categoryId) }}</dd></div>
+                <div><dt>商品编号</dt><dd>{{ productDetail.data.sku }}</dd></div>
+              </dl>
+
+              <p class="detail-brand" v-if="productDetail.data.brand">品牌：{{ productDetail.data.brand }}</p>
+
+              <div class="spec-area" v-if="Object.keys(specDimensions).length">
+                <div class="spec-dim" v-for="(values, dim) in specDimensions" :key="dim">
+                  <span class="spec-label">{{ dim }}</span>
+                  <div class="spec-options">
+                    <button
+                      v-for="val in values"
+                      :key="val"
+                      type="button"
+                      class="spec-opt"
+                      :class="{ active: selectedSpec[dim] === val }"
+                      @click="selectedSpec[dim] = val"
+                    >{{ val }}</button>
+                  </div>
+                </div>
+                <p class="spec-selected" v-if="selectedSpecText">已选：{{ selectedSpecText }}</p>
+              </div>
+
+              <div v-if="isAdmin" class="admin-note">管理员仅查看商品信息，不能下单</div>
+              <div v-else-if="Number(productDetail.data.stock) <= 0" class="admin-note">该商品已售罄，暂时无法购买</div>
+              <div v-else class="detail-buy">
+                <div class="qty-picker">
+                  <button type="button" @click="changeDetailQty(-1)">−</button>
+                  <span>{{ detailQuantity }}</span>
+                  <button type="button" @click="changeDetailQty(1)">+</button>
+                </div>
+                <button @click="addDetailToCart">加入购物车</button>
+                <button class="ghost" @click="buyDetailNow">立即购买</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>商品描述</h3>
+            <p class="detail-desc">{{ productDetail.data.description || '暂无商品描述' }}</p>
+          </div>
+
+          <div class="detail-section" v-if="productDetail.data.attributes && productDetail.data.attributes.length">
+            <h3>商品参数</h3>
+            <table class="param-table">
+              <tbody>
+                <tr v-for="attr in productDetail.data.attributes" :key="attr.id || attr.attrName">
+                  <th>{{ attr.attrName }}</th>
+                  <td>{{ attr.attrValue }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="detail-section" v-if="relatedProducts.length">
+            <h3>相关推荐</h3>
+              <div class="related-grid">
+                <ProductCard v-for="p in relatedProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
+              </div>
+          </div>
+
+          <div class="detail-section">
+            <div class="panel-head">
+              <h3>用户评价（{{ productDetail.reviews.length }}）</h3>
+            </div>
+            <div v-if="!productDetail.reviews.length" class="empty">暂无评价，购买并确认收货后即可评价</div>
+            <div v-else class="review-list">
+              <div v-for="review in productDetail.reviews" :key="review.id" class="review-item">
+                <div class="review-head">
+                  <span class="review-user">{{ review.nickname || '匿名用户' }}</span>
+                  <StarRating :rating="review.rating" />
+                  <span class="review-date">{{ formatDate(review.createdAt) }}</span>
+                </div>
+                <p>{{ review.content || '默认好评' }}</p>
+                <div v-if="review.imageUrls && review.imageUrls.length" class="review-imgs">
+                  <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <section v-if="view === 'orderDetail'" class="data-panel">
+        <div class="panel-head">
+          <button class="ghost" @click="closeOrderDetail">← 返回</button>
+          <h2>订单详情</h2>
+          <span v-if="orderDetail.data" class="order-no-display">订单号：{{ orderDetail.data.orderNo }}</span>
+        </div>
+        <div v-if="orderDetail.loading" class="empty">加载中…</div>
+        <div v-else-if="orderDetail.error" class="empty error">{{ orderDetail.error }}</div>
+        <template v-else-if="orderDetail.data">
+          <div class="order-summary">
+            <div class="order-row"><span>订单状态</span><b>{{ formatOrderStatus(orderDetail.data.status) }}</b></div>
+            <div class="order-row"><span>支付状态</span><b>{{ formatPaymentStatus(orderDetail.data.paymentStatus) }}</b></div>
+            <div class="order-row"><span>实付金额</span><b>{{ money(orderDetail.data.payAmount) }}</b></div>
+            <div class="order-row"><span>收货人</span><b>{{ orderDetail.data.receiverName }} {{ orderDetail.data.receiverPhone }}</b></div>
+            <div class="order-row"><span>收货地址</span><b>{{ orderDetail.data.receiverAddress }}</b></div>
+            <div class="order-row" v-if="orderDetail.data.shipCompany || orderDetail.data.shipNo"><span>物流信息</span><b>{{ orderDetail.data.shipCompany }} {{ orderDetail.data.shipNo }}</b></div>
+            <div class="order-row" v-if="orderDetail.data.remark"><span>备注</span><b>{{ orderDetail.data.remark }}</b></div>
+          </div>
+          <h3 class="items-title">购买商品（{{ (orderDetail.data.items || []).length }} 件）</h3>
+          <div class="order-items">
+            <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
+              <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" />
+              <div class="order-item-info">
+                <div class="order-item-name">{{ it.productName }}</div>
+                <div v-if="it.skuSpec" class="order-item-spec">规格：{{ it.skuSpec }}</div>
+                <div class="order-item-meta">
+                  <span>{{ money(it.productPrice) }}</span>
+                  <span class="order-item-qty">× {{ it.quantity }}</span>
+                  <span class="subtotal">{{ money(it.subtotalAmount) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="order-total-row">商品合计：<b>{{ money(orderDetail.data.payAmount) }}</b></div>
+        </template>
+      </section>
+
+      <section v-if="view === 'cart' && !isAdmin" class="data-panel">
+        <div class="panel-head">
+          <h2>购物车</h2>
+          <button v-if="cart.items?.length" class="ghost danger" @click="clearCart">清空购物车</button>
+        </div>
+        <div v-if="!cart.items?.length" class="empty">购物车为空，先去挑选商品吧</div>
+        <div v-for="item in cart.items" :key="item.id" class="list-row cart-item">
+          <div>
+            <strong>{{ item.productName }}</strong>
+            <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
+            <small>
+              <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
+              {{ money(item.productPrice) }} × {{ item.quantity }}
+              <template v-if="itemOriginalSave(item) > 0"> = <b>{{ money(item.productPrice * item.quantity) }}</b></template>
+              <span v-if="itemOriginalSave(item) > 0" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+            </small>
+          </div>
+          <div class="row-actions">
+            <div class="qty-wrap">
+              <button class="stepper" type="button" @click="stepQty(item, -1)">−</button>
+              <input class="qty" type="number" min="1" v-model.number="item.quantity" @input="onQtyInput(item)" @change="onQtyChange(item)" />
+              <button class="stepper" type="button" @click="stepQty(item, 1)">+</button>
+            </div>
+            <button class="ghost danger" @click="removeCartItem(item.id)">删除</button>
+          </div>
+        </div>
+
+        <div v-if="cart.items?.length" class="coupon-block">
+          <h3>优惠券</h3>
+          <div class="coupon-list">
+            <button class="coupon-opt" :class="{ on: !selectedUserCouponId }" @click="chooseNoCoupon">不使用优惠券</button>
+            <button
+              v-for="coupon in myCoupons"
+              :key="coupon.id"
+              type="button"
+              class="coupon-opt"
+              :class="{ on: selectedUserCouponId === coupon.id, disabled: !couponEligible(coupon) }"
+              :disabled="!couponEligible(coupon)"
+              @click="selectCoupon(coupon)"
+            >
+              <span class="coupon-name">{{ coupon.couponName }}</span>
+              <span class="coupon-sub">满 {{ money(coupon.thresholdAmount) }} 减 {{ money(coupon.discountAmount) }}</span>
+              <span v-if="!couponEligible(coupon)" class="coupon-reason">
+                {{ couponShortfall(coupon) > 0 ? '差 ' + money(couponShortfall(coupon)) + ' 可用' : (coupon.unusableReason || '暂不可用') }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="cart.items?.length" class="submit-bar">
+          <div class="submit-meta">
+            <span class="total">合计 <b>{{ money(orderPayPreview) }}</b></span>
+            <span v-if="cartOriginalSave > 0" class="total-save">划线价已为你省 {{ money(cartOriginalSave) }}</span>
+            <span v-if="Number(cart.activityDiscount) > 0" class="total-save">活动已优惠 {{ money(cart.activityDiscount) }}</span>
+          </div>
+          <button class="primary" @click="goCheckout">提交订单</button>
+        </div>
+      </section>
+
+      <section v-if="view === 'checkout' && !isAdmin" class="data-panel checkout">
+        <div class="panel-head">
+          <h2>确认订单</h2>
+          <button class="ghost" @click="view = 'cart'">返回购物车</button>
+        </div>
+
+        <div class="checkout-block">
+          <h3>收货地址</h3>
+          <div v-if="selectedAddress" class="addr-card selected">
+            <strong>{{ selectedAddress.receiverName }} {{ selectedAddress.receiverPhone }}</strong>
+            <small>{{ selectedAddress.province }}{{ selectedAddress.city }}{{ selectedAddress.district }}{{ selectedAddress.detailAddress }}</small>
+          </div>
+          <div v-else class="empty">请先选择或新增收货地址</div>
+          <div v-if="addresses.length" class="addr-list">
+            <button
+              v-for="a in addresses"
+              :key="a.id"
+              type="button"
+              class="addr-chip"
+              :class="{ on: a.id === selectedAddressId }"
+              @click="selectedAddressId = a.id"
+            >{{ a.receiverName }} · {{ a.receiverPhone }}</button>
+          </div>
+          <details class="addr-add">
+            <summary>新增收货地址</summary>
+            <div class="addr-form">
+              <input v-model="addressForm.receiverName" placeholder="收货人" />
+              <input v-model="addressForm.receiverPhone" placeholder="手机号" />
+              <input v-model="addressForm.province" placeholder="省份" />
+              <input v-model="addressForm.city" placeholder="城市" />
+              <input v-model="addressForm.district" placeholder="区县" />
+              <input v-model="addressForm.detailAddress" placeholder="详细地址" />
+              <label class="check-line"><input type="checkbox" v-model="addressForm.isDefault" /> 设为默认地址</label>
+              <button @click="saveAddress">保存地址</button>
+            </div>
+          </details>
+        </div>
+
+        <div class="checkout-block">
+          <h3>商品清单</h3>
+          <div v-if="!cart.items?.length" class="empty">购物车为空</div>
+          <div v-for="item in cart.items" :key="item.id" class="list-row">
+            <div>
+              <strong>{{ item.productName }}</strong>
+              <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
+              <small>
+                <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
+                {{ money(item.productPrice) }} × {{ item.quantity }}
+                <span v-if="itemOriginalSave(item) > 0" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+              </small>
+            </div>
+            <strong class="line-total">{{ money(item.productPrice * item.quantity) }}</strong>
+          </div>
+        </div>
+
+        <div class="checkout-block">
+          <h3>优惠券</h3>
+          <span v-if="selectedCoupon" class="coupon-picked">{{ selectedCoupon.couponName }}（减 {{ money(selectedCoupon.discountAmount) }}）</span>
+          <span v-else class="coupon-picked muted">不使用优惠券</span>
+        </div>
+
+        <div class="checkout-summary">
+          <div class="row"><span>商品合计</span><strong>{{ money(cartLocalTotal) }}</strong></div>
+          <div v-if="cartOriginalSave > 0" class="row"><span>划线优惠（已省）</span><strong class="minus">- {{ money(cartOriginalSave) }}</strong></div>
+          <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
+          <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
+          <div class="row pay"><span>应付金额</span><strong>{{ money(orderPayPreview) }}</strong></div>
+          <div class="row balance" :class="{ insufficient: !balanceSufficient }">
+            <span>账户余额 {{ money(wallet.balance) }}</span>
+            <strong :class="balanceSufficient ? 'text-ok' : 'text-warn'">{{ balanceSufficient ? '余额充足' : '余额不足' }}</strong>
+          </div>
+        </div>
+
+        <div class="checkout-actions">
+          <button class="ghost" @click="view = 'cart'">返回</button>
+          <button v-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
+            <span v-if="paying" class="spinner"></span>
+            <span>{{ paying ? '支付处理中…' : '确认付款 ' + money(orderPayPreview) }}</span>
+          </button>
+          <button v-else class="primary" disabled>余额不足，无法支付</button>
+          <a v-if="!balanceSufficient" class="link" @click="view = 'recharge'">去充值 ›</a>
+        </div>
+      </section>
+
+      <section v-if="view === 'orders' && !isAdmin" class="data-panel">
+        <div class="panel-head">
+          <h2>我的订单</h2>
+          <button @click="loadOrders">刷新</button>
+        </div>
+        <div v-if="!orders.items?.length" class="empty">暂无订单</div>
+        <div v-for="order in orders.items" :key="order.id" class="list-row tall wrap">
+          <div>
+            <div class="order-head">
+              <strong class="order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</strong>
+              <span :class="['tag', shipStatusOf(order).cls]">{{ shipStatusOf(order).label }}</span>
+              <span class="order-amount">{{ money(order.payAmount) }}</span>
+            </div>
+            <small>{{ formatPaymentStatus(order.paymentStatus) }}<template v-if="Number(order.discountAmount || 0) + Number(order.activityDiscount || 0) > 0"> · 已优惠 -{{ money(Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)) }}<template v-if="order.activityName">（{{ order.activityName }}）</template></template></small>
+            <small v-if="order.status === 'PAID'" class="ship-hint">商家尚未发货，请耐心等待</small>
+            <small v-if="order.shipNo" class="ship-line">
+              <span class="ship-flag">已发货</span>{{ order.shipCompany }} {{ order.shipNo }}
+            </small>
+            <small v-if="order.refundStatus && order.refundStatus !== 'NONE'" class="tag-warn">
+              {{ formatRefundStatus(order.refundStatus) }}<template v-if="order.refundReason"> · {{ order.refundReason }}</template><template v-if="order.refundRemark"> · 处理意见：{{ order.refundRemark }}</template>
+            </small>
+          </div>
+          <div class="row-actions">
+            <button v-if="order.status === 'PENDING_PAYMENT'" @click="payOrder(order.id)">余额支付</button>
+            <button v-if="order.status === 'SHIPPED'" @click="confirmReceipt(order.id)">确认收货</button>
+            <button
+              v-if="['PAID', 'SHIPPED'].includes(order.status) && order.refundStatus !== 'APPLYING'"
+              class="ghost"
+              @click="openRefundForm(order.id)"
+            >申请退款</button>
+            <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
+            <button v-if="order.status === 'COMPLETED' && !reviewedMap[order.id]" class="ghost" @click="openReviewForm(order.id)">评价</button>
+          </div>
+          <div v-if="refundForm.orderId === order.id" class="row-extra">
+            <input v-model="refundForm.reason" placeholder="请填写退款原因" />
+            <button @click="submitRefund(order.id)">提交申请</button>
+            <button class="ghost" @click="refundForm.orderId = null">取消</button>
+          </div>
+          <div v-if="reviewForm.orderId === order.id" class="row-extra">
+            <select v-model.number="reviewForm.rating" class="rating-select">
+              <option :value="5">★★★★★ 非常满意</option>
+              <option :value="4">★★★★ 满意</option>
+              <option :value="3">★★★ 一般</option>
+              <option :value="2">★★ 不满意</option>
+              <option :value="1">★ 很差</option>
+            </select>
+            <input v-model="reviewForm.content" placeholder="写下你的评价（选填）" />
+            <image-upload v-model="reviewForm.images" type="review" multiple :max="9" />
+            <button @click="submitReview(order.id)">提交评价</button>
+            <button class="ghost" @click="reviewForm.orderId = null">取消</button>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="view === 'coupons' && !isAdmin" class="coupon-page">
+        <div class="coupon-section">
+          <div class="panel-head">
+            <h2>可领取优惠券</h2>
+            <button @click="loadCoupons">刷新</button>
+          </div>
+          <div v-if="!coupons.length" class="empty">暂无可领取的优惠券</div>
+          <div v-else class="coupon-grid">
+            <CouponCard v-for="coupon in coupons" :key="coupon.id" :coupon="coupon" mode="claim" @receive="receiveCoupon" />
+          </div>
+        </div>
+        <div class="coupon-section">
+          <div class="panel-head">
+            <h2>我的优惠券</h2>
+            <button @click="loadCoupons">刷新</button>
+          </div>
+          <div v-if="!myCoupons.length" class="empty">还没有优惠券，先去领取一张吧</div>
+          <div v-else class="coupon-grid">
+            <CouponCard v-for="coupon in myCoupons" :key="coupon.id" :coupon="coupon" mode="mine" />
+          </div>
+        </div>
+      </section>
+
+      <section v-if="view === 'addresses' && !isAdmin" class="addr-page">
+        <form class="addr-form" @submit.prevent="saveAddress">
+          <div class="panel-head"><h2>新增 / 编辑地址</h2></div>
+          <div class="addr-fields">
+            <input v-model="addressForm.receiverName" placeholder="收货人姓名" />
+            <input v-model="addressForm.receiverPhone" placeholder="手机号码" />
+            <input v-model="addressForm.province" placeholder="省份，如：广东省" />
+            <input v-model="addressForm.city" placeholder="城市，如：深圳市" />
+            <input v-model="addressForm.district" placeholder="区 / 县，如：南山区" />
+            <input v-model="addressForm.detailAddress" placeholder="详细地址（街道、门牌号）" />
+          </div>
+          <label class="check-line"><input type="checkbox" v-model="addressForm.isDefault" /> 设为默认收货地址</label>
+          <button class="addr-submit">保存地址</button>
+        </form>
+        <div class="addr-list-wrap">
+          <div class="panel-head">
+            <h2>我的收货地址</h2>
+            <span class="addr-count">{{ addresses.length }} 个</span>
+          </div>
+          <div v-if="!addresses.length" class="empty">还没有收货地址，左侧填写后保存吧</div>
+          <div v-else class="addr-grid">
+            <AddressCard
+              v-for="address in addresses"
+              :key="address.id"
+              :address="address"
+              :selected="address.id === selectedAddressId"
+              @select="useAddress"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section v-if="view === 'recharge' && !isAdmin" class="data-panel recharge-page">
+        <div class="recharge-head">
+          <div>
+            <h2>账户充值</h2>
+            <p>当前余额 <strong>{{ money(wallet.balance) }}</strong>，充值即时到账，可用于商城购物。</p>
+          </div>
+        </div>
+
+        <div v-if="recharge.step !== 'paying'" class="recharge-body">
+          <div class="form-block">
+            <div class="form-title"><span class="title-bar"></span>充值金额</div>
+            <div class="amount-grid">
+              <button
+                v-for="preset in rechargePresets"
+                :key="preset"
+                :class="['amount-chip', { active: recharge.amount === preset && !recharge.customAmount }]"
+                @click="selectRechargePreset(preset)"
+              >{{ money(preset) }}</button>
+              <div class="amount-custom" :class="{ active: !!recharge.customAmount }">
+                <span>¥</span>
+                <input
+                  v-model="recharge.customAmount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="自定义金额"
+                  @input="onCustomAmountInput"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-block">
+            <div class="form-title"><span class="title-bar"></span>支付方式</div>
+            <div class="method-cards">
+              <button
+                :class="['method-card', { active: recharge.method === 'ALIPAY' }]"
+                @click="recharge.method = 'ALIPAY'"
+              >
+                <span class="method-icon alipay">支</span>
+                <span class="method-name">支付宝</span>
+                <small>推荐使用，秒到账</small>
+              </button>
+              <button
+                :class="['method-card', { active: recharge.method === 'WECHAT' }]"
+                @click="recharge.method = 'WECHAT'"
+              >
+                <span class="method-icon wechat">微</span>
+                <span class="method-name">微信支付</span>
+                <small>扫码即付，安全便捷</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="recharge-action">
+            <button class="primary block" @click="confirmRecharge">
+              确认充值 {{ money(recharge.amount || 0) }}
+            </button>
+            <p class="recharge-tip">点击下方按钮即创建一笔充值订单，可在支付页选择「立即支付」或「取消订单」。</p>
+          </div>
+        </div>
+
+        <!-- 支付浮层：支付中 / 成功 / 超时 -->
+        <div v-if="recharge.step === 'paying' || recharge.step === 'success' || recharge.step === 'expired'" class="modal-mask">
+          <div class="pay-modal">
+            <button class="modal-close" @click="closeRechargeModal">×</button>
+
+            <template v-if="recharge.step === 'success'">
+              <div class="pay-success">
+                <div class="pay-success-icon">✓</div>
+                <h3>充值成功</h3>
+                <p>已通过{{ methodLabel(recharge.method) }}为你充值 <strong>{{ money(recharge.order?.amount || 0) }}</strong></p>
+                <p class="pay-success-balance">当前余额 {{ money(wallet.balance) }}</p>
+                <button class="primary block" @click="backToShop">返回首页</button>
+              </div>
+            </template>
+
+            <template v-else-if="recharge.step === 'expired'">
+              <div class="pay-fail">
+                <div class="pay-fail-icon">!</div>
+                <h3>订单已超时</h3>
+                <p>该充值订单超过有效时间未支付，已自动关闭。</p>
+                <button class="primary block" @click="resetRecharge">重新充值</button>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="pay-head">
+                <span class="pay-method" :class="recharge.method === 'ALIPAY' ? 'alipay' : 'wechat'">
+                  {{ methodLabel(recharge.method) }}
+                </span>
+                <h3>向「超市购物系统」付款</h3>
+              </div>
+              <div class="pay-amount">{{ money(recharge.order?.amount || 0) }}</div>
+              <div class="pay-qr">
+                <div class="qr-frame" v-html="qrSvg"></div>
+                <p>请使用{{ methodLabel(recharge.method) }}扫一扫付款</p>
+              </div>
+              <div class="pay-countdown">
+                支付剩余时间
+                <strong :class="{ urgent: recharge.countdown <= 60 }">{{ formatCountdown(recharge.countdown) }}</strong>
+              </div>
+              <div class="pay-actions">
+                <button class="primary block" :disabled="recharge.paying" @click="payRechargeOrder">
+                  {{ recharge.paying ? '支付中…' : '立即支付' }}
+                </button>
+                <button class="ghost block" :disabled="recharge.paying" @click="cancelRechargeOrder">取消订单</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="view === 'admin' && isAdmin" class="admin-layout">
+        <aside class="admin-sidebar">
+          <div class="sidebar-head">
+            <span class="sidebar-eyebrow">管理后台</span>
+            <strong>{{ session.user?.username || '管理员' }}</strong>
+          </div>
+          <nav class="sidebar-nav">
+            <template v-for="group in adminMenuGroups" :key="group.name">
+              <span class="sidebar-group">{{ group.name }}</span>
+              <button
+                v-for="item in group.items"
+                :key="item.key"
+                :class="['sidebar-item', { active: adminMenu === item.key }]"
+                @click="selectAdminMenu(item.key)"
+              >
+                <span class="sidebar-icon" v-html="adminIcons[item.key]"></span>
+                <span class="sidebar-label">{{ item.label }}</span>
+                <span v-if="item.badge" :class="['sidebar-badge', { warn: item.warn }]">{{ item.badge }}</span>
+              </button>
+            </template>
+          </nav>
+          <div class="sidebar-foot">
+            <button class="ghost" @click="refreshAdminData">刷新全部数据</button>
+          </div>
+        </aside>
+
+        <div class="admin-main">
+          <header class="admin-head">
+            <div>
+              <h2>{{ currentAdminMenu?.label }}</h2>
+              <small>{{ currentAdminMenu?.desc }}</small>
+            </div>
+            <button @click="refreshCurrentAdminMenu">刷新</button>
+          </header>
+
+          <div v-if="adminMenu === 'dashboard'" class="data-panel">
+            <div class="stat-grid">
+              <div class="stat-card">
+                <small>上架商品</small>
+                <strong>{{ dashboardStats.productCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>库存总量</small>
+                <strong>{{ dashboardStats.totalStock }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>订单数量</small>
+                <strong>{{ dashboardStats.orderCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>成交金额</small>
+                <strong>{{ money(dashboardStats.salesAmount) }}</strong>
+              </div>
+            </div>
+            <div class="chart-grid">
+              <div ref="productChartEl" class="chart-box"></div>
+              <div ref="orderChartEl" class="chart-box"></div>
+            </div>
+          </div>
+
+          <div v-if="adminMenu === 'orders'" class="data-panel">
+            <div class="toolbar">
+              <div class="search-box admin-search">
+                <input v-model="adminOrderKeyword" placeholder="按订单号搜索" @keyup.enter="searchAdminOrders" />
+                <button @click="searchAdminOrders">查询</button>
+              </div>
+              <select v-model="adminOrderStatus" class="filter-select" @change="searchAdminOrders">
+                <option value="">全部状态</option>
+                <option value="PENDING_PAYMENT">待付款</option>
+                <option value="PAID">待发货</option>
+                <option value="SHIPPED">待收货</option>
+                <option value="COMPLETED">已完成</option>
+                <option value="CANCELLED">已取消</option>
+                <option value="CLOSED">已关闭</option>
+              </select>
+              <select v-model="adminOrders.size" class="filter-select" @change="changeAdminOrderPageSize">
+                <option :value="10">10 条/页</option>
+                <option :value="20">20 条/页</option>
+                <option :value="50">50 条/页</option>
+              </select>
+              <button class="ghost" @click="resetAdminOrderSearch">重置</button>
+              <span class="result-count">共 {{ adminOrders.total }} 笔订单</span>
+            </div>
+
+            <div v-if="!adminOrders.items?.length" class="empty">暂无订单</div>
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>订单号</th>
+                    <th>订单状态</th>
+                    <th>支付状态</th>
+                    <th>收货人</th>
+                    <th>实付金额</th>
+                    <th>物流信息</th>
+                    <th>下单时间</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="order in adminOrders.items" :key="order.id">
+                    <tr>
+                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span><span v-if="order.remark" class="cell-sub">备注：{{ order.remark }}</span></td>
+                      <td><span :class="['tag', orderStatusTag(order.status)]">{{ formatOrderStatus(order.status) }}</span></td>
+                      <td>{{ formatPaymentStatus(order.paymentStatus) }}</td>
+                      <td>{{ order.receiverName || '-' }}<span class="cell-sub">{{ order.receiverPhone || '' }}</span></td>
+                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)" class="cell-sub">已优惠 {{ money(Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)) }}</span></td>
+                      <td>
+                        <template v-if="order.shipNo">{{ order.shipCompany }}<span class="cell-sub">{{ order.shipNo }}</span></template>
+                        <span v-else class="cell-muted">未发货</span>
+                      </td>
+                      <td>{{ formatDate(order.createdAt) }}</td>
+                      <td class="col-action">
+                        <div class="row-actions">
+                          <button v-if="order.status === 'PAID'" @click="openShipForm(order.id)">发货</button>
+                          <button v-if="order.status === 'SHIPPED'" @click="completeAdminOrder(order.id)">完成</button>
+                          <button v-if="['PENDING_PAYMENT', 'PAID'].includes(order.status)" class="ghost" @click="cancelAdminOrder(order.id)">取消</button>
+                          <span v-if="!['PENDING_PAYMENT', 'PAID', 'SHIPPED'].includes(order.status)">-</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="shipForm.orderId === order.id" class="row-extra-tr">
+                      <td colspan="8">
+                        <div class="row-extra">
+                          <span class="extra-label">填写物流信息</span>
+                          <input v-model="shipForm.shipCompany" placeholder="快递公司" />
+                          <input v-model="shipForm.shipNo" placeholder="快递单号" />
+                          <button @click="submitShip(order.id)">确认发货</button>
+                          <button class="ghost" @click="shipForm.orderId = null">取消</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div v-if="adminOrders.total > adminOrders.size" class="pagination">
+                <button class="ghost" :disabled="adminOrders.page <= 1" @click="changeAdminOrderPage(-1)">上一页</button>
+                <span class="page-info">第 {{ adminOrders.page }} / {{ adminOrderTotalPages }} 页</span>
+                <button class="ghost" :disabled="adminOrders.page >= adminOrderTotalPages" @click="changeAdminOrderPage(1)">下一页</button>
+                <span class="page-jump-wrap">跳至
+                  <input type="number" min="1" :max="adminOrderTotalPages" v-model.number="adminOrderJumpPage" class="page-jump" @keyup.enter="goAdminOrderPage" />
+                  页
+                  <button class="ghost" @click="goAdminOrderPage">跳转</button>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="adminMenu === 'refunds'" class="data-panel">
+            <div class="toolbar">
+              <select v-model="refundStatusFilter" class="filter-select" @change="searchRefunds">
+                <option value="APPLYING">申请中</option>
+                <option value="APPROVED">已通过</option>
+                <option value="REJECTED">已拒绝</option>
+              </select>
+              <select v-model="refundOrders.size" class="filter-select" @change="changeRefundPageSize">
+                <option :value="10">10 条/页</option>
+                <option :value="20">20 条/页</option>
+                <option :value="50">50 条/页</option>
+              </select>
+              <button class="ghost" @click="resetRefundSearch">重置</button>
+              <span class="result-count">共 {{ refundOrders.total }} 笔退款</span>
+            </div>
+
+            <div v-if="!refundOrders.items?.length" class="empty">暂无待处理的退款申请</div>
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>订单号</th>
+                    <th>订单状态</th>
+                    <th>退款金额</th>
+                    <th>退款原因</th>
+                    <th>申请时间</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="order in refundOrders.items" :key="order.id">
+                    <tr>
+                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span></td>
+                      <td><span :class="['tag', refundStatusTag(order.refundStatus)]">{{ formatRefundStatus(order.refundStatus) }}</span></td>
+                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span></td>
+                      <td>{{ order.refundReason || '未填写' }}</td>
+                      <td>{{ formatDate(order.createdAt) }}</td>
+                      <td class="col-action">
+                        <div class="row-actions">
+                          <button v-if="order.refundStatus === 'APPLYING'" @click="reviewAdminRefund(order.id, true)">同意退款</button>
+                          <button v-if="order.refundStatus === 'APPLYING'" class="danger" @click="reviewAdminRefund(order.id, false)">拒绝</button>
+                          <span v-else>-</span>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="refundReviewForm.orderId === order.id" class="row-extra-tr">
+                      <td colspan="6">
+                        <div class="row-extra">
+                          <span class="extra-label">{{ refundReviewForm.approved ? '同意退款' : '拒绝退款' }}，处理意见</span>
+                          <input v-model="refundReviewForm.remark" placeholder="处理意见（选填）" />
+                          <button @click="submitRefundReview(order.id)">提交</button>
+                          <button class="ghost" @click="refundReviewForm.orderId = null">取消</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div v-if="refundOrders.total > refundOrders.size" class="pagination">
+                <button class="ghost" :disabled="refundOrders.page <= 1" @click="changeRefundPage(-1)">上一页</button>
+                <span class="page-info">第 {{ refundOrders.page }} / {{ refundTotalPages }} 页</span>
+                <button class="ghost" :disabled="refundOrders.page >= refundTotalPages" @click="changeRefundPage(1)">下一页</button>
+                <span class="page-jump-wrap">跳至
+                  <input type="number" min="1" :max="refundTotalPages" v-model.number="refundJumpPage" class="page-jump" @keyup.enter="goRefundPage" />
+                  页
+                  <button class="ghost" @click="goRefundPage">跳转</button>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="adminMenu === 'stock'" class="data-panel">
+            <div v-if="!stockAlerts.length" class="empty">库存充足，暂无预警</div>
+            <template v-else>
+              <div class="toolbar">
+                <div class="search-box admin-search">
+                  <input v-model="stockKeyword" placeholder="按商品名称 / 编号搜索" @keyup.enter="stockPage = 1" />
+                  <button @click="stockPage = 1">查询</button>
+                </div>
+                <select v-model="stockSize" class="filter-select" @change="stockPage = 1">
+                  <option :value="10">10 条/页</option>
+                  <option :value="20">20 条/页</option>
+                  <option :value="50">50 条/页</option>
+                </select>
+                <button class="ghost" @click="stockKeyword = ''; stockPage = 1">重置</button>
+                <span class="result-count">共 {{ stockFiltered.length }} 条预警</span>
+              </div>
+              <div v-if="!stockPageItems.length" class="empty">没有匹配「{{ stockKeyword }}」的预警商品</div>
+              <div v-else class="table-wrap">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>商品名称</th>
+                      <th>商品编号</th>
+                      <th>当前库存</th>
+                      <th>预警阈值</th>
+                      <th>缺口</th>
+                      <th class="col-action">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template v-for="alert in stockPageItems" :key="alert.id">
+                      <tr>
+                        <td><span class="cell-strong">{{ alert.name }}</span></td>
+                        <td>{{ alert.sku }}</td>
+                        <td><span class="tag warn">{{ alert.stock }}</span></td>
+                        <td>{{ alert.lowStockThreshold }}</td>
+                        <td>{{ Math.max(alert.lowStockThreshold - alert.stock, 0) }}</td>
+                        <td class="col-action">
+                          <div class="row-actions">
+                            <button class="ghost" @click="openStockForm(alert, Math.max(alert.lowStockThreshold - alert.stock, 10))">补货</button>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="stockForm.productId === alert.id" class="row-extra-tr">
+                        <td colspan="6">
+                          <div class="row-extra">
+                            <span class="extra-label">补货数量</span>
+                            <input v-model.number="stockForm.quantity" type="number" min="1" step="1" class="qty-input" />
+                            <button type="button" class="chip" @click="stockForm.quantity = 10">+10</button>
+                            <button type="button" class="chip" @click="stockForm.quantity = 50">+50</button>
+                            <button type="button" class="chip" @click="stockForm.quantity = 100">+100</button>
+                            <input v-model="stockForm.remark" placeholder="备注（选填，如：供应商补货）" class="remark-input" />
+                            <button @click="submitStock(alert)">确认入库</button>
+                            <button class="ghost" @click="stockForm.productId = null">取消</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <div v-if="stockFiltered.length > stockSize" class="pagination">
+                  <button class="ghost" :disabled="stockPage <= 1" @click="changeStockPage(-1)">上一页</button>
+                  <span class="page-info">第 {{ Math.min(stockPage, stockTotalPages) }} / {{ stockTotalPages }} 页</span>
+                  <button class="ghost" :disabled="stockPage >= stockTotalPages" @click="changeStockPage(1)">下一页</button>
+                  <span class="page-jump-wrap">跳至
+                    <input type="number" min="1" :max="stockTotalPages" v-model.number="stockJumpPage" class="page-jump" @keyup.enter="goStockPage" />
+                    页
+                    <button class="ghost" @click="goStockPage">跳转</button>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'products'" class="data-panel">
+            <div class="form-block">
+              <div class="form-title">
+                <span>{{ editingProductId ? '编辑商品' : '新增商品' }}</span>
+                <small v-if="editingProductId">正在编辑「{{ productForm.name }}」，保存后更新该商品</small>
+                <small v-else>带 <i class="req">*</i> 为必填项，新增后默认直接上架</small>
+              </div>
+              <form class="compact-form form-bar" @submit.prevent="saveProduct">
+                <label class="field">
+                  <span class="field-label">商品名称 <i class="req">*</i></span>
+                  <input v-model="productForm.name" placeholder="如：海南香蕉 500g/份" />
+                </label>
+                <label class="field">
+                  <span class="field-label">商品编号 <i class="req">*</i></span>
+                  <input v-model="productForm.sku" placeholder="如：FRU-1001，不可重复" />
+                </label>
+                <label class="field">
+                  <span class="field-label">售价（元）<i class="req">*</i></span>
+                  <input v-model.number="productForm.price" type="number" step="0.01" min="0" placeholder="如：9.90" />
+                </label>
+                <label class="field">
+                  <span class="field-label">原价（划线价，选填）</span>
+                  <input v-model.number="productForm.originalPrice" type="number" step="0.01" min="0" placeholder="高于售价时显示划线优惠" />
+                </label>
+                <p v-if="Number(formDiscount.save) > 0" class="field-hint discount-hint">优惠提示：省 {{ money(formDiscount.save) }}，约 {{ formDiscount.rate }} 折</p>
+                <label class="field">
+                  <span class="field-label">{{ editingProductId ? '库存（设定值）' : '初始库存' }} <i class="req">*</i></span>
+                  <input v-model.number="productForm.stock" type="number" min="0" placeholder="如：100" />
+                </label>
+                <label class="field">
+                  <span class="field-label">所属分类 <i class="req">*</i></span>
+                  <select v-model="productForm.categoryId">
+                    <option value="">请选择分类</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">计价单位</span>
+                  <select v-model="productForm.unit">
+                    <option v-for="u in productUnits" :key="u.value" :value="u.value">{{ u.label }}</option>
+                  </select>
+                </label>
+                <label v-if="productForm.unit === 'custom'" class="field">
+                  <span class="field-label">自定义单位 <i class="req">*</i></span>
+                  <input v-model="productForm.customUnit" maxlength="10" placeholder="如：箱、包、提、捆" />
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">副标题</span>
+                  <input v-model="productForm.subtitle" placeholder="如：新鲜直采，甜糯可口" />
+                </label>
+                <label class="field">
+                  <span class="field-label">品牌</span>
+                  <input v-model="productForm.brand" placeholder="如：农家果园" />
+                </label>
+                <div class="field-inline-group">
+                  <label class="field-inline">
+                    <input type="checkbox" v-model="productForm.isHot" />
+                    <span>设为热门</span>
+                  </label>
+                  <label class="field-inline">
+                    <input type="checkbox" v-model="productForm.isNew" />
+                    <span>设为新品</span>
+                  </label>
+                </div>
+                <label class="field field-wide">
+                  <span class="field-label">营销标签（逗号分隔）</span>
+                  <input v-model="productForm.tags" placeholder="如：限时特惠,包邮" />
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">商品封面</span>
+                  <image-upload v-model="productForm.coverUrl" type="product" />
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">商品图集（多图）</span>
+                  <image-upload v-model="productForm.images" type="product" multiple :max="9" />
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">多规格 SKU（选填）</span>
+                  <div class="sku-list">
+                    <div v-for="(sku, si) in productForm.skus" :key="si" class="sku-card">
+                      <div class="sku-specs">
+                        <div v-for="(item, ii) in sku.specItems" :key="ii" class="spec-row">
+                          <input v-model="item.name" placeholder="规格名，如 颜色" />
+                          <input v-model="item.value" placeholder="规格值，如 红色" />
+                          <button type="button" class="ghost mini danger" @click="sku.specItems.splice(ii, 1)">删</button>
+                        </div>
+                      </div>
+                      <button type="button" class="ghost mini" @click="sku.specItems.push({ name: '', value: '' })">+ 规格项</button>
+                      <div class="sku-meta">
+                        <input v-model="sku.skuCode" placeholder="SKU 编码（选填）" />
+                        <input v-model="sku.image" placeholder="SKU 图片 URL（选填）" />
+                      </div>
+                      <button type="button" class="ghost mini danger" @click="productForm.skus.splice(si, 1)">删除该 SKU</button>
+                    </div>
+                    <button type="button" class="ghost mini" @click="productForm.skus.push({ specItems: [{ name: '', value: '' }], skuCode: '', image: '' })">+ 新增 SKU</button>
+                  </div>
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">参数属性（选填）</span>
+                  <div class="attr-list">
+                    <div v-for="(attr, ai) in productForm.attributes" :key="ai" class="spec-row">
+                      <input v-model="attr.attrName" placeholder="属性名，如 产地" />
+                      <input v-model="attr.attrValue" placeholder="属性值，如 海南" />
+                      <button type="button" class="ghost mini danger" @click="productForm.attributes.splice(ai, 1)">删</button>
+                    </div>
+                    <button type="button" class="ghost mini" @click="productForm.attributes.push({ attrName: '', attrValue: '' })">+ 参数项</button>
+                  </div>
+                </label>
+                <label class="field field-wide">
+                  <span class="field-label">商品描述</span>
+                  <textarea v-model="productForm.description" rows="3" placeholder="介绍规格、产地、卖点等，帮助用户了解商品"></textarea>
+                </label>
+                <div class="field field-action">
+                  <button type="submit">{{ editingProductId ? '保存修改' : '新增商品' }}</button>
+                  <button v-if="editingProductId" type="button" class="ghost" @click="cancelEditProduct">取消编辑</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="toolbar">
+              <div class="search-box admin-search">
+                <input v-model="adminProductKeyword" placeholder="按名称 / 编号搜索" @keyup.enter="searchAdminProducts" />
+                <button @click="searchAdminProducts">查询</button>
+              </div>
+              <select v-model="adminProductStatus" class="filter-select" @change="searchAdminProducts">
+                <option value="">全部状态</option>
+                <option value="ON_SALE">上架</option>
+                <option value="OFF_SALE">下架</option>
+                <option value="DRAFT">草稿</option>
+              </select>
+              <select v-model="adminProducts.size" class="filter-select" @change="changeAdminPageSize">
+                <option :value="10">10 条/页</option>
+                <option :value="20">20 条/页</option>
+                <option :value="50">50 条/页</option>
+              </select>
+              <button class="ghost" @click="resetAdminProductSearch">重置</button>
+              <span class="result-count">共 {{ adminProducts.total }} 件商品</span>
+            </div>
+
+            <div v-if="!adminProducts.items?.length" class="empty">暂无商品</div>
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>商品名称</th>
+                    <th>商品编号</th>
+                    <th>所属分类</th>
+                    <th>售价</th>
+                    <th>库存</th>
+                    <th>累计销量</th>
+                    <th>状态</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="product in adminProducts.items" :key="product.id">
+                    <tr>
+                      <td><span class="cell-strong">{{ product.name }}</span><span v-if="product.subtitle" class="cell-sub">{{ product.subtitle }}</span></td>
+                      <td>{{ product.sku }}</td>
+                      <td>{{ categoryName(product.categoryId) }}</td>
+                      <td>
+                        <span class="cell-strong">{{ money(product.price) }}</span>
+                        <span v-if="Number(product.originalPrice) > 0" class="cell-sub origin-sub">原价 {{ money(product.originalPrice) }}</span>
+                        <span class="cell-sub">/ {{ formatUnit(product.unit) || '件' }}</span>
+                      </td>
+                      <td><span :class="['tag', Number(product.stock) <= 10 ? 'warn' : '']">{{ product.stock }}</span></td>
+                      <td>{{ product.sales ?? 0 }}</td>
+                      <td><span :class="['tag', product.status === 'ON_SALE' ? 'ok' : 'muted']">{{ formatProductStatus(product.status) }}</span></td>
+                      <td class="col-action">
+                        <div class="row-actions">
+                          <button class="ghost" @click="openEditProduct(product)">编辑</button>
+                          <button class="ghost" @click="openStockForm(product)">入库</button>
+                          <button :class="product.status === 'ON_SALE' ? 'danger' : ''" @click="toggleProductStatus(product)">
+                            {{ product.status === 'ON_SALE' ? '下架' : '上架' }}
+                          </button>
+                          <button class="danger ghost" @click="deleteProduct(product)">删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="stockForm.productId === product.id" class="row-extra-tr">
+                      <td colspan="8">
+                        <div class="row-extra">
+                          <span class="extra-label">入库数量</span>
+                          <input v-model.number="stockForm.quantity" type="number" min="1" step="1" class="qty-input" />
+                          <button type="button" class="chip" @click="stockForm.quantity = 10">+10</button>
+                          <button type="button" class="chip" @click="stockForm.quantity = 50">+50</button>
+                          <button type="button" class="chip" @click="stockForm.quantity = 100">+100</button>
+                          <input v-model="stockForm.remark" placeholder="备注（选填，如：供应商补货）" class="remark-input" />
+                          <button @click="submitStock(product)">确认入库</button>
+                          <button class="ghost" @click="stockForm.productId = null">取消</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="adminProducts.total > adminProducts.size" class="pagination">
+              <button class="ghost" :disabled="adminProducts.page <= 1" @click="changeAdminPage(-1)">上一页</button>
+              <span class="page-info">第 {{ adminProducts.page }} / {{ adminProductTotalPages }} 页</span>
+              <button class="ghost" :disabled="adminProducts.page >= adminProductTotalPages" @click="changeAdminPage(1)">下一页</button>
+              <span class="page-jump-wrap">跳至
+                <input type="number" min="1" :max="adminProductTotalPages" v-model.number="adminJumpPage" class="page-jump" @keyup.enter="goAdminPage" />
+                页
+                <button class="ghost" @click="goAdminPage">跳转</button>
+              </span>
+            </div>
+          </div>
+
+          <div v-if="adminMenu === 'categories'" class="data-panel">
+            <div class="form-block">
+              <div class="form-title">
+                <span>新增分类</span>
+                <small>选「顶级分类」创建一级导航，选其它分类则在其下创建二级分类</small>
+              </div>
+              <form class="compact-form form-bar" @submit.prevent="saveCategory">
+                <label class="field">
+                  <span class="field-label">分类名称 <i class="req">*</i></span>
+                  <input v-model="categoryForm.name" placeholder="如：进口水果" />
+                </label>
+                <label class="field">
+                  <span class="field-label">上级分类</span>
+                  <select v-model.number="categoryForm.parentId">
+                    <option :value="0">顶级分类（无上级）</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">排序号</span>
+                  <input v-model.number="categoryForm.sortNo" type="number" min="0" placeholder="数字越小越靠前，如 10" />
+                </label>
+                <div class="field field-action">
+                  <button type="submit">新增分类</button>
+                </div>
+              </form>
+            </div>
+            <div v-if="!categories.length" class="empty">暂无分类</div>
+            <template v-else>
+              <div class="toolbar">
+                <div class="search-box admin-search">
+                  <input v-model="categoryKeyword" placeholder="按分类名称搜索" @keyup.enter="categoryPage = 1" />
+                  <button @click="categoryPage = 1">查询</button>
+                </div>
+                <select v-model="categorySize" class="filter-select" @change="categoryPage = 1">
+                  <option :value="10">10 条/页</option>
+                  <option :value="20">20 条/页</option>
+                  <option :value="50">50 条/页</option>
+                </select>
+                <button class="ghost" @click="categoryKeyword = ''; categoryPage = 1">重置</button>
+                <span class="result-count">共 {{ categoryFiltered.length }} 个分类</span>
+              </div>
+              <div v-if="!categoryPageItems.length" class="empty">没有匹配「{{ categoryKeyword }}」的分类</div>
+              <div v-else class="table-wrap">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>分类名称</th>
+                      <th>上级分类</th>
+                      <th>排序</th>
+                      <th>层级</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="category in categoryPageItems" :key="category.id">
+                      <td><span class="cell-strong">{{ category.name }}</span></td>
+                      <td>{{ categoryName(category.parentId) }}</td>
+                      <td>{{ category.sortNo }}</td>
+                      <td><span :class="['tag', category.parentId ? 'muted' : '']">{{ category.parentId ? '二级分类' : '一级分类' }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-if="categoryFiltered.length > categorySize" class="pagination">
+                  <button class="ghost" :disabled="categoryPage <= 1" @click="changeCategoryPage(-1)">上一页</button>
+                  <span class="page-info">第 {{ Math.min(categoryPage, categoryTotalPages) }} / {{ categoryTotalPages }} 页</span>
+                  <button class="ghost" :disabled="categoryPage >= categoryTotalPages" @click="changeCategoryPage(1)">下一页</button>
+                  <span class="page-jump-wrap">跳至
+                    <input type="number" min="1" :max="categoryTotalPages" v-model.number="categoryJumpPage" class="page-jump" @keyup.enter="goCategoryPage" />
+                    页
+                    <button class="ghost" @click="goCategoryPage">跳转</button>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'coupons'" class="data-panel">
+            <div class="form-block">
+              <div class="form-title">
+                <span>新增优惠券</span>
+                <small>满减券：订单达到「使用门槛」后立减「优惠金额」，优惠金额不能大于门槛；发放总量填 0 表示不限量</small>
+                <button type="button" class="field-link title-link" @click="fillCouponPeriod(30)">一键填充：今天起 30 天</button>
+              </div>
+              <form class="compact-form form-bar" @submit.prevent="saveCoupon">
+                <label class="field">
+                  <span class="field-label">优惠券名称 <i class="req">*</i></span>
+                  <input v-model="couponForm.name" placeholder="如：新用户满 50 减 10" />
+                </label>
+                <label class="field">
+                  <span class="field-label">使用门槛（元）<i class="req">*</i></span>
+                  <input v-model.number="couponForm.thresholdAmount" type="number" step="0.01" min="0" placeholder="满多少可用，如 50.00" />
+                </label>
+                <label class="field">
+                  <span class="field-label">优惠金额（元）<i class="req">*</i></span>
+                  <input v-model.number="couponForm.discountAmount" type="number" step="0.01" min="0" placeholder="立减多少，如 10.00" />
+                </label>
+                <label class="field">
+                  <span class="field-label">发放总量（张）</span>
+                  <input v-model.number="couponForm.totalCount" type="number" min="0" placeholder="0 表示不限量，如 100" />
+                </label>
+                <label class="field">
+                  <span class="field-label">生效时间 <i class="req">*</i></span>
+                  <input v-model="couponForm.startTime" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span class="field-label">过期时间 <i class="req">*</i></span>
+                  <input v-model="couponForm.endTime" type="datetime-local" />
+                </label>
+                <div class="field field-action">
+                  <button type="submit">新增优惠券</button>
+                </div>
+              </form>
+            </div>
+            <div v-if="adminCoupons.total === 0" class="empty">暂无优惠券</div>
+            <template v-else>
+              <div class="toolbar">
+                <div class="search-box admin-search">
+                  <input v-model="adminCouponKeyword" placeholder="按优惠券名称搜索" @keyup.enter="searchAdminCoupons" />
+                  <button @click="searchAdminCoupons">查询</button>
+                </div>
+                <select v-model="adminCoupons.size" class="filter-select" @change="changeAdminCouponPageSize">
+                  <option :value="10">10 条/页</option>
+                  <option :value="20">20 条/页</option>
+                  <option :value="50">50 条/页</option>
+                </select>
+                <button class="ghost" @click="resetAdminCouponSearch">重置</button>
+                <span class="result-count">共 {{ adminCoupons.total }} 张优惠券</span>
+              </div>
+              <div v-if="!adminCoupons.items?.length" class="empty">没有匹配「{{ adminCouponKeyword }}」的优惠券</div>
+              <div v-else class="table-wrap">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>优惠券名称</th>
+                      <th>优惠力度</th>
+                      <th>有效期</th>
+                      <th>领取情况</th>
+                      <th>状态</th>
+                      <th class="col-action">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="coupon in adminCoupons.items" :key="coupon.id">
+                      <td><span class="cell-strong">{{ coupon.name }}</span></td>
+                      <td><span class="tag">满 {{ money(coupon.thresholdAmount) }} 减 {{ money(coupon.discountAmount) }}</span></td>
+                      <td>{{ formatDate(coupon.startTime) }}<span class="cell-sub">至 {{ formatDate(coupon.endTime) }}</span></td>
+                      <td>{{ coupon.receivedCount }}<span class="cell-sub">{{ coupon.totalCount ? `限量 ${coupon.totalCount} 张` : '不限量' }}</span></td>
+                      <td><span :class="['tag', coupon.status === 1 ? 'ok' : 'muted']">{{ coupon.status === 1 ? '启用中' : '已停用' }}</span></td>
+                      <td class="col-action">
+                        <div class="row-actions">
+                          <button class="ghost" @click="toggleCoupon(coupon)">{{ coupon.status === 1 ? '停用' : '启用' }}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-if="adminCoupons.total > adminCoupons.size" class="pagination">
+                  <button class="ghost" :disabled="adminCoupons.page <= 1" @click="changeAdminCouponPage(-1)">上一页</button>
+                  <span class="page-info">第 {{ adminCoupons.page }} / {{ adminCouponTotalPages }} 页</span>
+                  <button class="ghost" :disabled="adminCoupons.page >= adminCouponTotalPages" @click="changeAdminCouponPage(1)">下一页</button>
+                  <span class="page-jump-wrap">跳至
+                    <input type="number" min="1" :max="adminCouponTotalPages" v-model.number="adminCouponJumpPage" class="page-jump" @keyup.enter="goAdminCouponPage" />
+                    页
+                    <button class="ghost" @click="goAdminCouponPage">跳转</button>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'activities'" class="data-panel">
+            <div class="form-block">
+              <div class="form-title">
+                <span>{{ activityForm.id ? '编辑活动' : '新增营销活动' }}</span>
+                <small>满减：订单达到「门槛金额」后立减「优惠金额」（减额不能大于门槛）；折扣：按「折扣率」打折（0.9 = 9 折，可设最低消费门槛）。全场活动无需选择类目/商品。</small>
+                <button type="button" class="field-link title-link" @click="fillActivityPeriod(30)">一键填充：今天起 30 天</button>
+              </div>
+              <form class="compact-form form-bar" @submit.prevent="saveActivity">
+                <label class="field">
+                  <span class="field-label">活动名称 <i class="req">*</i></span>
+                  <input v-model="activityForm.name" placeholder="如：全场满 200 减 30" />
+                </label>
+                <label class="field">
+                  <span class="field-label">活动类型 <i class="req">*</i></span>
+                  <select v-model="activityForm.type">
+                    <option value="FULL_REDUCTION">满减</option>
+                    <option value="DISCOUNT">折扣</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">作用范围 <i class="req">*</i></span>
+                  <select v-model="activityForm.scope" @change="onActivityScopeChange">
+                    <option value="ALL">全场</option>
+                    <option value="CATEGORY">指定类目</option>
+                    <option value="PRODUCT">指定商品</option>
+                  </select>
+                </label>
+                <label v-if="activityForm.scope === 'CATEGORY'" class="field">
+                  <span class="field-label">适用类目 <i class="req">*</i></span>
+                  <select v-model.number="activityForm.categoryId">
+                    <option :value="0" disabled>请选择类目</option>
+                    <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                  </select>
+                </label>
+                <label v-if="activityForm.scope === 'PRODUCT'" class="field">
+                  <span class="field-label">适用商品 <i class="req">*</i></span>
+                  <select v-model.number="activityForm.productId">
+                    <option :value="0" disabled>请选择商品</option>
+                    <option v-for="p in activityProducts" :key="p.id" :value="p.id">{{ p.name }}</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">{{ activityForm.type === 'DISCOUNT' ? '最低消费（元）' : '满减门槛（元）' }} <i class="req">*</i></span>
+                  <input v-model.number="activityForm.threshold" type="number" step="0.01" min="0" :placeholder="activityForm.type === 'DISCOUNT' ? '可选，0 表示无门槛' : '满多少可用，如 200.00'" />
+                </label>
+                <label class="field">
+                  <span class="field-label">{{ activityForm.type === 'DISCOUNT' ? '折扣率（0.9=9折）' : '优惠金额（元）' }} <i class="req">*</i></span>
+                  <input v-model.number="activityForm.discount" type="number" step="0.01" min="0" :placeholder="activityForm.type === 'DISCOUNT' ? '0.01~0.99，如 0.90' : '立减多少，如 30.00'" />
+                </label>
+                <label class="field">
+                  <span class="field-label">生效时间 <i class="req">*</i></span>
+                  <input v-model="activityForm.startTime" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span class="field-label">过期时间 <i class="req">*</i></span>
+                  <input v-model="activityForm.endTime" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span class="field-label">优先级</span>
+                  <input v-model.number="activityForm.priority" type="number" min="0" placeholder="数值越大越优先" />
+                </label>
+                <div class="field field-action">
+                  <button type="submit">{{ activityForm.id ? '保存修改' : '新增活动' }}</button>
+                  <button v-if="activityForm.id" type="button" class="ghost" @click="resetActivityForm">取消编辑</button>
+                </div>
+              </form>
+            </div>
+            <div v-if="adminActivities.total === 0 && !adminActivityKeyword" class="empty">暂无营销活动，使用上方表单创建第一个活动</div>
+            <template v-else>
+              <div class="toolbar">
+                <div class="search-box admin-search">
+                  <input v-model="adminActivityKeyword" placeholder="按活动名称搜索" @keyup.enter="searchAdminActivities" />
+                  <button @click="searchAdminActivities">查询</button>
+                </div>
+                <select v-model="adminActivities.size" class="filter-select" @change="changeAdminActivityPageSize">
+                  <option :value="10">10 条/页</option>
+                  <option :value="20">20 条/页</option>
+                  <option :value="50">50 条/页</option>
+                </select>
+                <button class="ghost" @click="resetAdminActivitySearch">重置</button>
+                <span class="result-count">共 {{ adminActivities.total }} 个活动</span>
+              </div>
+              <div v-if="!adminActivities.items?.length" class="empty">没有匹配「{{ adminActivityKeyword }}」的活动</div>
+              <div v-else class="table-wrap">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>活动名称</th>
+                      <th>类型 / 范围</th>
+                      <th>优惠力度</th>
+                      <th>有效期</th>
+                      <th>状态</th>
+                      <th class="col-action">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="act in adminActivities.items" :key="act.id">
+                      <td><span class="cell-strong">{{ act.name }}</span></td>
+                      <td>
+                        <span class="tag">{{ activityTypeLabel(act.type) }}</span>
+                        <span class="tag muted">{{ activityScopeLabel(act.scope) }}</span>
+                      </td>
+                      <td><span class="tag">{{ activityDiscountLabel(act) }}</span></td>
+                      <td>{{ formatDate(act.startTime) }}<span class="cell-sub">至 {{ formatDate(act.endTime) }}</span></td>
+                      <td><span :class="['tag', act.status === 1 ? 'ok' : 'muted']">{{ act.status === 1 ? '进行中' : '已停用' }}</span></td>
+                      <td class="col-action">
+                        <div class="row-actions">
+                          <button class="ghost" @click="editActivity(act)">编辑</button>
+                          <button class="ghost" @click="toggleActivity(act)">{{ act.status === 1 ? '停用' : '启用' }}</button>
+                          <button class="ghost danger" @click="deleteActivity(act)">删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div v-if="adminActivities.total > adminActivities.size" class="pagination">
+                  <button class="ghost" :disabled="adminActivities.page <= 1" @click="changeAdminActivityPage(-1)">上一页</button>
+                  <span class="page-info">第 {{ adminActivities.page }} / {{ adminActivityTotalPages }} 页</span>
+                  <button class="ghost" :disabled="adminActivities.page >= adminActivityTotalPages" @click="changeAdminActivityPage(1)">下一页</button>
+                  <span class="page-jump-wrap">跳至
+                    <input type="number" min="1" :max="adminActivityTotalPages" v-model.number="adminActivityJumpPage" class="page-jump" @keyup.enter="goAdminActivityPage" />
+                    页
+                    <button class="ghost" @click="goAdminActivityPage">跳转</button>
+                  </span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'users'" class="data-panel">
+            <div class="toolbar">
+              <div class="search-box admin-search">
+                <input v-model="adminUserKeyword" placeholder="按用户名 / 昵称搜索" @keyup.enter="searchAdminUsers" />
+                <button @click="searchAdminUsers">查询</button>
+              </div>
+              <select v-model="adminUserRole" class="filter-select" @change="searchAdminUsers">
+                <option value="">全部角色</option>
+                <option value="USER">普通用户</option>
+                <option value="ADMIN">管理员</option>
+              </select>
+              <select v-model="adminUserStatus" class="filter-select" @change="searchAdminUsers">
+                <option value="">全部状态</option>
+                <option :value="1">启用</option>
+                <option :value="0">禁用</option>
+              </select>
+              <select v-model="adminUsers.size" class="filter-select" @change="changeAdminUserPageSize">
+                <option :value="10">10 条/页</option>
+                <option :value="20">20 条/页</option>
+                <option :value="50">50 条/页</option>
+              </select>
+              <button class="ghost" @click="resetAdminUserSearch">重置</button>
+              <span class="result-count">共 {{ adminUsers.total }} 个用户</span>
+            </div>
+
+            <div v-if="!adminUsers.items?.length" class="empty">没有匹配的用户</div>
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>用户名</th>
+                    <th>昵称</th>
+                    <th>手机号</th>
+                    <th>角色</th>
+                    <th>钱包余额</th>
+                    <th>状态</th>
+                    <th>注册时间</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="user in adminUsers.items" :key="user.id">
+                    <td><span class="cell-strong">{{ user.username }}</span></td>
+                    <td>{{ user.nickname || '-' }}</td>
+                    <td>{{ user.phone || '-' }}</td>
+                    <td><span :class="['tag', user.role === 'ADMIN' ? 'warn' : 'muted']">{{ formatRole(user.role) }}</span></td>
+                    <td>{{ money(user.balance) }}</td>
+                    <td><span :class="['tag', user.status === 1 ? 'ok' : 'muted']">{{ user.status === 1 ? '启用' : '禁用' }}</span></td>
+                    <td>{{ formatDate(user.createdAt) }}</td>
+                    <td class="col-action">
+                      <div class="row-actions">
+                        <button class="ghost" @click="toggleUser(user)">{{ user.status === 1 ? '禁用' : '启用' }}</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="adminUsers.total > adminUsers.size" class="pagination">
+                <button class="ghost" :disabled="adminUsers.page <= 1" @click="changeAdminUserPage(-1)">上一页</button>
+                <span class="page-info">第 {{ adminUsers.page }} / {{ adminUserTotalPages }} 页</span>
+                <button class="ghost" :disabled="adminUsers.page >= adminUserTotalPages" @click="changeAdminUserPage(1)">下一页</button>
+                <span class="page-jump-wrap">跳至
+                  <input type="number" min="1" :max="adminUserTotalPages" v-model.number="adminUserJumpPage" class="page-jump" @keyup.enter="goAdminUserPage" />
+                  页
+                  <button class="ghost" @click="goAdminUserPage">跳转</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <div v-if="confirmDialog.open" class="modal-mask" @click.self="resolveConfirm(false)">
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>{{ confirmDialog.title }}</h3>
+        <p class="modal-message">{{ confirmDialog.message }}</p>
+        <div v-if="confirmDialog.details?.length" class="modal-detail">
+          <div v-for="detail in confirmDialog.details" :key="detail.label">
+            <span>{{ detail.label }}</span>
+            <strong>{{ detail.value }}</strong>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="ghost" @click="resolveConfirm(false)">再想想</button>
+          <button :class="{ danger: confirmDialog.danger }" @click="resolveConfirm(true)">{{ confirmDialog.confirmText }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="alertDialog.open" class="modal-mask" @click.self="closeAlert">
+      <div class="modal alert-modal" :class="`alert-${alertDialog.type}`" role="dialog" aria-modal="true">
+        <div class="alert-badge">{{ alertDialog.type === 'error' ? '!' : (alertDialog.type === 'success' ? '✓' : 'i') }}</div>
+        <h3>{{ alertDialog.title }}</h3>
+        <p class="modal-message">{{ alertDialog.message }}</p>
+        <div class="modal-actions alert-actions">
+          <button @click="closeAlert">我知道了</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 登录 / 注册 合一弹窗 -->
+    <div v-if="authOpen" class="modal-mask" @click.self="closeAuth">
+      <div class="modal auth-modal" role="dialog" aria-modal="true">
+        <button class="modal-close" @click="closeAuth" aria-label="关闭">×</button>
+        <div class="auth-tabs">
+          <button :class="{ active: authTab === 'login' }" type="button" @click="switchAuth('login')">登录</button>
+          <button :class="{ active: authTab === 'register' }" type="button" @click="switchAuth('register')">注册</button>
+        </div>
+
+        <form v-if="authTab === 'login'" class="auth-form" @submit.prevent="submitLogin">
+          <label class="auth-field">
+            <span>用户名</span>
+            <input v-model="loginForm.username" placeholder="请输入用户名" autocomplete="username" />
+            <small v-if="authErrors.username" class="field-hint warn">{{ authErrors.username }}</small>
+          </label>
+          <label class="auth-field">
+            <span>密码</span>
+            <input v-model="loginForm.password" type="password" placeholder="请输入密码" autocomplete="current-password" />
+            <small v-if="authErrors.password" class="field-hint warn">{{ authErrors.password }}</small>
+          </label>
+          <label class="auth-remember">
+            <input type="checkbox" v-model="loginForm.remember" /> 记住我
+            <span class="auth-forgot" @click="forgotPassword">忘记密码？</span>
+          </label>
+          <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '登录中…' : '登录' }}</button>
+        </form>
+
+        <form v-else class="auth-form" @submit.prevent="submitRegister">
+          <label class="auth-field">
+            <span>用户名 <i class="req">*</i></span>
+            <input v-model="registerForm.username" placeholder="3-50 个字符" autocomplete="username" />
+            <small v-if="authErrors.username" class="field-hint warn">{{ authErrors.username }}</small>
+          </label>
+          <label class="auth-field">
+            <span>密码 <i class="req">*</i></span>
+            <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
+            <small v-if="authErrors.password" class="field-hint warn">{{ authErrors.password }}</small>
+          </label>
+          <label class="auth-field">
+            <span>确认密码 <i class="req">*</i></span>
+            <input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" autocomplete="new-password" />
+            <small v-if="authErrors.confirmPassword" class="field-hint warn">{{ authErrors.confirmPassword }}</small>
+          </label>
+          <label class="auth-field">
+            <span>昵称</span>
+            <input v-model="registerForm.nickname" placeholder="不填则默认等于用户名" autocomplete="nickname" />
+          </label>
+          <label class="auth-field">
+            <span>手机号 <i class="req">*</i></span>
+            <input v-model="registerForm.phone" placeholder="用于收货通知" autocomplete="tel" />
+            <small v-if="authErrors.phone" class="field-hint warn">{{ authErrors.phone }}</small>
+          </label>
+          <label class="auth-field">
+            <span>邮箱</span>
+            <input v-model="registerForm.email" placeholder="选填" autocomplete="email" />
+            <small v-if="authErrors.email" class="field-hint warn">{{ authErrors.email }}</small>
+          </label>
+          <label class="auth-agree">
+            <input type="checkbox" v-model="registerForm.agree" />
+            我已阅读并同意 <span class="auth-link" @click="forgotPassword">《用户协议》</span>
+            <small v-if="authErrors.agree" class="field-hint warn">{{ authErrors.agree }}</small>
+          </label>
+          <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '注册中…' : '注册并领取新人券' }}</button>
+          <p class="auth-tip">注册即自动发放新人券 🎁</p>
+        </form>
+      </div>
+    </div>
+  </main>
+</template>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script setup>
+import * as echarts from 'echarts';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { api, setToken } from './api/client';
+import ImageUpload from './components/ImageUpload.vue';
+import ProductCard from './components/ProductCard.vue';
+import StarRating from './components/StarRating.vue';
+import CouponCard from './components/CouponCard.vue';
+import AddressCard from './components/AddressCard.vue';
+import { money, initials, formatRole, formatOrderStatus, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave } from './utils/format';
+
+const view = ref('shop');
+const notice = ref('');
+const error = ref('');
+const avatarInput = ref(null);
+const categories = ref([]);
+const products = reactive({ items: [], page: 1, size: 12, total: 0 });
+const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
+const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
+const adminOrderStats = ref([]);
+const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
+const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
+const orders = reactive({ items: [] });
+const addresses = ref([]);
+const selectedAddressId = ref(null);
+const coupons = ref([]);
+const myCoupons = ref([]);
+const usableCoupons = ref([]);
+const selectedUserCouponId = ref('');
+const userOptedOutCoupon = ref(false);
+const paying = ref(false);
+const cartSyncTimers = {};
+const reviewedMap = reactive({});
+const refundOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
+const stockAlerts = ref([]);
+const adminCoupons = reactive({ items: [], page: 1, size: 10, total: 0 });
+const adminActivities = reactive({ items: [], page: 1, size: 10, total: 0 });
+const adminActivityKeyword = ref('');
+const adminActivityJumpPage = ref(1);
+const adminActivityTotalPages = computed(() => Math.max(1, Math.ceil((adminActivities.total || 0) / (adminActivities.size || 10))));
+const activityProducts = ref([]);
+const activityProductsLoaded = ref(false);
+const adminMenu = ref('dashboard');
+const shipForm = reactive({ orderId: null, shipCompany: '', shipNo: '' });
+const refundForm = reactive({ orderId: null, reason: '' });
+const reviewForm = reactive({ orderId: null, rating: 5, content: '', images: [] });
+const refundReviewForm = reactive({ orderId: null, approved: true, remark: '' });
+const stockForm = reactive({ productId: null, quantity: 10, remark: '' });
+const confirmDialog = reactive({
+  open: false,
+  title: '',
+  message: '',
+  details: [],
+  confirmText: '确认',
+  danger: false,
+  resolver: null,
+});
+// 失败/提示弹窗：操作未通过时弹出，避免仅顶部状态栏提示被忽略
+const alertDialog = reactive({
+  open: false,
+  title: '提示',
+  message: '',
+  type: 'error',
+  timer: null,
+  resolver: null,
+});
+const productDetail = reactive({ data: null, reviews: [], loading: false });
+const orderDetail = reactive({ data: null, loading: false, error: '' });
+const detailQuantity = ref(1);
+const currentImageIndex = ref(0);
+const wallet = reactive({ balance: 0, recentTransactions: [] });
+
+function safeParseSpec(str) {
+  try { return JSON.parse(str || '{}') || {}; } catch (e) { return {}; }
+}
+
+const galleryImages = computed(() => {
+  const d = productDetail.data;
+  if (!d) return [];
+  const imgs = (d.images || []).map((it) => it.url).filter(Boolean);
+  if (d.coverUrl && !imgs.includes(d.coverUrl)) imgs.unshift(d.coverUrl);
+  return imgs;
+});
+const currentGalleryImage = computed(() => galleryImages.value[currentImageIndex.value] || '');
+
+const specDimensions = computed(() => {
+  const skus = productDetail.data?.skus || [];
+  const dims = {};
+  for (const sku of skus) {
+    const spec = safeParseSpec(sku.specJson);
+    for (const key of Object.keys(spec)) {
+      if (!dims[key]) dims[key] = [];
+      if (!dims[key].includes(spec[key])) dims[key].push(spec[key]);
+    }
+  }
+  return dims;
+});
+
+const selectedSku = computed(() => {
+  const skus = productDetail.data?.skus || [];
+  if (!Object.keys(selectedSpec).length) return null;
+  return skus.find((sku) => {
+    const spec = safeParseSpec(sku.specJson);
+    return Object.keys(spec).every((k) => String(spec[k]) === String(selectedSpec[k]));
+  }) || null;
+});
+
+const selectedSpecText = computed(() =>
+  Object.keys(selectedSpec).sort().map((k) => `${k}:${selectedSpec[k]}`).join(' '));
+const recharge = reactive({
+  step: 'form', // form | paying | success | expired
+  amount: 100,
+  method: 'ALIPAY', // ALIPAY | WECHAT
+  customAmount: '',
+  order: null,
+  countdown: 0,
+  timer: null,
+  paying: false,
+});
+const rechargePresets = [50, 100, 200, 500];
+const productChartEl = ref(null);
+const orderChartEl = ref(null);
+let productChart = null;
+let orderChart = null;
+
+
+const session = reactive({
+  user: JSON.parse(localStorage.getItem('supermarket_user') || 'null'),
+
+});
+const authOpen = ref(false);
+const authTab = ref('login');
+const authSubmitting = ref(false);
+const loginForm = reactive({ username: '', password: '', remember: true });
+const registerForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', phone: '', email: '', agree: false });
+const authErrors = reactive({});
+const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', brand: '', sort: '' });
+const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
+const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
+const hotProducts = ref([]);
+const newProducts = ref([]);
+const relatedProducts = ref([]);
+const guessProducts = ref([]);
+const dwellRankProducts = ref([]);
+const activeActivities = ref([]);
+const dwellEnterTs = ref(0);
+const dwellProductId = ref(null);
+const dwellSource = ref('detail');
+const selectedSpec = reactive({});
+const editingProductId = ref(null);
+// 打开编辑表单时记录当时的库存，仅当管理员改动库存字段时才随表单提交，
+// 避免把打开表单瞬间可能已过期的库存值覆盖真实库存。
+const editingOpenedStock = ref(null);
+
+// 计价单位选项：与后端 formatUnit 映射保持一致；custom 表示管理员自定义单位
+const productUnits = [
+  { value: 'piece', label: '件' },
+  { value: 'bag', label: '袋' },
+  { value: 'kg', label: '千克' },
+  { value: 'bottle', label: '瓶' },
+  { value: 'box', label: '盒' },
+  { value: 'custom', label: '自定义' },
+];
+
+// 管理后台商品列表：查询条件与分页状态
+const adminProductKeyword = ref('');
+const adminProductStatus = ref('');
+const adminChartProducts = ref([]);
+const adminJumpPage = ref(1);
+const adminProductTotalPages = computed(() => Math.max(1, Math.ceil((adminProducts.total || 0) / (adminProducts.size || 10))));
+
+// 管理后台订单列表：查询条件与分页状态
+const adminOrderKeyword = ref('');
+const adminOrderStatus = ref('');
+const adminOrderJumpPage = ref(1);
+const adminOrderTotalPages = computed(() => Math.max(1, Math.ceil((adminOrders.total || 0) / (adminOrders.size || 10))));
+
+// 管理后台退款（售后）列表：筛选与分页状态
+const refundStatusFilter = ref('APPLYING');
+const refundJumpPage = ref(1);
+const refundTotalPages = computed(() => Math.max(1, Math.ceil((refundOrders.total || 0) / (refundOrders.size || 10))));
+
+// 管理后台用户列表：查询条件与分页状态
+const adminUserKeyword = ref('');
+const adminUserRole = ref('');
+const adminUserStatus = ref('');
+const adminUserJumpPage = ref(1);
+const adminUserTotalPages = computed(() => Math.max(1, Math.ceil((adminUsers.total || 0) / (adminUsers.size || 10))));
+
+// 管理后台优惠券列表：查询条件与分页状态
+const adminCouponKeyword = ref('');
+const adminCouponJumpPage = ref(1);
+const adminCouponTotalPages = computed(() => Math.max(1, Math.ceil((adminCoupons.total || 0) / (adminCoupons.size || 10))));
+
+// 分类管理：基于全量分类（商品表单也要用），前端做筛选 + 分页
+const categoryKeyword = ref('');
+const categoryPage = ref(1);
+const categorySize = ref(10);
+const categoryFiltered = computed(() => {
+  const kw = categoryKeyword.value.trim().toLowerCase();
+  const list = categories.value || [];
+  if (!kw) return list;
+  return list.filter((c) => (c.name || '').toLowerCase().includes(kw));
+});
+const categoryTotalPages = computed(() => Math.max(1, Math.ceil(categoryFiltered.value.length / (categorySize.value || 10))));
+const categoryPageItems = computed(() => {
+  const total = categoryTotalPages.value;
+  const page = Math.min(categoryPage.value, total);
+  const start = (page - 1) * categorySize.value;
+  return categoryFiltered.value.slice(start, start + categorySize.value);
+});
+
+// 库存预警：基于全量预警（数量少），前端做筛选 + 分页
+const stockKeyword = ref('');
+const stockPage = ref(1);
+const stockSize = ref(10);
+const stockFiltered = computed(() => {
+  const kw = stockKeyword.value.trim().toLowerCase();
+  const list = stockAlerts.value || [];
+  if (!kw) return list;
+  return list.filter((a) => (a.name || '').toLowerCase().includes(kw) || (a.sku || '').toLowerCase().includes(kw));
+});
+const stockTotalPages = computed(() => Math.max(1, Math.ceil(stockFiltered.value.length / (stockSize.value || 10))));
+const stockPageItems = computed(() => {
+  const total = stockTotalPages.value;
+  const page = Math.min(stockPage.value, total);
+  const start = (page - 1) * stockSize.value;
+  return stockFiltered.value.slice(start, start + stockSize.value);
+});
+
+const categoryJumpPage = ref(1);
+const stockJumpPage = ref(1);
+
+function changeCategoryPage(delta) {
+  const next = categoryPage.value + delta;
+  if (next < 1 || next > categoryTotalPages.value) return;
+  categoryPage.value = next;
+}
+
+function goCategoryPage() {
+  const p = Number(categoryJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > categoryTotalPages.value) {
+    categoryJumpPage.value = categoryPage.value;
+    return;
+  }
+  categoryPage.value = p;
+}
+
+function changeStockPage(delta) {
+  const next = stockPage.value + delta;
+  if (next < 1 || next > stockTotalPages.value) return;
+  stockPage.value = next;
+}
+
+function goStockPage() {
+  const p = Number(stockJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > stockTotalPages.value) {
+    stockJumpPage.value = stockPage.value;
+    return;
+  }
+  stockPage.value = p;
+}
+
+const formDiscount = computed(() => {
+  const price = Number(productForm.price) || 0;
+  const original = Number(productForm.originalPrice) || 0;
+  const save = original > price ? original - price : 0;
+  const rate = (original > price && price > 0) ? (price / original * 10).toFixed(1) : '';
+  return { save, rate };
+});
+const categoryForm = reactive({ parentId: 0, name: '', sortNo: 10, status: 1 });
+const couponForm = reactive({ name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
+const activityForm = reactive({ id: null, name: '', type: 'FULL_REDUCTION', scope: 'ALL', categoryId: 0, productId: 0, threshold: 0, discount: 0, startTime: '', endTime: '', priority: 0 });
+
+const isAdmin = computed(() => session.user?.role === 'ADMIN');
+
+
+const currentTitle = computed(() => ({
+  shop: { eyebrow: '商品', title: isAdmin.value ? '上架商品查看' : '商品选购' },
+  product: { eyebrow: '商品详情', title: productDetail.data?.name || '商品详情' },
+  cart: { eyebrow: '购物车', title: '购物车结算' },
+  checkout: { eyebrow: '订单', title: '确认订单' },
+  orders: { eyebrow: '订单', title: '我的订单' },
+  coupons: { eyebrow: '优惠', title: '优惠券' },
+  addresses: { eyebrow: '地址', title: '收货地址' },
+  recharge: { eyebrow: '钱包', title: '账户充值' },
+  admin: { eyebrow: '后台', title: '后台管理' },
+
+}[view.value] || { eyebrow: '商品', title: '商品选购' }));
+
+const selectedCoupon = computed(() => usableCoupons.value.find((coupon) => coupon.id === selectedUserCouponId.value) || null);
+
+// 购物车实时合计：只累加「已勾选」商品（与后端 selectedAmount 口径一致）
+const cartLocalTotal = computed(() => (cart.items || [])
+  .filter((item) => item.selected !== false)
+  .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0));
+
+// 划线价（原价）相对现价的优惠合计：仅统计已勾选商品，纯展示用、不计入应付
+const cartOriginalSave = computed(() => (cart.items || [])
+  .filter((item) => item.selected !== false)
+  .reduce((sum, item) => sum + itemOriginalSave(item), 0));
+
+const orderPayPreview = computed(() => {
+  const total = cartLocalTotal.value;
+  let pay = total;
+  if (selectedCoupon.value) pay = Math.max(pay - Number(selectedCoupon.value.discountAmount || 0), 0);
+  if (Number(cart.activityDiscount) > 0) pay = Math.max(pay - Number(cart.activityDiscount || 0), 0);
+  return pay;
+});
+
+const selectedAddress = computed(() => addresses.value.find((item) => item.id === selectedAddressId.value) || null);
+
+const balanceSufficient = computed(() => Number(wallet.balance || 0) >= orderPayPreview.value);
+
+const adminIcon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+const adminIcons = {
+  dashboard: adminIcon('<rect x="3.5" y="11" width="4.5" height="9.5" rx="1"/><rect x="9.75" y="3.5" width="4.5" height="17" rx="1"/><rect x="16" y="7.5" width="4.5" height="13" rx="1"/>'),
+  orders: adminIcon('<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
+  refunds: adminIcon('<path d="M9.5 14.5 4.5 9.5l5-5"/><path d="M4.5 9.5H15a5.5 5.5 0 0 1 0 11h-4"/>'),
+  stock: adminIcon('<path d="M12 4 2.8 20h18.4L12 4z"/><path d="M12 10v4.2M12 17.2h.01"/>'),
+  products: adminIcon('<path d="M3.5 7.5 12 3.5l8.5 4-8.5 4-8.5-4z"/><path d="M3.5 7.5v9L12 20.5l8.5-4v-9"/><path d="M12 11.5v9"/>'),
+  categories: adminIcon('<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>'),
+  coupons: adminIcon('<path d="M3.5 8.5A2 2 0 0 1 5.5 6.5h13a2 2 0 0 1 2 2v1.6a2.4 2.4 0 0 0 0 3.8v1.6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-1.6a2.4 2.4 0 0 0 0-3.8V8.5z"/><path d="M12 8v8"/>'),
+  users: adminIcon('<circle cx="9" cy="8" r="3.4"/><path d="M3 20.2c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/><path d="M16.2 5.2a3 3 0 0 1 0 5.6"/><path d="M18.4 14.9c1.9.7 3 2.4 3 4.4"/>'),
+  activities: adminIcon('<path d="M3.5 16.5 9 11l3.5 3.5L20.5 7"/><path d="M15.5 7H20.5V12"/>'),
+};
+
+const adminMenuItems = computed(() => [
+  { key: 'dashboard', label: '数据统计', desc: '平台经营概览：商品、库存、订单与成交额', group: '经营' },
+  { key: 'orders', label: '订单管理', desc: '查询订单、录入快递单号发货、完成或取消订单', group: '经营', badge: (adminOrders.total || 0) || '' },
+  { key: 'refunds', label: '售后管理', desc: '审核用户的退款申请，同意后款项退回用户钱包', group: '经营', badge: (refundOrders.total || 0) || '', warn: true },
+  { key: 'stock', label: '库存预警', desc: '低于预警阈值的商品列表，支持一键补货', group: '经营', badge: stockAlerts.value.length || '', warn: true },
+  { key: 'products', label: '商品管理', desc: '新增商品、查看上架状态、手动入库', group: '管理', badge: (adminProducts.total || 0) || '' },
+  { key: 'categories', label: '分类管理', desc: '维护商品分类与排序', group: '管理', badge: categories.value.length || '' },
+  { key: 'coupons', label: '优惠券管理', desc: '创建满减券、发放与停用', group: '管理', badge: (adminCoupons.total || 0) || '' },
+  { key: 'activities', label: '营销活动', desc: '创建满减/折扣活动，按全场、类目或商品精准投放', group: '管理', badge: (adminActivities.total || 0) || '' },
+  { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
+]);
+
+const adminMenuGroups = computed(() => {
+  const groups = [];
+  for (const item of adminMenuItems.value) {
+    let group = groups.find((entry) => entry.name === item.group);
+    if (!group) {
+      group = { name: item.group, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  return groups;
+});
+
+const currentAdminMenu = computed(() => adminMenuItems.value.find((item) => item.key === adminMenu.value) || adminMenuItems.value[0]);
+
+const dashboardStats = computed(() => {
+  const productItems = adminProducts.items || [];
+  const orderItems = adminOrders.items || [];
+  const paidOrders = orderItems.filter((order) => ['PAID', 'SHIPPED', 'COMPLETED'].includes(order.status));
+  return {
+    productCount: productItems.length,
+    totalStock: productItems.reduce((sum, product) => sum + Number(product.stock || 0), 0),
+    orderCount: orderItems.length,
+    userCount: (adminUsers.items || []).length,
+    salesAmount: paidOrders.reduce((sum, order) => sum + Number(order.payAmount || 0), 0),
+  };
+
+});
+
+
+function rememberUser(user) {
+  session.user = user;
+  if (user) {
+    localStorage.setItem('supermarket_user', JSON.stringify(user));
+    wallet.balance = Number(user.balance || 0);
+  } else {
+    localStorage.removeItem('supermarket_user');
+    wallet.balance = 0;
+    wallet.recentTransactions = [];
+  }
+  ensureAllowedView();
+
+}
+
+const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'admin'];
+const ADMIN_MENU_KEYS = ['dashboard', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'users'];
+let productOpenedFromHistory = false;
+let historyBootstrapped = false;
+
+function parseRoute() {
+  const raw = String(window.location.hash || '').replace(/^#\/?/, '').trim();
+  const [name = '', param = ''] = raw.split('/');
+  return { name, param };
+
+}
+
+function buildRouteHash() {
+  if (view.value === 'admin') return `#/admin/${adminMenu.value}`;
+  if (view.value === 'product') return `#/product/${productDetail.data?.id ?? ''}`;
+  return `#/${view.value}`;
+
+}
+
+function applyRouteHash(replace = false) {
+  const next = buildRouteHash();
+  // 商品详情数据还没到位时先别改写地址，避免多压一条历史记录
+  if (next.endsWith('/')) return;
+  if (window.location.hash === next) return;
+  if (replace) {
+    window.history.replaceState(null, '', next);
+  } else {
+    window.location.hash = next;
+  }
+
+}
+
+/**
+ * 首屏额外压一条站内历史记录。
+ * 站点入口本身只占一条历史，用户一进来就在「第一条」，此时按后退会直接离开站点。
+ * 补一条同地址的记录后，第一次按后退仍停在站内，避免误触退出。
+ */
+function bootstrapHistory() {
+  if (historyBootstrapped) return;
+  historyBootstrapped = true;
+  window.history.pushState(null, '', window.location.hash || '#/shop');
+}
+
+function restoreRoute() {
+  const { name, param } = parseRoute();
+  if (name === 'admin' && ADMIN_MENU_KEYS.includes(param)) {
+    adminMenu.value = param;
+  }
+  if (ROUTE_VIEWS.includes(name)) {
+    view.value = name;
+  }
+  ensureAllowedView();
+  if (view.value === 'product' && Number(param) > 0 && Number.isInteger(Number(param))) {
+    const id = Number(param);
+    // 只有目标商品和当前展示的不是同一个时才重新加载，避免自己改 hash 触发重复请求
+    if (productDetail.data?.id !== id) {
+      openProductDetail({ id }, { fromHistory: true });
+    }
+  }
+
+}
+
+function ensureAllowedView() {
+  if (isAdmin.value && !['shop', 'admin', 'product', 'orderDetail'].includes(view.value)) {
+    view.value = 'shop';
+  }
+  if (!isAdmin.value && view.value === 'admin') {
+    view.value = 'shop';
+  }
+
+}
+
+async function run(action, message) {
+  error.value = '';
+  notice.value = '';
+  try {
+    const result = await action();
+    if (message) notice.value = message;
+    return result;
+  } catch (err) {
+    if (err.authExpired) {
+      notice.value = err.message || '登录已过期，请重新登录';
+    } else {
+      fail(err.message || '操作失败，请稍后重试');
+    }
+    throw err;
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+function askConfirm(options) {
+  return new Promise((resolve) => {
+    Object.assign(confirmDialog, {
+      open: true,
+      title: '',
+      message: '',
+      details: [],
+      confirmText: '确认',
+      danger: false,
+      ...options,
+      resolver: resolve,
+    });
+  });
+
+}
+
+function resolveConfirm(result) {
+  const resolver = confirmDialog.resolver;
+  confirmDialog.open = false;
+  confirmDialog.resolver = null;
+  if (resolver) resolver(result);
+
+}
+
+// 失败/提示弹窗：type 可为 error/info/success，3.2s 后自动关闭，也可点「我知道了」手动关闭
+function showAlert(options) {
+  if (alertDialog.timer) clearTimeout(alertDialog.timer);
+  Object.assign(alertDialog, { open: true, title: '提示', message: '', type: 'error', ...options });
+  alertDialog.timer = setTimeout(() => { alertDialog.open = false; }, 3200);
+}
+
+function closeAlert() {
+  if (alertDialog.timer) clearTimeout(alertDialog.timer);
+  alertDialog.open = false;
+}
+
+// 操作未通过时统一弹出提示框（同时顶部状态栏也保留红字提示）
+function fail(message, title) {
+  error.value = message;
+  showAlert({ title: title || '操作失败', message, type: 'error' });
+}
+
+
+// 用户订单的「发货进度」状态：让“发没发货”一眼可辨
+function shipStatusOf(order) {
+  const map = {
+    PENDING_PAYMENT: { label: '待付款', cls: 'warn' },
+    PAID: { label: '待发货', cls: 'amber' },
+    SHIPPED: { label: '已发货', cls: 'info' },
+    COMPLETED: { label: '已完成', cls: 'ok' },
+    CANCELED: { label: '已取消', cls: 'muted' },
+    CLOSED: { label: '已关闭', cls: 'muted' },
+  };
+  return map[order.status] || { label: formatOrderStatus(order.status), cls: 'muted' };
+
+}
+
+function categoryName(categoryId) {
+  if (!categoryId) return '未分类';
+  return categories.value.find((category) => category.id === categoryId)?.name || '未分类';
+
+}
+
+
+// 把后端存储的 unit（可能是代码、历史中文字面或自定义字面）还原为表单的 { unit, customUnit }
+
+
+
+// 单个购物车项的「原价→现价」省了多少（已乘数量）；不足优惠时返回 0
+
+function productChartOption() {
+  const items = [...(adminChartProducts.value || [])].sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0)).slice(0, 8);
+  return {
+    title: { text: '商品库存排行', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
+    tooltip: { trigger: 'axis' },
+    grid: { left: 24, right: 18, top: 48, bottom: 72, containLabel: true },
+    xAxis: { type: 'category', data: items.map((item) => item.name), axisLabel: { rotate: 28 } },
+    yAxis: { type: 'value', name: '库存' },
+    series: [{ name: '库存', type: 'bar', data: items.map((item) => Number(item.stock || 0)), itemStyle: { color: '#fa8d1f', borderRadius: [4, 4, 0, 0] } }],
+  };
+
+}
+
+function orderChartOption() {
+  const counts = {};
+  (adminOrderStats.value || []).forEach((order) => {
+    const name = formatOrderStatus(order.status);
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  const data = Object.entries(counts).map(([name, value]) => ({ name, value }));
+  return {
+    title: { text: '订单状态分布', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0, left: 'center' },
+    color: ['#fa8d1f', '#ffb15b', '#ff6b35', '#ffd08a', '#d6502b', '#f5a03a'],
+    series: [{
+      name: '订单',
+      type: 'pie',
+      radius: ['42%', '68%'],
+      center: ['50%', '48%'],
+      avoidLabelOverlap: true,
+      data: data.length ? data : [{ name: '暂无订单', value: 1, itemStyle: { color: '#cbd5df' } }],
+    }],
+  };
+
+}
+
+async function renderAdminCharts() {
+  if (!isAdmin.value || view.value !== 'admin' || adminMenu.value !== 'dashboard') {
+    disposeCharts();
+    return;
+  }
+  await nextTick();
+  if (productChartEl.value) {
+    if (productChart) productChart.dispose();
+    productChart = echarts.init(productChartEl.value);
+    productChart.setOption(productChartOption(), true);
+  }
+  if (orderChartEl.value) {
+    if (orderChart) orderChart.dispose();
+    orderChart = echarts.init(orderChartEl.value);
+    orderChart.setOption(orderChartOption(), true);
+  }
+
+}
+
+function resizeCharts() {
+  productChart?.resize();
+  orderChart?.resize();
+
+}
+
+function disposeCharts() {
+  productChart?.dispose();
+  orderChart?.dispose();
+  productChart = null;
+  orderChart = null;
+
+}
+
+function openAuth(tab) {
+  authTab.value = tab === 'register' ? 'register' : 'login';
+  resetAuthErrors();
+  authOpen.value = true;
+}
+
+function closeAuth() {
+  authOpen.value = false;
+  loginForm.username = '';
+  loginForm.password = '';
+  loginForm.remember = true;
+  registerForm.username = '';
+  registerForm.password = '';
+  registerForm.confirmPassword = '';
+  registerForm.nickname = '';
+  registerForm.phone = '';
+  registerForm.email = '';
+  registerForm.agree = false;
+  resetAuthErrors();
+}
+
+function switchAuth(tab) {
+  authTab.value = tab;
+  resetAuthErrors();
+}
+
+function resetAuthErrors() {
+  authErrors.username = '';
+  authErrors.password = '';
+  authErrors.confirmPassword = '';
+  authErrors.phone = '';
+  authErrors.email = '';
+  authErrors.agree = '';
+}
+
+async function submitLogin() {
+  resetAuthErrors();
+  if (!loginForm.username.trim()) authErrors.username = '请输入用户名';
+  if (!loginForm.password) authErrors.password = '请输入密码';
+  if (authErrors.username || authErrors.password) return;
+  authSubmitting.value = true;
+  try {
+    const data = await api.post('/auth/login', { username: loginForm.username.trim(), password: loginForm.password });
+    setToken(data.token);
+    rememberUser(data.user);
+    await refreshForSession();
+    closeAuth();
+    showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+  } catch (err) {
+    fail(err.message || '登录失败，请检查用户名或密码');
+  } finally {
+    authSubmitting.value = false;
+  }
+}
+
+function validateRegisterForm() {
+  const e = {};
+  if (!registerForm.username.trim()) e.username = '请输入用户名';
+  else if (registerForm.username.trim().length < 3) e.username = '用户名至少 3 个字符';
+  if (!registerForm.password) e.password = '请输入密码';
+  else if (registerForm.password.length < 6) e.password = '密码至少 6 位';
+  if (registerForm.confirmPassword !== registerForm.password) e.confirmPassword = '两次输入的密码不一致';
+  if (!registerForm.phone.trim()) e.phone = '请输入手机号';
+  else if (!/^1[3-9]\d{9}$/.test(registerForm.phone.trim())) e.phone = '手机号格式不正确';
+  if (registerForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email.trim())) e.email = '邮箱格式不正确';
+  if (!registerForm.agree) e.agree = '请先同意用户协议';
+  return e;
+}
+
+async function submitRegister() {
+  resetAuthErrors();
+  Object.assign(authErrors, validateRegisterForm());
+  if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.agree) return;
+  authSubmitting.value = true;
+  try {
+    const data = await api.post('/auth/register', {
+      username: registerForm.username.trim(),
+      password: registerForm.password,
+      nickname: registerForm.nickname.trim() || registerForm.username.trim(),
+      phone: registerForm.phone.trim(),
+      email: registerForm.email.trim(),
+    });
+    setToken(data.token);
+    rememberUser(data.user);
+    await refreshForSession();
+    closeAuth();
+    showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
+  } catch (err) {
+    const msg = err.message || '注册失败，请稍后重试';
+    if (msg.includes('用户名')) authErrors.username = msg;
+    else if (msg.includes('手机')) authErrors.phone = msg;
+    else if (msg.includes('邮箱')) authErrors.email = msg;
+    fail(msg);
+  } finally {
+    authSubmitting.value = false;
+  }
+}
+
+function forgotPassword() {
+  showAlert({ type: 'info', title: '忘记密码', message: '可通过绑定手机号重置密码，或联系客服协助（功能开发中）。' });
+}
+
+function logout() {
+  setToken('');
+  rememberUser(null);
+  view.value = 'shop';
+  notice.value = '已退出登录';
+  disposeCharts();
+
+}
+
+// token 过期/失效：后端返回 401 时由 api 客户端广播，这里优雅回到未登录态（不卡死界面）
+function handleAuthExpired() {
+  setToken('');
+  rememberUser(null);
+  if (view.value !== 'shop') view.value = 'shop';
+  notice.value = '登录已过期，请重新登录';
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('auth-expired', handleAuthExpired);
+}
+
+async function loadMe() {
+  if (!session.user) return;
+  const user = await api.get('/auth/me');
+  rememberUser(user);
+
+}
+
+async function onAvatarPick(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    fail('头像图片大小不能超过 10MB，请压缩后重试');
+    e.target.value = '';
+    return;
+  }
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('type', 'avatar');
+    const data = await api.post('/files/upload', fd);
+    await api.put('/auth/me', { avatarUrl: data.url });
+    await loadMe();
+    notice.value = '头像已更新';
+  } catch (err) {
+    fail(err?.message || '头像上传失败');
+  } finally {
+    e.target.value = '';
+  }
+}
+
+async function loadWallet() {
+  if (!session.user || isAdmin.value) return;
+  const data = await api.get('/wallet');
+  Object.assign(wallet, data);
+  rememberUser({ ...session.user, balance: data.balance });
+
+}
+
+/* ---------------- 充值（模拟支付宝 / 微信支付） ---------------- */
+
+function methodLabel(method) {
+  if (method === 'WECHAT') return '微信支付';
+  return '支付宝';
+}
+
+function selectRechargePreset(preset) {
+  recharge.amount = preset;
+  recharge.customAmount = '';
+}
+
+function onCustomAmountInput() {
+  const value = Number(recharge.customAmount);
+  if (recharge.customAmount === '' || Number.isNaN(value)) {
+    recharge.amount = 0;
+    return;
+  }
+  recharge.amount = value;
+}
+
+function formatCountdown(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+/** 根据订单号生成一张装饰性「二维码」SVG（非真实二维码，仅用于模拟扫码页） */
+function buildQrSvg(seed) {
+  const size = 21;
+  const cell = 8;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  const rand = () => {
+    hash = (hash * 1103515245 + 12345) >>> 0;
+    return hash / 4294967296;
+  };
+  let rects = '';
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (rand() > 0.5) {
+        rects += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" />`;
+      }
+    }
+  }
+  // 三个定位角
+  const finder = (ox, oy) => `<rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="#fff"/><rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="none" stroke="#1f2933" stroke-width="${cell}"/><rect x="${(ox + 2) * cell}" y="${(oy + 2) * cell}" width="${cell * 3}" height="${cell * 3}" fill="#1f2933"/>`;
+  const svg = `<svg viewBox="0 0 ${size * cell} ${size * cell}" xmlns="http://www.w3.org/2000/svg" fill="#1f2933">${rects}${finder(0, 0)}${finder(size - 7, 0)}${finder(0, size - 7)}</svg>`;
+  return svg;
+}
+
+const qrSvg = computed(() => buildQrSvg(recharge.order?.orderNo || 'RECHARGE'));
+
+function startCountdown() {
+  clearRechargeTimer();
+  if (!recharge.order?.expireAt) return;
+  const expireAt = recharge.order.expireAt;
+  const tick = () => {
+    const remain = Math.max(0, Math.floor((expireAt - Date.now()) / 1000));
+    recharge.countdown = remain;
+    if (remain <= 0) {
+      clearRechargeTimer();
+      handleRechargeExpired();
+    }
+  };
+  tick();
+  recharge.timer = setInterval(tick, 1000);
+}
+
+function clearRechargeTimer() {
+  if (recharge.timer) {
+    clearInterval(recharge.timer);
+    recharge.timer = null;
+  }
+}
+
+async function confirmRecharge() {
+  const amount = Number(recharge.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    fail('请选择或输入大于 0 的充值金额');
+    return;
+  }
+  const ok = await askConfirm({
+    title: '确认创建充值订单',
+    message: `将创建一笔 ${methodLabel(recharge.method)} 充值订单，金额 ${money(amount)}，订单 10 分钟内有效。`,
+    confirmText: '创建订单',
+  });
+  if (!ok) return;
+  await run(async () => {
+    const order = await api.post('/wallet/recharge-orders', { amount, method: recharge.method });
+    recharge.order = order;
+    recharge.step = 'paying';
+    recharge.paying = false;
+    startCountdown();
+    notice.value = '充值订单已创建，请在支付页完成付款';
+  }, null);
+}
+
+async function payRechargeOrder() {
+  if (!recharge.order) return;
+  const ok = await askConfirm({
+    title: '确认支付',
+    message: `确认通过${methodLabel(recharge.method)}支付 ${money(recharge.order.amount)}？支付成功后金额即时到账。`,
+    confirmText: '立即支付',
+  });
+  if (!ok) return;
+  recharge.paying = true;
+  try {
+    await run(async () => {
+      const paid = await api.post(`/wallet/recharge-orders/${recharge.order.id}/pay`);
+      recharge.order = paid;
+      await loadWallet();
+      clearRechargeTimer();
+      recharge.step = 'success';
+    }, '充值成功，金额已到账');
+  } finally {
+    recharge.paying = false;
+  }
+}
+
+async function cancelRechargeOrder() {
+  if (!recharge.order) return;
+  const ok = await askConfirm({
+    title: '取消充值订单',
+    message: '确定取消该充值订单吗？取消后需重新创建。',
+    confirmText: '取消订单',
+    danger: true,
+  });
+  if (!ok) return;
+  await run(async () => {
+    await api.post(`/wallet/recharge-orders/${recharge.order.id}/cancel`);
+    clearRechargeTimer();
+    resetRecharge();
+    notice.value = '充值订单已取消';
+  }, null);
+}
+
+async function handleRechargeExpired() {
+  // 倒计时归零：尝试在服务端取消（已超时的订单也兼容处理），并提示用户
+  if (recharge.order) {
+    try {
+      await api.post(`/wallet/recharge-orders/${recharge.order.id}/cancel`);
+    } catch (e) {
+      // 订单可能已被调度任务置为 EXPIRED，忽略
+    }
+  }
+  recharge.step = 'expired';
+}
+
+function closeRechargeModal() {
+  // 支付中不允许直接关闭，需走「取消订单」；成功/超时允许返回
+  if (recharge.step === 'paying') {
+    cancelRechargeOrder();
+    return;
+  }
+  clearRechargeTimer();
+  resetRecharge();
+}
+
+function resetRecharge() {
+  clearRechargeTimer();
+  recharge.step = 'form';
+  recharge.order = null;
+  recharge.countdown = 0;
+  recharge.paying = false;
+  recharge.customAmount = '';
+  recharge.amount = 100;
+  recharge.method = 'ALIPAY';
+}
+
+function backToShop() {
+  clearRechargeTimer();
+  resetRecharge();
+  view.value = 'shop';
+}
+
+// 离开充值页时清理倒计时并重置，避免后台计时器泄漏或残留支付浮层
+watch(view, (next) => {
+  if (next !== 'recharge') {
+    clearRechargeTimer();
+    resetRecharge();
+  }
+});
+
+async function loadCategories() {
+  categories.value = await api.get('/categories');
+  if (!productForm.categoryId && categories.value[0]) productForm.categoryId = categories.value[0].id;
+
+}
+
+async function loadProducts() {
+  const params = new URLSearchParams({ page: '1', size: String(products.size) });
+  if (filters.categoryId) params.set('categoryId', filters.categoryId);
+  if (filters.keyword) params.set('keyword', filters.keyword);
+  if (filters.minPrice !== '' && filters.minPrice != null) params.set('minPrice', String(filters.minPrice));
+  if (filters.maxPrice !== '' && filters.maxPrice != null) params.set('maxPrice', String(filters.maxPrice));
+  if (filters.brand) params.set('brand', filters.brand);
+  if (filters.sort) params.set('sort', filters.sort);
+  const data = await api.get(`/products?${params}`);
+  Object.assign(products, data);
+}
+
+async function chooseCategory(categoryId) {
+  filters.categoryId = categoryId;
+  await loadProducts();
+
+}
+
+async function loadHot() {
+  try { hotProducts.value = (await api.get('/products/hot?limit=8')) || []; } catch (e) { hotProducts.value = []; }
+}
+
+async function loadNew() {
+  try { newProducts.value = (await api.get('/products/new?limit=8')) || []; } catch (e) { newProducts.value = []; }
+}
+
+async function loadHomeChannels() {
+  await Promise.all([loadHot(), loadNew(), loadGuess(), loadDwellRank()]);
+}
+
+async function loadGuess() {
+  try { guessProducts.value = (await api.get('/recommendations/guess?limit=8')) || []; } catch (e) { guessProducts.value = []; }
+}
+
+async function loadDwellRank() {
+  try { dwellRankProducts.value = (await api.get('/dwell/rank?limit=8')) || []; } catch (e) { dwellRankProducts.value = []; }
+}
+
+function applyFilters() {
+  loadProducts();
+}
+
+function resetFilters() {
+  filters.minPrice = '';
+  filters.maxPrice = '';
+  filters.brand = '';
+  filters.sort = '';
+  loadProducts();
+}
+
+async function addToCart(product) {
+  if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
+  if (!session.user) { fail('请先登录后再加入购物车'); return; }
+  const stock = Number(product.stock || 0);
+  if (stock <= 0) { fail(`${product.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
+  const existing = (cart.items || []).find((i) => i.productId === product.id);
+  const currentQty = existing ? Number(existing.quantity || 0) : 0;
+  if (currentQty + 1 > stock) {
+    fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
+    return;
+  }
+  await run(async () => {
+    await api.post('/cart/items', { productId: product.id, quantity: 1 });
+    await loadCart();
+    view.value = 'cart';
+  }, '已加入购物车');
+
+}
+
+async function loadCart() {
+  if (!session.user || isAdmin.value) return;
+  Object.assign(cart, await api.get('/cart'));
+  await loadMyCoupons();
+  await loadUsableCoupons();
+  // 首次进入：未手动放弃用券且有可用券时，自动选用优惠力度最大的券
+  userOptedOutCoupon.value = false;
+  autoSelectCoupon();
+
+}
+
+async function loadMyCoupons() {
+  if (!session.user || isAdmin.value) { myCoupons.value = []; return; }
+  myCoupons.value = await api.get('/coupons/mine') || [];
+
+}
+
+async function loadUsableCoupons() {
+  if (!session.user || isAdmin.value) {
+    usableCoupons.value = [];
+    selectedUserCouponId.value = '';
+    return;
+  }
+  const amount = cartLocalTotal.value;
+  usableCoupons.value = await api.get(`/coupons/usable?amount=${amount}`);
+  // 当前选中的券若因金额变化而不再满足条件，自动取消；随后在仍满足条件、且用户未显式放弃时补选最优券
+  if (selectedUserCouponId.value && !usableCoupons.value.some((coupon) => coupon.id === selectedUserCouponId.value)) {
+    selectedUserCouponId.value = '';
+  }
+  autoSelectCoupon();
+
+}
+
+// 该券是否满足当前购物车金额门槛（可点击/可自动使用）
+function couponEligible(coupon) {
+  return usableCoupons.value.some((item) => item.id === coupon.id);
+
+}
+
+// 还差多少金额可用
+function couponShortfall(coupon) {
+  return Math.max(Number(coupon.thresholdAmount || 0) - cartLocalTotal.value, 0);
+
+}
+
+function autoSelectCoupon() {
+  if (userOptedOutCoupon.value || selectedUserCouponId.value) return;
+  const best = usableCoupons.value.slice()
+    .sort((a, b) => Number(b.discountAmount || 0) - Number(a.discountAmount || 0))[0];
+  if (best) selectedUserCouponId.value = best.id;
+
+}
+
+function selectCoupon(coupon) {
+  if (!couponEligible(coupon)) return;
+  selectedUserCouponId.value = coupon.id;
+  userOptedOutCoupon.value = false;
+
+}
+
+function chooseNoCoupon() {
+  selectedUserCouponId.value = '';
+  userOptedOutCoupon.value = true;
+
+}
+
+// 数量改变：价格即时变化（v-model 已更新 item.quantity，计算属性即时重算），
+// 同时防抖把新数量同步到后端，并在合适时机刷新可用券列表。
+// 修复：加入库存上限校验，超出库存时回滚到后端真实数量，避免「库存 5 却显示 6」的假象。
+function stepQty(item, delta) {
+  const max = Number(item.stock || 0);
+  const next = Math.max(1, Math.min(Number(item.quantity) || 1, Math.max(max, 1)) + delta);
+  item.quantity = next;
+  onQtyInput(item);
+}
+
+function onQtyChange(item) {
+  const max = Number(item.stock || 0);
+  let q = Number(item.quantity) || 1;
+  if (q < 1) q = 1;
+  if (max > 0 && q > max) q = max;
+  item.quantity = q;
+  onQtyInput(item);
+}
+
+async function onQtyInput(item) {
+  clearTimeout(cartSyncTimers[item.id]);
+  cartSyncTimers[item.id] = setTimeout(async () => {
+    const max = Number(item.stock || 0);
+    const qty = Number(item.quantity) || 1;
+    if (max > 0 && qty > max) {
+      fail(`库存不足：仅剩 ${max} 件`, '库存不足');
+      await loadCart(); // 回滚到后端真实数量
+      return;
+    }
+    try {
+      await api.put(`/cart/items/${item.id}`, { quantity: qty, selected: item.selected !== false });
+      await loadUsableCoupons();
+    } catch (e) {
+      // 后端可能因库存不足等拒绝，回滚到真实数量并提示，避免界面与库存不一致
+      fail(e?.message || '更新数量失败，已恢复', '库存不足');
+      await loadCart();
+    }
+  }, 400);
+}
+
+async function removeCartItem(id) {
+  await run(() => api.delete(`/cart/items/${id}`).then(loadCart), '购物车商品已删除');
+
+}
+
+async function clearCart() {
+  const confirmed = await askConfirm({
+    title: '清空购物车',
+    message: '确定要清空购物车里的全部商品吗？此操作不可恢复。',
+    confirmText: '清空',
+    danger: true,
+  });
+  if (!confirmed) return;
+  const ids = (cart.items || []).map((item) => item.id);
+  await run(async () => {
+    await Promise.all(ids.map((id) => api.delete(`/cart/items/${id}`)));
+    await loadCart();
+  }, '购物车已清空');
+
+}
+
+async function loadAddresses() {
+  if (!session.user || isAdmin.value) return;
+  addresses.value = await api.get('/addresses');
+  const defaultAddress = addresses.value.find((item) => item.isDefault) || addresses.value[0];
+  selectedAddressId.value = defaultAddress?.id || null;
+
+}
+
+function useAddress(address) {
+  selectedAddressId.value = address.id;
+  Object.assign(addressForm, address);
+  notice.value = '已选择该地址';
+
+}
+
+async function saveAddress() {
+  await run(async () => {
+    const saved = await api.post('/addresses', addressForm);
+    selectedAddressId.value = saved.id;
+    await loadAddresses();
+  }, '地址已保存');
+
+}
+
+async function goCheckout() {
+  if (!cart.items?.length) { fail('购物车为空，请先添加商品'); return; }
+  if (!addresses.value.length) await loadAddresses();
+  if (!selectedAddressId.value && addresses.value.length) {
+    selectedAddressId.value = (addresses.value.find((item) => item.isDefault) || addresses.value[0]).id;
+  }
+  if (!selectedAddressId.value) { fail('请先在「收货地址」中添加收货地址'); return; }
+  await Promise.all([loadWallet(), loadMyCoupons(), loadUsableCoupons()]);
+  view.value = 'checkout';
+
+}
+
+async function createOrder() {
+  if (paying.value) return;
+  if (!selectedAddressId.value) { fail('请先保存或选择收货地址'); return; }
+  const itemIds = (cart.items || []).map((item) => item.id);
+  if (!itemIds.length) { fail('购物车为空，请先添加商品'); return; }
+  paying.value = true;
+  try {
+    // 模拟支付网关受理：先展示加载态，使模拟支付更逼真
+    await new Promise((r) => setTimeout(r, 700));
+    await run(async () => {
+      const body = { addressId: selectedAddressId.value, cartItemIds: itemIds, remark: '前端下单' };
+      if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
+      const order = await api.post('/orders', body);
+      // 模拟支付：创建后用钱包余额完成支付
+      await api.post(`/orders/${order.id}/pay`);
+      selectedUserCouponId.value = '';
+      userOptedOutCoupon.value = false;
+      await loadCart();
+      await loadOrders();
+      await loadWallet();
+      view.value = 'orders';
+      return order;
+    }, '支付成功，订单已创建');
+  } finally {
+    paying.value = false;
+  }
+}
+
+async function loadOrders() {
+  if (!session.user || isAdmin.value) return;
+  Object.assign(orders, await api.get('/orders?page=1&size=20'));
+  await loadReviewedFlags();
+
+}
+
+async function loadReviewedFlags() {
+  const completed = (orders.items || []).filter((order) => order.status === 'COMPLETED');
+  await Promise.all(completed.map(async (order) => {
+    if (reviewedMap[order.id] !== undefined) return;
+    try {
+      const reviews = await api.get(`/reviews/orders/${order.id}`);
+      reviewedMap[order.id] = (reviews || []).length > 0;
+    } catch {
+      reviewedMap[order.id] = false;
+    }
+  }));
+
+}
+
+async function payOrder(id) {
+  await run(async () => {
+    await api.post(`/orders/${id}/pay`);
+    await Promise.all([loadOrders(), loadWallet(), loadMe()]);
+  }, '支付成功');
+
+}
+
+async function cancelOrder(id) {
+  const order = (orders.items || []).find((item) => item.id === id);
+  const confirmed = await askConfirm({
+    title: '取消订单',
+    message: '取消后订单不可恢复，已占用的库存会立即释放。',
+    confirmText: '确认取消',
+    danger: true,
+    details: order ? [{ label: '订单号', value: order.orderNo }, { label: '金额', value: money(order.payAmount) }] : [],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/orders/${id}/cancel`);
+    await Promise.all([loadOrders(), loadWallet(), loadMe()]);
+  }, '订单已取消');
+
+}
+
+async function confirmReceipt(id) {
+  const confirmed = await askConfirm({
+    title: '确认收货',
+    message: '确认后订单交易完成，款项将结算给商家，之后如需退货只能走退款申请。',
+    confirmText: '确认收货',
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/orders/${id}/confirm-receipt`);
+    await loadOrders();
+  }, '已确认收货，订单完成');
+
+}
+
+function openRefundForm(orderId) {
+  refundForm.orderId = orderId;
+  refundForm.reason = '';
+
+}
+
+async function submitRefund(id) {
+  if (!refundForm.reason.trim()) { fail('请填写退款原因'); return; }
+  const confirmed = await askConfirm({
+    title: '提交退款申请',
+    message: '提交后需要商家审核，审核通过后款项会退回你的钱包。',
+    confirmText: '提交申请',
+    danger: true,
+    details: [{ label: '退款原因', value: refundForm.reason.trim() }],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/orders/${id}/refund-apply`, { reason: refundForm.reason.trim() });
+    refundForm.orderId = null;
+    await loadOrders();
+  }, '退款申请已提交，等待商家处理');
+
+}
+
+function openReviewForm(orderId) {
+  reviewForm.orderId = orderId;
+  reviewForm.rating = 5;
+  reviewForm.content = '';
+
+}
+
+async function submitReview(id) {
+  await run(async () => {
+    await api.post(`/reviews/orders/${id}`, {
+      rating: reviewForm.rating,
+      content: reviewForm.content.trim(),
+      imageUrls: reviewForm.images,
+    });
+    reviewedMap[id] = true;
+    reviewForm.orderId = null;
+    reviewForm.images = [];
+    await loadProducts();
+    // 若用户正在查看该订单对应商品的详情页，立即刷新评价列表
+    try {
+      const order = await api.get(`/orders/${id}`).catch(() => null);
+      const pid = order?.items?.[0]?.productId;
+      if (pid && view.value === 'product' && productDetail.data && productDetail.data.id === pid) {
+        const r = await api.get(`/reviews/products/${pid}?page=1&size=20`).catch(() => ({ items: [] }));
+        productDetail.reviews = r?.items || [];
+      }
+    } catch (_) { /* 刷新评价失败不影响主流程 */ }
+  }, '评价提交成功，感谢反馈');
+
+}
+
+async function openProductDetail(product, { fromHistory = false } = {}) {
+  reportDwell(); // 离开上一个详情页，先上报停留时长
+  productOpenedFromHistory = fromHistory;
+  productDetail.data = null;
+  productDetail.reviews = [];
+  relatedProducts.value = [];
+  activeActivities.value = [];
+  currentImageIndex.value = 0;
+  for (const k in selectedSpec) delete selectedSpec[k];
+  productDetail.loading = true;
+  detailQuantity.value = 1;
+  dwellProductId.value = product.id;
+  dwellEnterTs.value = Date.now();
+  dwellSource.value = 'detail';
+  view.value = 'product';
+  try {
+    const [detail, reviews, related, activities] = await Promise.all([
+      api.get(isAdmin.value ? `/admin/products/${product.id}` : `/products/${product.id}`).catch(() => null),
+      api.get(`/reviews/products/${product.id}?page=1&size=20`).catch(() => ({ items: [] })),
+      api.get(`/products/related/${product.id}?limit=6`).catch(() => []),
+      api.get(`/activities/active`).catch(() => []),
+    ]);
+    productDetail.data = detail;
+    productDetail.reviews = reviews?.items || [];
+    relatedProducts.value = related || [];
+    activeActivities.value = activities || [];
+  } catch (err) {
+    fail(err?.message || '商品详情加载失败');
+  } finally {
+    productDetail.loading = false;
+  }
+}
+
+async function openOrderDetail(order) {
+  orderDetail.data = null;
+  orderDetail.error = '';
+  orderDetail.loading = true;
+  view.value = 'orderDetail';
+  try {
+    const url = isAdmin.value ? `/admin/orders/${order.id}` : `/orders/${order.id}`;
+    orderDetail.data = await api.get(url);
+  } catch (err) {
+    orderDetail.error = err?.message || '订单详情加载失败';
+  } finally {
+    orderDetail.loading = false;
+  }
+}
+
+function closeOrderDetail() {
+  view.value = isAdmin.value ? 'admin' : 'orders';
+}
+
+function reportDwell() {
+  const pid = dwellProductId.value;
+  const ts = dwellEnterTs.value;
+  if (pid == null || !ts) return;
+  const seconds = Math.round((Date.now() - ts) / 1000);
+  dwellProductId.value = null;
+  dwellEnterTs.value = 0;
+  if (seconds < 3) return; // 太短忽略，避免误触
+  api.post('/dwell', { productId: pid, seconds, source: dwellSource.value || 'detail' }).catch(() => {});
+}
+
+function backFromProduct() {
+  reportDwell();
+  // 商品页是站内点进来的，直接走浏览器回退，避免重复堆积历史记录
+  if (!productOpenedFromHistory && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  view.value = 'shop';
+
+}
+
+function changeDetailQty(delta) {
+  const max = Number(productDetail.data?.stock || 0);
+  const next = Number(detailQuantity.value || 1) + delta;
+  detailQuantity.value = Math.min(Math.max(next, 1), Math.max(max, 1));
+
+}
+
+async function addDetailToCart() {
+  if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
+  if (!session.user) { fail('请先登录后再加入购物车'); return; }
+  const stock = Number(productDetail.data?.stock || 0);
+  const qty = Number(detailQuantity.value || 1);
+  if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
+  if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
+  const specNote = selectedSpecText.value ? `（${selectedSpecText.value}）` : '';
+  await run(async () => {
+    reportDwell();
+    await api.post('/cart/items', { productId: productDetail.data.id, quantity: detailQuantity.value, skuSpec: selectedSpecText.value || null });
+    await loadCart();
+    view.value = 'cart';
+  }, `已加入购物车 ${detailQuantity.value} 件${specNote}`);
+
+}
+
+async function buyDetailNow() {
+  await addDetailToCart();
+
+}
+
+async function loadCoupons() {
+  if (!session.user || isAdmin.value) return;
+  const [available, mine] = await Promise.all([
+    api.get('/coupons/available'),
+    api.get('/coupons/mine'),
+  ]);
+  coupons.value = available || [];
+  myCoupons.value = mine || [];
+
+}
+
+async function receiveCoupon(couponId) {
+  await run(async () => {
+    await api.post(`/coupons/${couponId}/receive`);
+    await loadCoupons();
+  }, '优惠券领取成功');
+
+}
+
+async function loadAdminProducts() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(adminProducts.page),
+    size: String(adminProducts.size),
+  });
+  if (adminProductKeyword.value.trim()) params.set('keyword', adminProductKeyword.value.trim());
+  if (adminProductStatus.value) params.set('status', adminProductStatus.value);
+  const data = await api.get(`/admin/products?${params}`);
+  Object.assign(adminProducts, data);
+  // 当前页被删空（如删掉最后一页最后一条）时，自动回退到上一页
+  if (adminProducts.items.length === 0 && adminProducts.page > 1) {
+    adminProducts.page -= 1;
+    await loadAdminProducts();
+    return;
+  }
+  adminJumpPage.value = adminProducts.page;
+  await loadAdminChartProducts();
+  await renderAdminCharts();
+}
+
+// 仪表盘「商品库存排行」需要全量商品，与分页后的表格数据解耦，避免只统计当前页
+async function loadAdminChartProducts() {
+  try {
+    const data = await api.get('/admin/products?page=1&size=100');
+    adminChartProducts.value = data.items || [];
+  } catch (e) {
+    adminChartProducts.value = [];
+  }
+}
+
+async function searchAdminProducts() {
+  adminProducts.page = 1;
+  await loadAdminProducts();
+}
+
+async function changeAdminPage(delta) {
+  const next = adminProducts.page + delta;
+  if (next < 1 || next > adminProductTotalPages.value) return;
+  adminProducts.page = next;
+  await loadAdminProducts();
+}
+
+async function changeAdminPageSize() {
+  adminProducts.page = 1;
+  await loadAdminProducts();
+}
+
+async function goAdminPage() {
+  const p = Number(adminJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > adminProductTotalPages.value) {
+    adminJumpPage.value = adminProducts.page;
+    return;
+  }
+  adminProducts.page = p;
+  await loadAdminProducts();
+}
+
+function resetAdminProductSearch() {
+  adminProductKeyword.value = '';
+  adminProductStatus.value = '';
+  adminProducts.page = 1;
+  loadAdminProducts();
+}
+
+async function saveProduct() {
+  if (!productForm.name.trim()) { fail('请填写商品名称'); return; }
+  if (!productForm.sku.trim()) { fail('请填写商品编号'); return; }
+  if (!(productForm.price > 0)) { fail('售价必须大于 0'); return; }
+  if (productForm.originalPrice && Number(productForm.originalPrice) < Number(productForm.price)) { fail('原价不能低于售价'); return; }
+  if (!(productForm.stock >= 0)) { fail('库存不能为负数'); return; }
+  if (!productForm.categoryId) { fail('请选择所属分类'); return; }
+  if (productForm.unit === 'custom' && !(productForm.customUnit || '').trim()) { fail('请填写自定义计价单位'); return; }
+  const payload = {
+    ...productForm,
+    categoryId: Number(productForm.categoryId),
+    coverUrl: productForm.coverUrl || '',
+    originalPrice: productForm.originalPrice ? Number(productForm.originalPrice) : null,
+    unit: productForm.unit === 'custom' ? (productForm.customUnit || '').trim() : (productForm.unit || 'piece'),
+    brand: productForm.brand || '',
+    isHot: productForm.isHot ? 1 : 0,
+    isNew: productForm.isNew ? 1 : 0,
+    tags: productForm.tags || '',
+    images: (productForm.images || []).map((url, i) => ({ url, sortNo: i })),
+    skus: (productForm.skus || []).map((s, i) => ({
+      specJson: JSON.stringify(Object.fromEntries((s.specItems || []).map((x) => [x.name, x.value]).filter(([n]) => n))),
+      skuCode: s.skuCode || '',
+      image: s.image || '',
+      sortNo: i,
+    })),
+    attributes: (productForm.attributes || []).map((a, i) => ({
+      attrName: a.attrName || '',
+      attrValue: a.attrValue || '',
+      sortNo: i,
+    })),
+  };
+  await run(async () => {
+    // 编辑商品时：仅当库存字段相对打开时发生变化才提交，避免用过期库存覆盖真实库存
+    if (editingProductId.value && Number(productForm.stock) === Number(editingOpenedStock.value)) {
+      delete payload.stock;
+    }
+    if (editingProductId.value) {
+      await api.put(`/admin/products/${editingProductId.value}`, payload);
+      editingProductId.value = null;
+      await loadAdminProducts();
+      await loadProducts();
+      resetProductForm();
+      return '商品已更新';
+    }
+    payload.status = 'ON_SALE';
+    await api.post('/admin/products', payload);
+    resetProductForm();
+    await loadProducts();
+    await loadAdminProducts();
+    return '商品已新增';
+  }, editingProductId.value ? '商品已更新' : '商品已新增');
+
+}
+
+function resetProductForm() {
+  Object.assign(productForm, { categoryId: '', sku: '', name: '', subtitle: '', description: '', coverUrl: '', price: 0, originalPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
+}
+
+async function openEditProduct(product) {
+  if (isAdmin.value !== true) return;
+  const detail = await api.get(`/admin/products/${product.id}`);
+  const d = detail.data || detail;
+  Object.assign(productForm, {
+    categoryId: d.categoryId != null ? String(d.categoryId) : '',
+    sku: d.sku || '',
+    name: d.name || '',
+    subtitle: d.subtitle || '',
+    description: d.description || '',
+    coverUrl: d.coverUrl || '',
+    price: d.price != null ? Number(d.price) : 0,
+    originalPrice: d.originalPrice != null ? Number(d.originalPrice) : '',
+    stock: d.stock != null ? Number(d.stock) : 0,
+    brand: d.brand || '',
+    isHot: Number(d.isHot) === 1,
+    isNew: Number(d.isNew) === 1,
+    tags: d.tags || '',
+    images: Array.isArray(d.images) ? d.images.map((it) => it.url).filter(Boolean) : [],
+    skus: Array.isArray(d.skus) ? d.skus.map((it) => ({
+      specItems: Object.entries(safeParseSpec(it.specJson)).map(([name, value]) => ({ name, value })),
+      skuCode: it.skuCode || '',
+      image: it.image || '',
+    })) : [],
+    attributes: Array.isArray(d.attributes) ? d.attributes.map((it) => ({
+      attrName: it.attrName || '',
+      attrValue: it.attrValue || '',
+    })) : [],
+    ...resolveUnit(d.unit),
+  });
+  editingProductId.value = product.id;
+  editingOpenedStock.value = Number(d.stock != null ? d.stock : 0);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelEditProduct() {
+  editingProductId.value = null;
+  resetProductForm();
+}
+
+function openStockForm(product, quantity = 10) {
+  stockForm.productId = product.id;
+  stockForm.quantity = quantity;
+  stockForm.remark = '';
+
+}
+
+async function submitStock(product) {
+  const quantity = Number(stockForm.quantity);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    fail('入库数量必须是不小于 1 的整数');
+    return;
+  }
+  const confirmed = await askConfirm({
+    title: '确认入库',
+    message: `将为「${product.name}」增加 ${quantity} 件库存，操作会立即生效。`,
+    confirmText: '确认入库',
+    details: [
+      { label: '商品', value: `${product.name}（${product.sku || '-'}）` },
+      { label: '当前库存', value: product.stock ?? 0 },
+      { label: '入库后', value: Number(product.stock || 0) + quantity },
+    ],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/admin/products/${product.id}/stock-adjustments`, {
+      changeQuantity: quantity,
+      bizType: 'PURCHASE',
+      remark: stockForm.remark.trim() || '后台手动入库',
+    });
+    stockForm.productId = null;
+    await Promise.all([loadAdminProducts(), loadStockAlerts(), loadProducts()]);
+  }, `已入库 ${quantity} 件`);
+
+}
+
+async function loadAdminOrders() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(adminOrders.page),
+    size: String(adminOrders.size),
+  });
+  if (adminOrderKeyword.value.trim()) params.set('orderNo', adminOrderKeyword.value.trim());
+  if (adminOrderStatus.value) params.set('status', adminOrderStatus.value);
+  const data = await api.get(`/admin/orders?${params}`);
+  Object.assign(adminOrders, data);
+  // 当前页被删空（如取消最后一页最后一条）时，自动回退到上一页
+  if (adminOrders.items.length === 0 && adminOrders.page > 1) {
+    adminOrders.page -= 1;
+    await loadAdminOrders();
+    return;
+  }
+  adminOrderJumpPage.value = adminOrders.page;
+}
+
+// 仪表盘「订单状态分布」需要全量订单，与分页后的表格数据解耦，避免只统计当前页
+async function loadAdminOrderStats() {
+  try {
+    const data = await api.get('/admin/orders?page=1&size=200');
+    adminOrderStats.value = data.items || [];
+  } catch (e) {
+    adminOrderStats.value = [];
+  }
+}
+
+async function searchAdminOrders() {
+  adminOrders.page = 1;
+  await loadAdminOrders();
+}
+
+async function changeAdminOrderPage(delta) {
+  const next = adminOrders.page + delta;
+  if (next < 1 || next > adminOrderTotalPages.value) return;
+  adminOrders.page = next;
+  await loadAdminOrders();
+}
+
+async function changeAdminOrderPageSize() {
+  adminOrders.page = 1;
+  await loadAdminOrders();
+}
+
+async function goAdminOrderPage() {
+  const p = Number(adminOrderJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > adminOrderTotalPages.value) {
+    adminOrderJumpPage.value = adminOrders.page;
+    return;
+  }
+  adminOrders.page = p;
+  await loadAdminOrders();
+}
+
+function resetAdminOrderSearch() {
+  adminOrderKeyword.value = '';
+  adminOrderStatus.value = '';
+  adminOrders.page = 1;
+  loadAdminOrders();
+}
+
+function openShipForm(orderId) {
+  shipForm.orderId = orderId;
+  shipForm.shipCompany = '';
+  shipForm.shipNo = '';
+
+}
+
+async function submitShip(id) {
+  if (!shipForm.shipCompany.trim() || !shipForm.shipNo.trim()) { fail('请填写快递公司和快递单号'); return; }
+  const confirmed = await askConfirm({
+    title: '确认发货',
+    message: '发货后订单进入待收货状态，物流信息将展示给买家，请核对单号无误。',
+    confirmText: '确认发货',
+    details: [
+      { label: '快递公司', value: shipForm.shipCompany.trim() },
+      { label: '快递单号', value: shipForm.shipNo.trim() },
+    ],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/admin/orders/${id}/ship`, { shipCompany: shipForm.shipCompany.trim(), shipNo: shipForm.shipNo.trim() });
+    shipForm.orderId = null;
+    await Promise.all([loadAdminOrders(), loadRefundOrders()]);
+  }, '订单已发货');
+
+}
+
+async function loadRefundOrders() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(refundOrders.page),
+    size: String(refundOrders.size),
+    refundStatus: refundStatusFilter.value,
+  });
+  const data = await api.get(`/admin/orders?${params}`);
+  Object.assign(refundOrders, data);
+  if (refundOrders.items.length === 0 && refundOrders.page > 1) {
+    refundOrders.page -= 1;
+    await loadRefundOrders();
+    return;
+  }
+  refundJumpPage.value = refundOrders.page;
+}
+
+async function searchRefunds() {
+  refundOrders.page = 1;
+  await loadRefundOrders();
+}
+
+async function changeRefundPage(delta) {
+  const next = refundOrders.page + delta;
+  if (next < 1 || next > refundTotalPages.value) return;
+  refundOrders.page = next;
+  await loadRefundOrders();
+}
+
+async function changeRefundPageSize() {
+  refundOrders.page = 1;
+  await loadRefundOrders();
+}
+
+async function goRefundPage() {
+  const p = Number(refundJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > refundTotalPages.value) {
+    refundJumpPage.value = refundOrders.page;
+    return;
+  }
+  refundOrders.page = p;
+  await loadRefundOrders();
+}
+
+function resetRefundSearch() {
+  refundStatusFilter.value = 'APPLYING';
+  refundOrders.page = 1;
+  loadRefundOrders();
+}
+
+function reviewAdminRefund(orderId, approved) {
+  refundReviewForm.orderId = orderId;
+  refundReviewForm.approved = approved;
+  refundReviewForm.remark = '';
+
+}
+
+async function submitRefundReview(id) {
+  const approved = refundReviewForm.approved;
+  const order = refundOrders.items.find((item) => item.id === id);
+  const confirmed = await askConfirm({
+    title: approved ? '同意退款' : '拒绝退款',
+    message: approved
+      ? '同意后款项将立即退回买家钱包，订单关闭并回滚库存，该操作不可撤销。'
+      : '拒绝后买家可以重新提交申请，你也可以稍后再次处理。',
+    confirmText: approved ? '确认退款' : '确认拒绝',
+    danger: approved,
+    details: order
+      ? [
+          { label: '订单号', value: order.orderNo },
+          { label: '退款金额', value: money(order.payAmount) },
+          { label: '退款原因', value: order.refundReason || '未填写' },
+        ]
+      : [],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/admin/orders/${id}/refund-review`, {
+      approved: refundReviewForm.approved,
+      remark: refundReviewForm.remark.trim() || null,
+    });
+    refundReviewForm.orderId = null;
+    await Promise.all([loadRefundOrders(), loadAdminOrders()]);
+  }, refundReviewForm.approved ? '已同意退款，款项已退回用户钱包' : '已拒绝该退款申请');
+
+}
+
+async function loadStockAlerts() {
+  if (!isAdmin.value) return;
+  stockAlerts.value = await api.get('/admin/stock-alerts');
+
+}
+
+
+async function loadAdminCoupons() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(adminCoupons.page),
+    size: String(adminCoupons.size),
+  });
+  if (adminCouponKeyword.value.trim()) params.set('keyword', adminCouponKeyword.value.trim());
+  const data = await api.get(`/admin/coupons?${params}`);
+  Object.assign(adminCoupons, data);
+  if (adminCoupons.items.length === 0 && adminCoupons.page > 1) {
+    adminCoupons.page -= 1;
+    await loadAdminCoupons();
+    return;
+  }
+  adminCouponJumpPage.value = adminCoupons.page;
+}
+
+async function searchAdminCoupons() {
+  adminCoupons.page = 1;
+  await loadAdminCoupons();
+}
+
+async function changeAdminCouponPage(delta) {
+  const next = adminCoupons.page + delta;
+  if (next < 1 || next > adminCouponTotalPages.value) return;
+  adminCoupons.page = next;
+  await loadAdminCoupons();
+}
+
+async function changeAdminCouponPageSize() {
+  adminCoupons.page = 1;
+  await loadAdminCoupons();
+}
+
+async function goAdminCouponPage() {
+  const p = Number(adminCouponJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > adminCouponTotalPages.value) {
+    adminCouponJumpPage.value = adminCoupons.page;
+    return;
+  }
+  adminCoupons.page = p;
+  await loadAdminCoupons();
+}
+
+function resetAdminCouponSearch() {
+  adminCouponKeyword.value = '';
+  adminCoupons.page = 1;
+  loadAdminCoupons();
+}
+
+function fillCouponPeriod(days) {
+  const pad = (num) => String(num).padStart(2, '0');
+  const toLocalInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const start = new Date();
+  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+  couponForm.startTime = toLocalInput(start);
+  couponForm.endTime = toLocalInput(end);
+
+}
+
+async function saveCoupon() {
+  if (!couponForm.name.trim()) { fail('请填写优惠券名称'); return; }
+  if (!(couponForm.discountAmount > 0)) { fail('优惠金额必须大于 0'); return; }
+  if (couponForm.discountAmount > couponForm.thresholdAmount) { fail('优惠金额不能超过使用门槛'); return; }
+  if (!couponForm.startTime || !couponForm.endTime) { fail('请选择有效起止时间'); return; }
+  await run(async () => {
+    await api.post('/admin/coupons', {
+      name: couponForm.name.trim(),
+      thresholdAmount: Number(couponForm.thresholdAmount),
+      discountAmount: Number(couponForm.discountAmount),
+      totalCount: Number(couponForm.totalCount || 0),
+      startTime: couponForm.startTime,
+      endTime: couponForm.endTime,
+    });
+    Object.assign(couponForm, { name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
+    await loadAdminCoupons();
+  }, '优惠券已创建');
+
+}
+
+async function toggleCoupon(coupon) {
+  const disabling = coupon.status === 1;
+  const confirmed = await askConfirm({
+    title: disabling ? '停用优惠券' : '启用优惠券',
+    message: disabling
+      ? '停用后用户无法再领取这张券，已领取的券仍可在有效期内使用。'
+      : '启用后用户可以重新领取这张券。',
+    confirmText: disabling ? '确认停用' : '确认启用',
+    danger: disabling,
+    details: [
+      { label: '优惠券', value: coupon.name },
+      { label: '优惠力度', value: `满 ${money(coupon.thresholdAmount)} 减 ${money(coupon.discountAmount)}` },
+      { label: '已领取', value: `${coupon.receivedCount} 张` },
+    ],
+  });
+  if (!confirmed) return;
+  await run(() => api.patch(`/admin/coupons/${coupon.id}/status`, { status: disabling ? 0 : 1 }).then(loadAdminCoupons), disabling ? '优惠券已停用' : '优惠券已启用');
+
+}
+
+async function loadActivityProducts() {
+  if (activityProductsLoaded.value) return;
+  try {
+    const data = await api.get('/products?page=1&size=500');
+    activityProducts.value = (data && data.items) || [];
+    activityProductsLoaded.value = true;
+  } catch (e) {
+    activityProducts.value = [];
+  }
+}
+
+async function loadAdminActivities() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(adminActivities.page),
+    size: String(adminActivities.size),
+  });
+  if (adminActivityKeyword.value.trim()) params.set('keyword', adminActivityKeyword.value.trim());
+  const data = await api.get(`/admin/activities?${params}`);
+  Object.assign(adminActivities, data);
+  if (adminActivities.items.length === 0 && adminActivities.page > 1) {
+    adminActivities.page -= 1;
+    await loadAdminActivities();
+    return;
+  }
+  adminActivityJumpPage.value = adminActivities.page;
+}
+
+async function searchAdminActivities() {
+  adminActivities.page = 1;
+  await loadAdminActivities();
+}
+
+async function changeAdminActivityPage(delta) {
+  const next = adminActivities.page + delta;
+  if (next < 1 || next > adminActivityTotalPages.value) return;
+  adminActivities.page = next;
+  await loadAdminActivities();
+}
+
+async function changeAdminActivityPageSize() {
+  adminActivities.page = 1;
+  await loadAdminActivities();
+}
+
+async function goAdminActivityPage() {
+  const p = Number(adminActivityJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > adminActivityTotalPages.value) {
+    adminActivityJumpPage.value = adminActivities.page;
+    return;
+  }
+  adminActivities.page = p;
+  await loadAdminActivities();
+}
+
+function resetAdminActivitySearch() {
+  adminActivityKeyword.value = '';
+  adminActivities.page = 1;
+  loadAdminActivities();
+}
+
+function resetActivityForm() {
+  Object.assign(activityForm, { id: null, name: '', type: 'FULL_REDUCTION', scope: 'ALL', categoryId: 0, productId: 0, threshold: 0, discount: 0, startTime: '', endTime: '', priority: 0 });
+}
+
+function onActivityScopeChange() {
+  activityForm.categoryId = 0;
+  activityForm.productId = 0;
+  if (activityForm.scope === 'PRODUCT') loadActivityProducts();
+}
+
+function fillActivityPeriod(days) {
+  const pad = (num) => String(num).padStart(2, '0');
+  const toLocalInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const start = new Date();
+  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+  activityForm.startTime = toLocalInput(start);
+  activityForm.endTime = toLocalInput(end);
+}
+
+function activityTypeLabel(type) {
+  return type === 'DISCOUNT' ? '折扣' : '满减';
+}
+
+function activityScopeLabel(scope) {
+  if (scope === 'CATEGORY') return '指定类目';
+  if (scope === 'PRODUCT') return '指定商品';
+  return '全场';
+}
+
+function activityDiscountLabel(act) {
+  const threshold = Number(act.threshold || 0);
+  if (act.type === 'DISCOUNT') {
+    const rate = Number(act.discount || 0);
+    const zhe = Math.round(rate * 100) / 10;
+    const zheStr = Number.isInteger(zhe) ? String(zhe) : zhe.toFixed(1);
+    return threshold > 0 ? `${zheStr}折（满${money(threshold)}）` : `${zheStr}折`;
+  }
+  return `满 ${money(threshold)} 减 ${money(act.discount)}`;
+}
+
+function editActivity(act) {
+  const toLocal = (value) => {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  Object.assign(activityForm, {
+    id: act.id,
+    name: act.name,
+    type: act.type,
+    scope: act.scope,
+    categoryId: act.categoryId || 0,
+    productId: act.productId || 0,
+    threshold: Number(act.threshold || 0),
+    discount: Number(act.discount || 0),
+    startTime: toLocal(act.startTime),
+    endTime: toLocal(act.endTime),
+    priority: Number(act.priority || 0),
+  });
+  if (act.scope === 'PRODUCT') loadActivityProducts();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function saveActivity() {
+  if (!activityForm.name.trim()) { fail('请填写活动名称'); return; }
+  if (!activityForm.startTime || !activityForm.endTime) { fail('请选择有效起止时间'); return; }
+  if (new Date(activityForm.startTime) >= new Date(activityForm.endTime)) { fail('结束时间必须晚于开始时间'); return; }
+  if (activityForm.scope === 'CATEGORY' && !activityForm.categoryId) { fail('请选择适用类目'); return; }
+  if (activityForm.scope === 'PRODUCT' && !activityForm.productId) { fail('请选择适用商品'); return; }
+  if (activityForm.type === 'FULL_REDUCTION') {
+    if (!(activityForm.threshold > 0)) { fail('满减门槛必须大于 0'); return; }
+    if (!(activityForm.discount > 0)) { fail('优惠金额必须大于 0'); return; }
+    if (Number(activityForm.discount) > Number(activityForm.threshold)) { fail('优惠金额不能超过门槛金额'); return; }
+  } else {
+    if (!(activityForm.discount > 0) || !(activityForm.discount < 1)) { fail('折扣率需在 0~1 之间，例如 0.9 表示 9 折'); return; }
+  }
+  const payload = {
+    name: activityForm.name.trim(),
+    type: activityForm.type,
+    scope: activityForm.scope,
+    categoryId: activityForm.scope === 'CATEGORY' ? Number(activityForm.categoryId) : null,
+    productId: activityForm.scope === 'PRODUCT' ? Number(activityForm.productId) : null,
+    threshold: Number(activityForm.threshold || 0),
+    discount: Number(activityForm.discount),
+    startTime: activityForm.startTime,
+    endTime: activityForm.endTime,
+    priority: Number(activityForm.priority || 0),
+  };
+  await run(async () => {
+    if (activityForm.id) {
+      await api.put(`/admin/activities/${activityForm.id}`, payload);
+    } else {
+      await api.post('/admin/activities', payload);
+    }
+    resetActivityForm();
+    await loadAdminActivities();
+  }, activityForm.id ? '活动已更新' : '活动已创建');
+}
+
+async function toggleActivity(act) {
+  const disabling = act.status === 1;
+  const confirmed = await askConfirm({
+    title: disabling ? '停用活动' : '启用活动',
+    message: disabling
+      ? '停用后该活动不再参与订单优惠计算，已下单的订单不受影响。'
+      : '启用后该活动将重新参与订单优惠计算。',
+    confirmText: disabling ? '确认停用' : '确认启用',
+    danger: disabling,
+    details: [
+      { label: '活动', value: act.name },
+      { label: '优惠力度', value: activityDiscountLabel(act) },
+    ],
+  });
+  if (!confirmed) return;
+  await run(() => api.patch(`/admin/activities/${act.id}/status`, { status: disabling ? 0 : 1 }).then(loadAdminActivities), disabling ? '活动已停用' : '活动已启用');
+}
+
+async function deleteActivity(act) {
+  const confirmed = await askConfirm({
+    title: '删除活动',
+    message: '删除后该活动立即失效且不可恢复，已下单的订单不受影响。',
+    confirmText: '确认删除',
+    danger: true,
+    details: [
+      { label: '活动', value: act.name },
+      { label: '优惠力度', value: activityDiscountLabel(act) },
+    ],
+  });
+  if (!confirmed) return;
+  await run(() => api.delete(`/admin/activities/${act.id}`).then(loadAdminActivities), '活动已删除');
+}
+
+async function completeAdminOrder(id) {
+  const order = (adminOrders.items || []).find((item) => item.id === id);
+  const confirmed = await askConfirm({
+    title: '确认完成订单',
+    message: '完成后订单交易结束，买家可以对商品进行评价。',
+    confirmText: '确认完成',
+    details: order ? [{ label: '订单号', value: order.orderNo }, { label: '金额', value: money(order.payAmount) }] : [],
+  });
+  if (!confirmed) return;
+  await run(() => api.post(`/admin/orders/${id}/complete`).then(loadAdminOrders), '订单已完成');
+
+}
+
+async function cancelAdminOrder(id) {
+  const order = (adminOrders.items || []).find((item) => item.id === id);
+  const paid = order?.paymentStatus === 'PAID';
+  const confirmed = await askConfirm({
+    title: '取消订单',
+    message: paid
+      ? '该订单已支付，取消后款项将退回买家钱包并回滚库存，操作不可撤销。'
+      : '取消后订单关闭并释放占用的库存，操作不可撤销。',
+    confirmText: '确认取消订单',
+    danger: true,
+    details: order
+      ? [
+          { label: '订单号', value: order.orderNo },
+          { label: '订单金额', value: money(order.payAmount) },
+          { label: '是否已付款', value: paid ? '已付款，将原路退回钱包' : '未付款' },
+        ]
+      : [],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/admin/orders/${id}/cancel`);
+    await Promise.all([loadAdminOrders(), loadAdminUsers()]);
+  }, '后台订单已取消');
+
+}
+
+async function saveCategory() {
+  if (!categoryForm.name.trim()) { fail('请填写分类名称'); return; }
+  await run(async () => {
+    await api.post('/admin/categories', categoryForm);
+    Object.assign(categoryForm, { parentId: 0, name: '', sortNo: 10, status: 1 });
+    await loadCategories();
+  }, '分类已新增');
+
+}
+
+async function loadAdminUsers() {
+  if (!isAdmin.value) return;
+  const params = new URLSearchParams({
+    page: String(adminUsers.page),
+    size: String(adminUsers.size),
+  });
+  if (adminUserKeyword.value.trim()) params.set('keyword', adminUserKeyword.value.trim());
+  if (adminUserRole.value) params.set('role', adminUserRole.value);
+  if (adminUserStatus.value !== '') params.set('status', String(adminUserStatus.value));
+  const data = await api.get(`/admin/users?${params}`);
+  Object.assign(adminUsers, data);
+  if (adminUsers.items.length === 0 && adminUsers.page > 1) {
+    adminUsers.page -= 1;
+    await loadAdminUsers();
+    return;
+  }
+  adminUserJumpPage.value = adminUsers.page;
+}
+
+async function searchAdminUsers() {
+  adminUsers.page = 1;
+  await loadAdminUsers();
+}
+
+async function changeAdminUserPage(delta) {
+  const next = adminUsers.page + delta;
+  if (next < 1 || next > adminUserTotalPages.value) return;
+  adminUsers.page = next;
+  await loadAdminUsers();
+}
+
+async function changeAdminUserPageSize() {
+  adminUsers.page = 1;
+  await loadAdminUsers();
+}
+
+async function goAdminUserPage() {
+  const p = Number(adminUserJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > adminUserTotalPages.value) {
+    adminUserJumpPage.value = adminUsers.page;
+    return;
+  }
+  adminUsers.page = p;
+  await loadAdminUsers();
+}
+
+function resetAdminUserSearch() {
+  adminUserKeyword.value = '';
+  adminUserRole.value = '';
+  adminUserStatus.value = '';
+  adminUsers.page = 1;
+  loadAdminUsers();
+}
+
+async function toggleProductStatus(product) {
+  const takingOffline = product.status === 'ON_SALE';
+  const confirmed = await askConfirm({
+    title: takingOffline ? '下架商品' : '上架商品',
+    message: takingOffline
+      ? '下架后买家在商城里看不到这件商品，也无法下单；已产生的订单不受影响，可以随时重新上架。'
+      : '上架后买家可以在商城中看到并购买这件商品。',
+    confirmText: takingOffline ? '确认下架' : '确认上架',
+    danger: takingOffline,
+    details: [
+      { label: '商品', value: `${product.name}（${product.sku}）` },
+      { label: '售价', value: money(product.price) },
+      { label: '当前库存', value: `${product.stock} ${formatUnit(product.unit)}` },
+    ],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.patch(`/admin/products/${product.id}/status`, { status: takingOffline ? 'OFF_SALE' : 'ON_SALE' });
+    await Promise.all([loadAdminProducts(), loadProducts()]);
+  }, takingOffline ? '商品已下架' : '商品已上架');
+
+}
+
+async function deleteProduct(product) {
+  const hasOrders = (product.sales ?? 0) > 0;
+  const confirmed = await askConfirm({
+    title: '删除商品',
+    message: hasOrders
+      ? '该商品已有销售记录，删除后将不再出现在商品管理与商城中，但历史订单仍然保留、不受影响。此操作不可恢复。'
+      : '删除后该商品将不再出现在商品管理与商城中，此操作不可恢复。',
+    confirmText: '确认删除',
+    danger: true,
+    details: [
+      { label: '商品', value: `${product.name}（${product.sku}）` },
+      { label: '售价', value: money(product.price) },
+      { label: '当前库存', value: `${product.stock} ${formatUnit(product.unit)}` },
+    ],
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    if (stockForm.productId === product.id) stockForm.productId = null;
+    await api.delete(`/admin/products/${product.id}`);
+    await Promise.all([loadAdminProducts(), loadProducts()]);
+  }, '商品已删除');
+}
+
+async function toggleUser(user) {
+  const disabling = user.status === 1;
+  const confirmed = await askConfirm({
+    title: disabling ? '禁用账号' : '启用账号',
+    message: disabling
+      ? '禁用后该账号无法登录，其钱包余额与历史订单不受影响。'
+      : '启用后该账号可以重新登录。',
+    confirmText: disabling ? '确认禁用' : '确认启用',
+    danger: disabling,
+    details: [
+      { label: '账号', value: user.username },
+      { label: '角色', value: formatRole(user.role) },
+      { label: '钱包余额', value: money(user.balance) },
+    ],
+  });
+  if (!confirmed) return;
+  await run(() => api.patch(`/admin/users/${user.id}/status`, { status: disabling ? 0 : 1 }).then(loadAdminUsers), disabling ? '账号已禁用' : '账号已启用');
+
+}
+
+async function refreshAdminData() {
+  if (!isAdmin.value) return;
+  await Promise.all([
+    loadCategories(),
+    loadProducts(),
+    loadAdminProducts(),
+    loadAdminOrders(),
+    loadAdminOrderStats(),
+    loadAdminUsers(),
+    loadRefundOrders(),
+    loadStockAlerts(),
+    loadAdminCoupons(),
+  ]);
+  await renderAdminCharts();
+
+}
+
+const adminMenuLoaders = {
+  dashboard: () => refreshAdminData(),
+  orders: () => loadAdminOrders(),
+  refunds: () => loadRefundOrders(),
+  stock: () => loadStockAlerts(),
+  products: () => loadAdminProducts(),
+  categories: () => loadCategories(),
+  coupons: () => loadAdminCoupons(),
+  activities: () => loadAdminActivities(),
+  users: () => loadAdminUsers(),
+};
+
+async function selectAdminMenu(key) {
+  if (adminMenu.value === key) {
+    await refreshCurrentAdminMenu();
+    return;
+  }
+  adminMenu.value = key;
+  await refreshCurrentAdminMenu();
+
+}
+
+async function refreshCurrentAdminMenu() {
+  const loader = adminMenuLoaders[adminMenu.value];
+  if (loader) await loader();
+  if (adminMenu.value === 'dashboard') await renderAdminCharts();
+
+}
+
+async function refreshForSession() {
+  ensureAllowedView();
+  if (isAdmin.value) {
+    await refreshAdminData();
+    return;
+  }
+  await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses()]);
+
+}
+
+watch(view, async (next) => {
+  ensureAllowedView();
+  if (next === 'cart') await loadCart();
+  if (next === 'checkout') { await loadWallet(); await loadAddresses(); await loadMyCoupons(); await loadUsableCoupons(); }
+  if (next === 'orders') await loadOrders();
+  if (next === 'coupons') await loadCoupons();
+  if (next === 'addresses') await loadAddresses();
+  if (next === 'recharge') await loadWallet();
+  if (next === 'admin') await refreshAdminData();
+
+});
+
+watch(() => session.user?.role, () => {
+  ensureAllowedView();
+
+});
+
+watch(() => [view.value, adminMenu.value, adminProducts.items, adminOrders.items], () => {
+  renderAdminCharts();
+
+}, { deep: true });
+
+watch(() => [view.value, adminMenu.value, productDetail.data?.id], () => {
+  applyRouteHash();
+
+});
+
+onMounted(async () => {
+  window.addEventListener('resize', resizeCharts);
+  window.addEventListener('hashchange', restoreRoute);
+  window.addEventListener('popstate', restoreRoute);
+  window.addEventListener('beforeunload', reportDwell);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
+  await run(async () => {
+    await loadCategories();
+    await loadProducts();
+    await loadHomeChannels();
+    if (session.user) await refreshForSession();
+    restoreRoute();
+    applyRouteHash(true);
+    bootstrapHistory();
+  });
+
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeCharts);
+  window.removeEventListener('hashchange', restoreRoute);
+  window.removeEventListener('popstate', restoreRoute);
+  window.removeEventListener('beforeunload', reportDwell);
+  document.removeEventListener('visibilitychange', reportDwell);
+  disposeCharts();
+
+});
+</script>
