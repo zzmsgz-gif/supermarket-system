@@ -1,0 +1,65 @@
+# ============================================================
+# 云端（Railway / 生产）配置 —— 本文件已提交进仓库，不含任何真实密钥。
+# 激活方式：设置环境变量 SPRING_PROFILES_ACTIVE=prod
+# 所有敏感项均通过环境变量注入，默认值仅用于本地/兜底。
+# ============================================================
+
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: supermarket-backend
+  datasource:
+    # Railway 上设置 SPRING_DATASOURCE_URL 为完整 JDBC 串（由 MySQL 服务的私有变量拼出）；
+    # 本地若用 prod profile，保留默认值即可（DB_USERNAME/DB_PASSWORD 仍可用环境变量覆盖）。
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/supermarket_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:zzmsgz}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 120MB
+
+logging:
+  level:
+    org.hibernate.SQL: warn
+
+# 文件存储配置（默认 local，无需任何密钥即可启动；要启用 OSS 见下方环境变量）
+storage:
+  # 默认本地磁盘；设置 STORAGE_TYPE=oss 并配齐 OSS_* 后切换为阿里云 OSS。
+  type: ${STORAGE_TYPE:local}
+  local:
+    dir: ${STORAGE_LOCAL_DIR:./uploads}
+  oss:
+    endpoint: ${OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
+    bucket: ${OSS_BUCKET:super-zzm}
+    access-key-id: ${OSS_ACCESS_KEY_ID}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET}
+    base-url: ${OSS_BASE_URL:https://super-zzm.oss-cn-beijing.aliyuncs.com}
+
+# JWT / 业务参数：均读取环境变量，带安全兜底默认值
+app:
+  jwt:
+    # 默认值为强随机串，确保即使忘记设置也能启动；生产务必用环境变量 JWT_SECRET 覆盖。
+    secret: ${JWT_SECRET:tZS5KaXPu2fSadCHjBkPT6Y96IUCu0SdTfeTt_795CPfcQTiwFK_LP1LOaJdYzEs}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+  order:
+    pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:30}
+    close-check-interval-ms: ${ORDER_CLOSE_CHECK_INTERVAL_MS:60000}
+  new-user-coupon-id: ${APP_NEW_USER_COUPON_ID:5}
+  cache:
+    enabled: ${APP_CACHE_ENABLED:false}
+  idempotency:
+    ttl-seconds: ${APP_IDEMPOTENCY_TTL_SECONDS:300}
