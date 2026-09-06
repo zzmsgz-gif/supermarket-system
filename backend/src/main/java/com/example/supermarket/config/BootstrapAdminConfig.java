@@ -35,14 +35,17 @@ public class BootstrapAdminConfig {
     @Bean
     public CommandLineRunner bootstrapAdmin(
             SchemaTimestampFixer schemaTimestampFixer,
+            DataSeeder dataSeeder,
             SysUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.bootstrap.admin-username:}") String adminUsername,
             @Value("${app.bootstrap.admin-password:}") String adminPassword
     ) {
         return args -> {
-            // 先自愈存量表结构：旧版本建出的表缺时间列默认值，会让下面的插入直接失败。
+            // 1) 自愈存量表结构：旧版本建出的表缺时间列默认值，会让下面的插入直接失败。
             schemaTimestampFixer.fix();
+            // 2) 空库导入基础主数据（分类/商品/活动/优惠券）。
+            dataSeeder.seedIfEmpty();
 
             String username = adminUsername == null ? "" : adminUsername.trim();
             if (username.isEmpty()) {
