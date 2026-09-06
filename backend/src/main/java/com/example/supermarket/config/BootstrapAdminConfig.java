@@ -34,12 +34,16 @@ public class BootstrapAdminConfig {
 
     @Bean
     public CommandLineRunner bootstrapAdmin(
+            SchemaTimestampFixer schemaTimestampFixer,
             SysUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.bootstrap.admin-username:}") String adminUsername,
             @Value("${app.bootstrap.admin-password:}") String adminPassword
     ) {
         return args -> {
+            // 先自愈存量表结构：旧版本建出的表缺时间列默认值，会让下面的插入直接失败。
+            schemaTimestampFixer.fix();
+
             String username = adminUsername == null ? "" : adminUsername.trim();
             if (username.isEmpty()) {
                 return;
