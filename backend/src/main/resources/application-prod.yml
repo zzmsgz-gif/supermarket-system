@@ -21,7 +21,10 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      # 云端首次部署数据库为空，用 update 让 Hibernate 自动建表；
+      # 表结构稳定后可设环境变量 SPRING_JPA_HIBERNATE_DDL_AUTO=validate 收紧。
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    generate-ddl: true
     open-in-view: false
     show-sql: false
     properties:
