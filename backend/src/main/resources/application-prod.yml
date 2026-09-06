@@ -62,6 +62,10 @@ app:
     pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:30}
     close-check-interval-ms: ${ORDER_CLOSE_CHECK_INTERVAL_MS:60000}
   new-user-coupon-id: ${APP_NEW_USER_COUPON_ID:5}
+  # 云端空库首次部署的「引导管理员」：把该用户名提升/创建为 ADMIN，之后可移除这两个变量。
+  bootstrap:
+    admin-username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}
+    admin-password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
   cache:
     enabled: ${APP_CACHE_ENABLED:false}
   idempotency:
