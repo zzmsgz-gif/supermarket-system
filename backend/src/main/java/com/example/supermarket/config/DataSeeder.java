@@ -1,8 +1,5 @@
 package com.example.supermarket.config;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,11 +8,14 @@ import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
 
 /**
- * 云端空库首次部署时导入基础主数据（分类 / 商品 / 营销活动 / 优惠券）。
+ * 云端部署时导入/自愈基础主数据（分类 / 商品 / 营销活动 / 优惠券）。
  *
- * <p>仅在 {@code product_category} 为空时才导入，因此重复部署不会覆盖用户后续维护的数据。
- * 种子脚本使用 INSERT IGNORE，即使重复执行也不会产生重复行。
- * 业务流水表（订单、支付、钱包等）与依赖订单/用户的评价表不在种子范围内。
+ * <p>种子脚本使用 {@code INSERT ... ON DUPLICATE KEY UPDATE}（显式列名），
+ * 因此每次启动都会运行：对缺失行执行插入，对已存在行用权威种子值自愈更新。
+ * 这样即便历史版本因列顺序错位写入了损坏数据（如日期列被写成 0000-00-00），
+ * 重新部署后也会被自动纠正，无需人工重置数据库。
+ *
+ * <p>业务流水表（订单、支付、钱包等）与依赖订单/用户的评价表不在种子范围内。
  *
  * <p>导入失败只记录告警，不影响应用启动。
  */
@@ -32,27 +32,19 @@ public class DataSeeder {
         this.dataSource = dataSource;
     }
 
-    public void seedIfEmpty() {
-        try (Connection conn = dataSource.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM product_category")) {
-            if (rs.next() && rs.getLong(1) > 0) {
-                return;
-            }
-        } catch (Exception e) {
-            log.warn("[seed] 检查种子数据条件失败，跳过导入：{}", e.getMessage());
-            return;
-        }
-
-        log.info("[seed] 检测到空库，开始导入初始数据（分类/商品/活动/优惠券）…");
+    /**
+     * 自愈式导入基础主数据。幂等：重复运行安全，已存在的行会被种子值更新。
+     */
+    public void seed() {
+        log.info("[seed] 开始导入/自愈基础主数据（分类/商品/活动/优惠券）…");
         try {
             ResourceDatabasePopulator populator =
                     new ResourceDatabasePopulator(new ClassPathResource(SEED_RESOURCE));
             populator.setContinueOnError(false);
             populator.execute(dataSource);
-            log.info("[seed] 初始数据导入完成");
+            log.info("[seed] 基础主数据导入/自愈完成");
         } catch (Exception e) {
-            log.warn("[seed] 初始数据导入失败（不影响启动）：{}", e.getMessage());
+            log.warn("[seed] 基础主数据导入失败（不影响启动）：{}", e.getMessage());
         }
     }
 }

@@ -44,8 +44,8 @@ public class BootstrapAdminConfig {
         return args -> {
             // 1) 自愈存量表结构：旧版本建出的表缺时间列默认值，会让下面的插入直接失败。
             schemaTimestampFixer.fix();
-            // 2) 空库导入基础主数据（分类/商品/活动/优惠券）。
-            dataSeeder.seedIfEmpty();
+            // 2) 导入/自愈基础主数据（分类/商品/活动/优惠券）。
+            dataSeeder.seed();
 
             String username = adminUsername == null ? "" : adminUsername.trim();
             if (username.isEmpty()) {
