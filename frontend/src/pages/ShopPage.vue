@@ -1,31 +1,67 @@
 <template>
 <section class="shop-home">
 
-  <!-- ① 营销活动条：读真实活动，无活动则整块不渲染 -->
-  <div v-if="activities.length" class="activity-strip">
-    <div v-for="act in activities" :key="act.id" class="activity-card">
-      <span class="act-tag">{{ act.type === 'DISCOUNT' ? '折扣' : '满减' }}</span>
-      <div class="act-body">
-        <strong>{{ act.name }}</strong>
-        <small v-if="act.endTime">有效期至 {{ act.endTime.slice(0, 10) }}</small>
-      </div>
-      <span class="act-value">{{ activityText(act) }}</span>
-    </div>
-  </div>
+  <!-- 头部 hero：左分类 / 中轮播 / 右公告（均为后端真实数据） -->
+  <div class="hero">
+    <aside class="hero-cats">
+      <button class="hero-cat" :class="{ on: !filters.categoryId }" @click="chooseCategory('')">
+        <span class="cat-emoji">🛒</span>全部商品
+      </button>
+      <button
+        v-for="category in categories"
+        :key="category.id"
+        class="hero-cat"
+        :class="{ on: String(filters.categoryId) === String(category.id) }"
+        @click="chooseCategory(category.id)"
+      >
+        <span class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
+      </button>
+    </aside>
 
-  <!-- ② 分类快捷入口：真实分类，点击即筛选（替代原来的侧栏 + 下拉两个重复选择器） -->
-  <div class="cat-entry">
-    <button :class="{ on: !filters.categoryId }" @click="chooseCategory('')">
-      <span class="cat-emoji">🛒</span>全部
-    </button>
-    <button
-      v-for="category in categories"
-      :key="category.id"
-      :class="{ on: String(filters.categoryId) === String(category.id) }"
-      @click="chooseCategory(category.id)"
-    >
-      <span class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
-    </button>
+    <div class="hero-carousel" @mouseenter="stopAuto" @mouseleave="startAuto">
+      <div class="carousel-track" :style="{ transform: 'translateX(-' + (currentSlide * 100) + '%)' }">
+        <div v-for="(slide, i) in slides" :key="i" class="carousel-slide" :class="'slide-' + (i % 2)">
+          <span class="slide-tag">{{ slide.tag }}</span>
+          <div class="slide-main">
+            <h3>{{ slide.title }}</h3>
+            <p class="slide-value">{{ slide.value }}</p>
+          </div>
+          <button class="slide-cta" @click="chooseCategory('')">立即抢购 ›</button>
+        </div>
+        <div v-if="!slides.length" class="carousel-slide slide-default">
+          <div class="slide-main">
+            <h3>优鲜超市 · 新鲜到家</h3>
+            <p class="slide-value">产地直发 · 当日送达</p>
+          </div>
+          <button class="slide-cta" @click="chooseCategory('')">去逛逛 ›</button>
+        </div>
+      </div>
+      <button v-if="slides.length > 1" class="carousel-arrow prev" @click="prevSlide" aria-label="上一张">‹</button>
+      <button v-if="slides.length > 1" class="carousel-arrow next" @click="nextSlide" aria-label="下一张">›</button>
+      <div v-if="slides.length > 1" class="carousel-dots">
+        <span
+          v-for="(s, i) in slides"
+          :key="i"
+          class="dot"
+          :class="{ on: i === currentSlide }"
+          @click="goSlide(i)"
+        ></span>
+      </div>
+    </div>
+
+    <aside class="hero-notice">
+      <div class="notice-head"><span class="notice-ico">📢</span>商城公告</div>
+      <ul class="notice-list">
+        <li v-for="a in announcements" :key="a.id" class="notice-item">
+          <span class="notice-tag" :class="'nt-' + (a.type || 'notice').toLowerCase()">{{ noticeTag(a.type) }}</span>
+          <div class="notice-body">
+            <p class="notice-title">{{ a.title }}</p>
+            <p class="notice-date">{{ (a.publishTime || '').slice(0, 10) }}</p>
+          </div>
+        </li>
+        <li v-if="!announcements.length" class="notice-empty">暂无公告</li>
+      </ul>
+    </aside>
   </div>
 
   <!-- ③ 工具条：搜索 / 价格 / 品牌 / 排序 -->
@@ -142,7 +178,7 @@
 </template>
 
 <script>
-import { inject } from 'vue';
+import { inject, onUnmounted } from 'vue';
 
 const CAT_EMOJI = {
   生鲜食品: '🥬', 时令蔬菜: '🥬', 时令水果: '🍓', 肉禽蛋品: '🥩', 海鲜水产: '🦐',
@@ -157,11 +193,61 @@ export default {
 
     // 本页自建状态（不污染 App.vue）
     const activities = ref([]);
+    const announcements = ref([]);
     const allProducts = ref([]);
+
+    // 轮播控制
+    const currentSlide = ref(0);
+    let autoTimer = null;
 
     async function loadActivities() {
       const list = await api.get('/activities/active').catch(() => []);
       activities.value = Array.isArray(list) ? list : [];
+      startAuto();
+    }
+
+    async function loadAnnouncements() {
+      const list = await api.get('/announcements').catch(() => []);
+      announcements.value = Array.isArray(list) ? list : [];
+    }
+
+    // 活动即促销轮播图：每个活动一张幻灯片
+    const slides = computed(() => (activities.value || []).map((a) => ({
+      title: a.name,
+      tag: a.type === 'DISCOUNT' ? '折扣' : '满减',
+      value: activityText(a),
+    })));
+
+    function startAuto() {
+      stopAuto();
+      if (slides.value.length > 1) autoTimer = setInterval(() => nextSlide(), 4500);
+    }
+
+    function stopAuto() {
+      if (autoTimer) {
+        clearInterval(autoTimer);
+        autoTimer = null;
+      }
+    }
+
+    function nextSlide() {
+      if (!slides.value.length) return;
+      currentSlide.value = (currentSlide.value + 1) % slides.value.length;
+    }
+
+    function prevSlide() {
+      if (!slides.value.length) return;
+      currentSlide.value = (currentSlide.value - 1 + slides.value.length) % slides.value.length;
+    }
+
+    function goSlide(i) {
+      currentSlide.value = i;
+    }
+
+    function noticeTag(type) {
+      if (type === 'PROMOTION' || type === 'ACTIVITY') return '活动';
+      if (type === 'WARNING') return '提醒';
+      return '公告';
     }
 
     async function loadAllProducts() {
@@ -172,7 +258,10 @@ export default {
     onMounted(() => {
       loadActivities();
       loadAllProducts();
+      loadAnnouncements();
     });
+
+    onUnmounted(stopAuto);
 
     // 按真实分类分组的楼层，只保留有商品的分类
     const floors = computed(() => (categories.value || [])
@@ -220,6 +309,9 @@ export default {
     return {
       ...ctx,
       activities,
+      announcements,
+      slides,
+      currentSlide,
       floors,
       brands,
       brandWall,
@@ -227,6 +319,12 @@ export default {
       activityText,
       catEmoji,
       filterBrand,
+      nextSlide,
+      prevSlide,
+      goSlide,
+      startAuto,
+      stopAuto,
+      noticeTag,
       productCount: computed(() => products.total),
     };
   }
