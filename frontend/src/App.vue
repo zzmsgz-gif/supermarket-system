@@ -2,8 +2,15 @@
   <main class="app-shell">
     <div class="header-utility">
       <div class="header-utility-inner">
-        <span class="u-slogan">产地直采 · 冷链配送 · 新鲜到家</span>
-        <span class="u-hotline">客服热线 <strong>400-888-6666</strong>（每日 9:00–21:00）</span>
+        <div class="u-left">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5" rx="1"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+          <span>新人首单立减 <b>¥20</b>，再送 3 张满减券</span>
+        </div>
+        <div class="u-right">
+          <span class="u-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><polygon points="15 8 19 8 22 11 22 16 15 16"/><circle cx="6" cy="18.5" r="2"/><circle cx="18" cy="18.5" r="2"/></svg>满 ¥99 免运费</span>
+          <span class="u-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>生鲜坏果包赔</span>
+          <span class="u-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>21:00 前下单 · 次日达</span>
+        </div>
       </div>
     </div>
 
@@ -21,14 +28,15 @@
           <form class="header-search" @submit.prevent="goSearch">
             <svg class="icon i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input v-model="headerKeyword" type="search" placeholder="搜索牛奶、面包、五常大米、抽纸…" aria-label="搜索商品" />
-            <button type="submit">搜索</button>
+            <button type="submit" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
           </form>
           <div class="hot-words">
-            <a @click.prevent="quickSearch('牛奶')">牛奶</a>
-            <a @click.prevent="quickSearch('面包')">面包</a>
+            <span class="hw-tag">热搜</span>
+            <a @click.prevent="quickSearch('牛奶')">纯牛奶</a>
             <a @click.prevent="quickSearch('大米')">五常大米</a>
+            <a @click.prevent="quickSearch('食用油')">食用油</a>
             <a @click.prevent="quickSearch('抽纸')">抽纸</a>
-            <a @click.prevent="quickSearch('可乐')">可乐</a>
+            <a @click.prevent="quickSearch('鸡蛋')">鸡蛋</a>
           </div>
         </div>
 
@@ -68,7 +76,8 @@
 
       <div class="header-nav-band">
         <nav class="header-nav">
-          <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
+          <button class="allcat" @click="navigate('shop')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>全部商品分类</button>
+          <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页</button>
           <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
           <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
           <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
