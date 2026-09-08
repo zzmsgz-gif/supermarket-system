@@ -1,122 +1,234 @@
 <template>
 <section class="shop-home">
-        <div class="search-hero">
-          <div class="hero-copy">
-            <span>超市精选</span>
-            <h2>{{ isAdmin ? '查看当前上架商品' : '新鲜好物，一站选购' }}</h2>
-          </div>
-          <div class="search-box">
-            <input v-model="filters.keyword" placeholder="搜索上架商品" @keyup.enter="loadProducts" />
-            <button @click="loadProducts">搜索</button>
-          </div>
-        </div>
 
-        <div class="shop-filters">
-          <div class="filter-group">
-            <label>价格</label>
-            <input v-model.number="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
-            <span class="dash">—</span>
-            <input v-model.number="filters.maxPrice" type="number" min="0" placeholder="最高" @keyup.enter="applyFilters" />
-          </div>
-          <div class="filter-group">
-            <label>品牌</label>
-            <input v-model="filters.brand" placeholder="按品牌筛选" @keyup.enter="applyFilters" />
-          </div>
-          <div class="filter-group">
-            <label>排序</label>
-            <select v-model="filters.sort" @change="applyFilters">
-              <option value="">综合</option>
-              <option value="price_asc">价格从低到高</option>
-              <option value="price_desc">价格从高到低</option>
-              <option value="sales_desc">销量优先</option>
-              <option value="new_desc">最新上架</option>
-            </select>
-          </div>
-          <button class="ghost" @click="resetFilters">重置</button>
-        </div>
+  <!-- ① 营销活动条：读真实活动，无活动则整块不渲染 -->
+  <div v-if="activities.length" class="activity-strip">
+    <div v-for="act in activities" :key="act.id" class="activity-card">
+      <span class="act-tag">{{ act.type === 'DISCOUNT' ? '折扣' : '满减' }}</span>
+      <div class="act-body">
+        <strong>{{ act.name }}</strong>
+        <small v-if="act.endTime">有效期至 {{ act.endTime.slice(0, 10) }}</small>
+      </div>
+      <span class="act-value">{{ activityText(act) }}</span>
+    </div>
+  </div>
 
-        <div class="shop-layout">
-          <aside class="category-panel">
-            <div class="category-title">商品分类</div>
-            <button :class="{ active: !filters.categoryId }" @click="chooseCategory('')">全部分类</button>
-            <button
-              v-for="category in categories"
-              :key="category.id"
-              :class="{ active: String(filters.categoryId) === String(category.id) }"
-              @click="chooseCategory(category.id)"
-            >
-              <span>{{ category.name }}</span>
-            </button>
-          </aside>
+  <!-- ② 分类快捷入口：真实分类，点击即筛选（替代原来的侧栏 + 下拉两个重复选择器） -->
+  <div class="cat-entry">
+    <button :class="{ on: !filters.categoryId }" @click="chooseCategory('')">
+      <span class="cat-emoji">🛒</span>全部
+    </button>
+    <button
+      v-for="category in categories"
+      :key="category.id"
+      :class="{ on: String(filters.categoryId) === String(category.id) }"
+      @click="chooseCategory(category.id)"
+    >
+      <span class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
+    </button>
+  </div>
 
-          <div class="product-area">
-            <div class="product-head">
-              <strong>为你推荐</strong>
-              <select v-model="filters.categoryId" @change="loadProducts">
-                <option value="">全部分类</option>
-                <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-              </select>
-            </div>
+  <!-- ③ 工具条：搜索 / 价格 / 品牌 / 排序 -->
+  <div class="shop-filters">
+    <div class="search-box">
+      <input v-model="filters.keyword" placeholder="搜索上架商品" @keyup.enter="loadProducts" />
+      <button @click="loadProducts">搜索</button>
+    </div>
+    <div class="filter-group">
+      <label>价格</label>
+      <input v-model="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
+      <span class="dash">—</span>
+      <input v-model="filters.maxPrice" type="number" min="0" placeholder="最高" @keyup.enter="applyFilters" />
+    </div>
+    <div class="filter-group">
+      <label>品牌</label>
+      <select v-model="filters.brand" @change="applyFilters">
+        <option value="">全部品牌</option>
+        <option v-for="brand in brands" :key="brand" :value="brand">{{ brand }}</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>排序</label>
+      <select v-model="filters.sort" @change="applyFilters">
+        <option value="">综合</option>
+        <option value="price_asc">价格从低到高</option>
+        <option value="price_desc">价格从高到低</option>
+        <option value="sales_desc">销量优先</option>
+        <option value="new_desc">最新上架</option>
+      </select>
+    </div>
+    <button class="ghost" @click="resetFilters">重置</button>
+  </div>
 
-            <div class="product-grid">
-              <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
-            </div>
-          </div>
-        </div>
+  <!-- ④ 主体：无筛选时按真实分类分楼层，筛选时显示结果网格 -->
+  <div v-if="isFiltering" class="product-area">
+    <div class="product-head">
+      <strong>筛选结果</strong>
+      <span class="muted-note">共 {{ products.total }} 件</span>
+      <button class="ghost mini" @click="resetFilters">清空筛选</button>
+    </div>
+    <div class="product-grid">
+      <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+    </div>
+    <p v-if="!products.items.length" class="empty-hint">没有符合条件的商品，换个条件试试</p>
+  </div>
 
-        <div class="home-channels">
-          <div class="channel" v-if="hotProducts.length">
-            <div class="channel-head">
-              <h3>🔥 热门推荐</h3>
-              <button class="ghost mini" @click="loadHot">换一批</button>
-            </div>
-              <div class="channel-row">
-                <ProductCard v-for="p in hotProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
-              </div>
-          </div>
+  <div v-else class="floor-list">
+    <div v-for="floor in floors" :key="floor.id" class="floor">
+      <div class="fhead">
+        <span class="fbar"></span>
+        <strong>{{ floor.name }}</strong>
+        <span class="muted-note">{{ floor.items.length }} 件在售</span>
+        <button class="ghost mini" @click="chooseCategory(floor.id)">查看全部 ›</button>
+      </div>
+      <div class="product-grid">
+        <ProductCard v-for="product in floor.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+      </div>
+    </div>
+    <p v-if="!floors.length" class="empty-hint">暂无上架商品</p>
+  </div>
 
-          <div class="channel" v-if="newProducts.length">
-            <div class="channel-head">
-              <h3>🆕 新品上架</h3>
-              <button class="ghost mini" @click="loadNew">换一批</button>
-            </div>
-              <div class="channel-row">
-                <ProductCard v-for="p in newProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
-              </div>
-          </div>
+  <!-- ⑤ 运营栏目：均为后端真实数据 -->
+  <div class="home-channels">
+    <div class="channel" v-if="hotProducts.length">
+      <div class="channel-head">
+        <h3>🔥 热门推荐</h3>
+        <button class="ghost mini" @click="loadHot">换一批</button>
+      </div>
+      <div class="channel-row">
+        <ProductCard v-for="p in hotProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
+      </div>
+    </div>
 
-          <div class="channel" v-if="guessProducts.length">
-            <div class="channel-head">
-              <h3>🤖 猜你喜欢</h3>
-              <button class="ghost mini" @click="loadGuess">换一批</button>
-            </div>
-              <div class="channel-row">
-                <ProductCard v-for="p in guessProducts" :key="p.id" :product="p" mode="compact" :badges="true" @open="openProductDetail" />
-              </div>
-          </div>
+    <div class="channel" v-if="newProducts.length">
+      <div class="channel-head">
+        <h3>🆕 新品上架</h3>
+        <button class="ghost mini" @click="loadNew">换一批</button>
+      </div>
+      <div class="channel-row">
+        <ProductCard v-for="p in newProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
+      </div>
+    </div>
 
-          <div class="channel" v-if="dwellRankProducts.length">
-            <div class="channel-head">
-              <h3>👀 大家都在看</h3>
-              <button class="ghost mini" @click="loadDwellRank">换一批</button>
-            </div>
-              <div class="channel-row">
-                <ProductCard v-for="p in dwellRankProducts" :key="p.productId" :product="{ id: p.productId, name: p.productName, coverUrl: p.coverUrl }" mode="compact" :extra="'浏览 ' + p.viewCount + ' 次 · 均 ' + p.avgSeconds + 's'" @open="openProductDetail({ id: p.productId })" />
-              </div>
-          </div>
+    <div class="channel" v-if="guessProducts.length">
+      <div class="channel-head">
+        <h3>🤖 猜你喜欢</h3>
+        <button class="ghost mini" @click="loadGuess">换一批</button>
+      </div>
+      <div class="channel-row">
+        <ProductCard v-for="p in guessProducts" :key="p.id" :product="p" mode="compact" :badges="true" @open="openProductDetail" />
+      </div>
+    </div>
 
-        </div>
+    <div class="channel" v-if="dwellRankProducts.length">
+      <div class="channel-head">
+        <h3>👀 大家都在看</h3>
+        <button class="ghost mini" @click="loadDwellRank">换一批</button>
+      </div>
+      <div class="channel-row">
+        <ProductCard v-for="p in dwellRankProducts" :key="p.productId" :product="{ id: p.productId, name: p.productName, coverUrl: p.coverUrl }" mode="compact" :extra="'浏览 ' + p.viewCount + ' 次 · 均 ' + p.avgSeconds + 's'" @open="openProductDetail({ id: p.productId })" />
+      </div>
+    </div>
+  </div>
 
-      </section>
+  <!-- ⑥ 品牌墙：从真实在售商品聚合去重，点击按品牌筛选 -->
+  <div v-if="brandWall.length" class="brand-wall">
+    <span class="lb">合作品牌</span>
+    <button v-for="brand in brandWall" :key="brand" class="brand-chip" @click="filterBrand(brand)">{{ brand }}</button>
+    <span v-if="brands.length > brandWall.length" class="muted-note">等 {{ brands.length }} 个品牌</span>
+  </div>
+
+</section>
 </template>
 
 <script>
 import { inject } from 'vue';
+
+const CAT_EMOJI = {
+  生鲜食品: '🥬', 时令蔬菜: '🥬', 时令水果: '🍓', 肉禽蛋品: '🥩', 海鲜水产: '🦐',
+  酒水饮料: '🥤', 休闲零食: '🍪', 日用百货: '🧻', 粮油调味: '🧂', 乳品烘焙: '🍞',
+};
+
 export default {
   name: 'ShopPage',
   setup() {
-    const appCtx = inject('appCtx');
-    return { ...appCtx };
+    const ctx = inject('appCtx');
+    const { api, ref, computed, onMounted, categories, filters, products } = ctx;
+
+    // 本页自建状态（不污染 App.vue）
+    const activities = ref([]);
+    const allProducts = ref([]);
+
+    async function loadActivities() {
+      const list = await api.get('/activities/active').catch(() => []);
+      activities.value = Array.isArray(list) ? list : [];
+    }
+
+    async function loadAllProducts() {
+      const data = await api.get('/products?page=1&size=60').catch(() => null);
+      allProducts.value = Array.isArray(data?.items) ? data.items : [];
+    }
+
+    onMounted(() => {
+      loadActivities();
+      loadAllProducts();
+    });
+
+    // 按真实分类分组的楼层，只保留有商品的分类
+    const floors = computed(() => (categories.value || [])
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        items: allProducts.value.filter((p) => String(p.categoryId) === String(category.id)).slice(0, 8),
+      }))
+      .filter((floor) => floor.items.length));
+
+    // 品牌墙：真实商品品牌去重（保持出现顺序）
+    const brands = computed(() => {
+      const seen = [];
+      allProducts.value.forEach((p) => {
+        if (p.brand && !seen.includes(p.brand)) seen.push(p.brand);
+      });
+      return seen;
+    });
+
+    // 品牌墙只展示前 14 个（品牌筛选下拉仍用完整列表），避免 chip 过多糊成一片
+    const brandWall = computed(() => brands.value.slice(0, 14));
+
+    // 只要用户主动筛选过，就切换到结果网格（排序不算筛选，仍走楼层）
+    const isFiltering = computed(() => Boolean(
+      filters.keyword || filters.brand || filters.categoryId
+      || (filters.minPrice !== '' && filters.minPrice != null)
+      || (filters.maxPrice !== '' && filters.maxPrice != null),
+    ));
+
+    function activityText(act) {
+      if (!act) return '';
+      if (act.type === 'DISCOUNT') return `满${Number(act.threshold)} 打 ${(Number(act.discount) * 10).toFixed(1)} 折`;
+      return `满${Number(act.threshold)} 减 ${Number(act.discount)}`;
+    }
+
+    function catEmoji(name) {
+      return CAT_EMOJI[name] || '🛍️';
+    }
+
+    async function filterBrand(brand) {
+      filters.brand = brand;
+      await ctx.loadProducts();
+    }
+
+    return {
+      ...ctx,
+      activities,
+      floors,
+      brands,
+      brandWall,
+      isFiltering,
+      activityText,
+      catEmoji,
+      filterBrand,
+      productCount: computed(() => products.total),
+    };
   }
 };
 </script>

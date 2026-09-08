@@ -12,7 +12,7 @@
 
         <nav class="nav-list">
           <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'cart' }" @click="navigate('cart')">购物车</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'cart', 'nav-cart': true }" @click="navigate('cart')">购物车<span v-if="cartBadgeCount" class="nav-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span></button>
           <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
           <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
           <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
@@ -56,7 +56,6 @@
           <p class="eyebrow">{{ currentTitle.eyebrow }}</p>
           <h1>{{ currentTitle.title }}</h1>
         </div>
-        <p class="status" :class="{ error: !!error }">{{ error || notice || '已连接本地后端 /api' }}</p>
       </header>
 
       <router-view v-if="route.name !== 'admin'" />
@@ -435,6 +434,10 @@ const cartLocalTotal = computed(() => (cart.items || [])
 const cartOriginalSave = computed(() => (cart.items || [])
   .filter((item) => item.selected !== false)
   .reduce((sum, item) => sum + itemOriginalSave(item), 0));
+
+// 顶栏购物车角标：购物车内商品总件数（不区分是否勾选）
+const cartBadgeCount = computed(() => (cart.items || [])
+  .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
 const orderPayPreview = computed(() => {
   const total = cartLocalTotal.value;
