@@ -10,18 +10,19 @@
           </div>
         </div>
 
-        <nav class="nav-list">
-          <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'cart', 'nav-cart': true }" @click="navigate('cart')">购物车<span v-if="cartBadgeCount" class="nav-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span></button>
-          <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
-          <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
-        </nav>
+        <form class="header-search" @submit.prevent="goSearch">
+          <svg class="icon i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input v-model="headerKeyword" type="search" placeholder="搜索牛奶、面包、五常大米、抽纸…" aria-label="搜索商品" />
+          <button type="submit">搜索</button>
+        </form>
 
         <section class="account-panel">
           <template v-if="session.user">
+            <button class="cart-pill" @click="navigate('cart')">
+              <svg class="icon i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.5a1.8 1.8 0 0 0 1.8-1.4L21.5 7H6"/></svg>
+              购物车
+              <span v-if="cartBadgeCount" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
+            </button>
             <div class="account-user">
               <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @click="avatarInput?.click()" />
               <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
@@ -38,16 +39,25 @@
               </div>
               <button class="ghost recharge-entry" @click="navigate('recharge')">去充值</button>
             </template>
-            <button class="ghost" @click="logout">退出登录</button>
+            <button class="ghost" @click="logout">退出</button>
           </template>
           <template v-else>
             <div class="auth-guest">
-              <button @click="openAuth('login')">登录</button>
-              <button class="ghost" @click="openAuth('register')">注册</button>
+              <button class="ghost" @click="openAuth('login')">登录</button>
+              <button class="btn-solid" @click="openAuth('register')">注册</button>
             </div>
           </template>
         </section>
       </div>
+
+      <nav class="header-nav">
+        <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
+        <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
+        <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
+        <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
+        <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
+        <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
+      </nav>
     </header>
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
@@ -62,6 +72,45 @@
 
       <AdminPanel v-else :view="view" :categories="categories" :admin-ctx="adminCtx" />
     </section>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-logo">
+            <span class="brand-mark">S</span>
+            <span>超市购物系统</span>
+          </div>
+          <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
+          <form class="footer-sub" novalidate @submit.prevent="footerSubscribe">
+            <input v-model="subEmail" type="email" placeholder="输入邮箱，订阅促销情报" aria-label="订阅邮箱" />
+            <button type="button" @click="footerSubscribe">订阅</button>
+          </form>
+          <p v-if="subMsg" class="footer-sub-msg">{{ subMsg }}</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h5>购物指南</h5>
+            <a @click="navigate('shop')">首页商品</a>
+            <a @click="navigate('cart')">购物车</a>
+            <a @click="navigate('orders')">我的订单</a>
+            <a @click="navigate('coupons')">优惠券</a>
+          </div>
+          <div class="footer-col">
+            <h5>配送方式</h5>
+            <a>上门自提</a><a>极速达</a><a>配送范围</a><a>运费标准</a>
+          </div>
+          <div class="footer-col">
+            <h5>支付方式</h5>
+            <a>在线支付</a><a>微信支付</a><a>货到付款</a><a>发票说明</a>
+          </div>
+          <div class="footer-col">
+            <h5>售后服务</h5>
+            <a>售后政策</a><a>退款说明</a><a>取消订单</a><a>投诉建议</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</div>
+    </footer>
 
     <div v-if="confirmDialog.open" class="modal-mask" @click.self="resolveConfirm(false)">
       <div class="modal" role="dialog" aria-modal="true">
@@ -211,6 +260,23 @@ const router = useRouter();
 const route = useRoute();
 const cartStore = useCartStore();
 const userStore = useUserStore();
+
+// 头部搜索：跳转到商城并把关键词写入路由 query，ShopPage 挂载/监听后应用到筛选
+const headerKeyword = ref('');
+function goSearch() {
+  const kw = (headerKeyword.value || '').trim();
+  router.push({ name: 'shop', query: kw ? { kw } : {} });
+}
+
+// 页脚订阅
+const subEmail = ref('');
+const subMsg = ref('');
+function footerSubscribe() {
+  const v = (subEmail.value || '').trim();
+  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  subMsg.value = ok ? '订阅成功，优惠情报将第一时间送达' : '请输入有效的邮箱地址';
+  if (ok) subEmail.value = '';
+}
 
 function navigate(name, params) {
   router.push(params ? { name, params } : { name });

@@ -178,7 +178,8 @@
 </template>
 
 <script>
-import { inject, onUnmounted } from 'vue';
+import { inject, onUnmounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 const CAT_EMOJI = {
   生鲜食品: '🥬', 时令蔬菜: '🥬', 时令水果: '🍓', 肉禽蛋品: '🥩', 海鲜水产: '🦐',
@@ -189,7 +190,8 @@ export default {
   name: 'ShopPage',
   setup() {
     const ctx = inject('appCtx');
-    const { api, ref, computed, onMounted, categories, filters, products } = ctx;
+    const { api, ref, computed, onMounted, categories, filters, products, loadProducts } = ctx;
+    const route = useRoute();
 
     // 本页自建状态（不污染 App.vue）
     const activities = ref([]);
@@ -255,11 +257,23 @@ export default {
       allProducts.value = Array.isArray(data?.items) ? data.items : [];
     }
 
+    // 头部搜索：从路由 query.kw 读取关键词并应用到筛选（挂载时 + 路由变化时）
+    function applyQueryKeyword() {
+      const kw = (route.query.kw || '').toString().trim();
+      if (!kw) return;
+      if (kw === (filters.keyword || '')) return;
+      filters.keyword = kw;
+      loadProducts();
+    }
+
     onMounted(() => {
       loadActivities();
       loadAllProducts();
       loadAnnouncements();
+      applyQueryKeyword();
     });
+
+    watch(() => route.query.kw, applyQueryKeyword);
 
     onUnmounted(stopAuto);
 
