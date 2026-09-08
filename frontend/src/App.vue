@@ -1,5 +1,12 @@
 <template>
   <main class="app-shell">
+    <div class="header-utility">
+      <div class="header-utility-inner">
+        <span class="u-slogan">产地直采 · 冷链配送 · 新鲜到家</span>
+        <span class="u-hotline">客服热线 <strong>400-888-6666</strong>（每日 9:00–21:00）</span>
+      </div>
+    </div>
+
     <header class="site-header">
       <div class="header-inner">
         <div class="brand">
@@ -10,11 +17,20 @@
           </div>
         </div>
 
-        <form class="header-search" @submit.prevent="goSearch">
-          <svg class="icon i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input v-model="headerKeyword" type="search" placeholder="搜索牛奶、面包、五常大米、抽纸…" aria-label="搜索商品" />
-          <button type="submit">搜索</button>
-        </form>
+        <div class="search-area">
+          <form class="header-search" @submit.prevent="goSearch">
+            <svg class="icon i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input v-model="headerKeyword" type="search" placeholder="搜索牛奶、面包、五常大米、抽纸…" aria-label="搜索商品" />
+            <button type="submit">搜索</button>
+          </form>
+          <div class="hot-words">
+            <a @click.prevent="quickSearch('牛奶')">牛奶</a>
+            <a @click.prevent="quickSearch('面包')">面包</a>
+            <a @click.prevent="quickSearch('大米')">五常大米</a>
+            <a @click.prevent="quickSearch('抽纸')">抽纸</a>
+            <a @click.prevent="quickSearch('可乐')">可乐</a>
+          </div>
+        </div>
 
         <section class="account-panel">
           <template v-if="session.user">
@@ -50,14 +66,16 @@
         </section>
       </div>
 
-      <nav class="header-nav">
-        <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
-        <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
-        <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
-        <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
-        <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
-        <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
-      </nav>
+      <div class="header-nav-band">
+        <nav class="header-nav">
+          <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页商品</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
+          <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
+          <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
+        </nav>
+      </div>
     </header>
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
@@ -74,6 +92,26 @@
     </section>
 
     <footer class="site-footer">
+      <div class="footer-promise">
+        <div class="footer-promise-inner">
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <div><strong>正品保障</strong><small>品牌直供 · 假一赔十</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span>
+            <div><strong>极速配送</strong><small>冷链到家 · 次日必达</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+            <div><strong>7天无理由退换</strong><small>生鲜坏品先行赔付</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/><path d="M21 14h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-5Z"/><path d="M3 14v-3a9 9 0 0 1 18 0v3"/></svg></span>
+            <div><strong>售后无忧</strong><small>7×24 小时在线客服</small></div>
+          </div>
+        </div>
+      </div>
       <div class="footer-inner">
         <div class="footer-brand">
           <div class="footer-logo">
@@ -266,6 +304,12 @@ const headerKeyword = ref('');
 function goSearch() {
   const kw = (headerKeyword.value || '').trim();
   router.push({ name: 'shop', query: kw ? { kw } : {} });
+}
+
+// 头部热词：一键填充并搜索
+function quickSearch(kw) {
+  headerKeyword.value = kw;
+  goSearch();
 }
 
 // 页脚订阅

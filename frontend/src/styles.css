@@ -112,22 +112,45 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   display: block;
 }
 
+/* 顶部服务条：最深的绿色细带，滚动时随页面离开（不参与 sticky） */
+.header-utility {
+  background: #03291f;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+}
+
+.header-utility-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 18px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header-utility .u-hotline strong {
+  color: #fff;
+  font-size: 12.5px;
+  letter-spacing: 0.5px;
+}
+
 .site-header {
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: 14px 18px;
-  background: linear-gradient(180deg, rgba(4, 82, 60, 0.97), rgba(13, 122, 95, 0.9));
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 22px rgba(4, 82, 60, 0.18);
+  background: #04523c;
+  box-shadow: 0 10px 26px rgba(4, 40, 30, 0.28);
 }
 
 .header-inner {
   max-width: 1480px;
   margin: 0 auto;
+  padding: 14px 18px 10px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 .brand {
@@ -166,21 +189,43 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   flex-shrink: 0;
 }
 
-/* 头部搜索框：白底胶囊 + 聚焦绿色描边/光环，绿色搜索按钮（贴近参考模板） */
-.header-search {
+/* 头部搜索区：搜索胶囊 + 下行热词（经典电商布局） */
+.search-area {
   flex: 1 1 auto;
   max-width: 620px;
+  min-width: 0;
+}
+
+.header-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 46px;
+  height: 44px;
   padding: 0 6px 0 16px;
   background: #fff;
   border: 1.5px solid rgba(255, 255, 255, 0.55);
   border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(4, 82, 60, 0.18);
+  box-shadow: 0 6px 18px rgba(3, 41, 31, 0.22);
   transition: border-color .2s, box-shadow .2s;
 }
+
+.hot-words {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 7px;
+  padding-left: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.hot-words a {
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  transition: color .18s;
+}
+
+.hot-words a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 
 .header-search:focus-within {
   border-color: #fff;
@@ -224,24 +269,28 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 
 .header-search button:active { transform: translateY(0); }
 
-/* 导航行：位于头部第二行，白字链接 + 选中白底胶囊 */
+/* 导航行：全宽深色带，与主栏同色系但更深，保证白字对比度 */
+.header-nav-band {
+  background: rgba(2, 32, 24, 0.45);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .header-nav {
   max-width: 1480px;
   margin: 0 auto;
+  padding: 5px 14px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  gap: 4px;
 }
 
 .header-nav button {
-  min-height: 42px;
+  min-height: 38px;
   padding: 0 18px;
   border: 0;
   background: transparent;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   box-shadow: none;
@@ -249,12 +298,13 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   transition: background .18s, color .18s;
 }
 
-.header-nav button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.header-nav button:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
 
 .header-nav button.active {
   background: #fff;
   color: var(--brand-deep);
-  box-shadow: 0 8px 18px rgba(4, 82, 60, 0.2);
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(2, 32, 24, 0.35);
 }
 
 /* 账户区：购物车胶囊 + 注册实心按钮 */
@@ -2778,20 +2828,71 @@ button.mini.danger:hover {
 .shop-filters .search-box button { flex-shrink: 0; padding-inline: 18px; }
 
 /* ============ 页脚 ============ */
+
+/* 服务承诺条：绿渐变横带，四项承诺 */
+.footer-promise {
+  background: linear-gradient(120deg, #04523c, #0d7a5f);
+  color: #fff;
+}
+
+.footer-promise-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.promise-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+
+.promise-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.promise-icon svg { width: 21px; height: 21px; }
+
+.promise-item strong { display: block; font-size: 14.5px; letter-spacing: 0.5px; }
+
+.promise-item small {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .site-footer {
-  margin-top: 56px;
+  margin-top: 48px;
   background: #0f1a17;
   color: #8d9c97;
   font-size: 12.5px;
 }
 
+/* 品牌列占左，链接列组占右；.footer-cols 自身必须是 grid（修复 4 列竖堆 Bug） */
 .footer-inner {
   max-width: 1480px;
   margin: 0 auto;
-  padding: 48px 24px 34px;
+  padding: 44px 24px 34px;
   display: grid;
-  grid-template-columns: 1.5fr repeat(4, 1fr);
-  gap: 30px;
+  grid-template-columns: 1.35fr 3fr;
+  gap: 56px;
+}
+
+.footer-cols {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
 }
 
 .footer-brand .footer-logo {
@@ -2876,10 +2977,18 @@ button.mini.danger:hover {
 }
 
 /* 页脚窄屏堆叠 */
+@media (max-width: 1100px) {
+  .promise-item { justify-content: flex-start; }
+}
+
 @media (max-width: 980px) {
-  .footer-inner { grid-template-columns: 1fr 1fr; }
+  .footer-inner { grid-template-columns: 1fr; gap: 34px; }
+  .footer-promise-inner { grid-template-columns: repeat(2, 1fr); row-gap: 18px; }
 }
 
 @media (max-width: 560px) {
-  .footer-inner { grid-template-columns: 1fr; gap: 22px; }
+  .footer-cols { grid-template-columns: repeat(2, 1fr); }
+  .footer-promise-inner { grid-template-columns: 1fr 1fr; }
+  .promise-item { justify-content: flex-start; }
+  .header-utility .u-slogan { display: none; }
 }
