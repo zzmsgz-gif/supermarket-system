@@ -32,3 +32,4 @@ backend/uploads/
 backend/test.png
 backend/**/*.err
 *.err
+.shots/
