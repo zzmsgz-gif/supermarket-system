@@ -2,7 +2,6 @@
 <section class="data-panel recharge-page">
         <div class="recharge-head">
           <div>
-            <h2>账户充值</h2>
             <p>当前余额 <strong>{{ money(wallet.balance) }}</strong>，充值即时到账，可用于商城购物。</p>
           </div>
         </div>

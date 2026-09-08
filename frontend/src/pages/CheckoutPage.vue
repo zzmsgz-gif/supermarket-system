@@ -1,7 +1,6 @@
 <template>
 <section class="data-panel checkout">
         <div class="panel-head">
-          <h2>确认订单</h2>
           <button class="ghost" @click="view = 'cart'">返回购物车</button>
         </div>
 
