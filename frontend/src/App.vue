@@ -51,7 +51,7 @@
     </header>
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
-      <header class="topbar">
+      <header class="topbar" v-if="view !== 'product'">
         <div>
           <p class="eyebrow">{{ currentTitle.eyebrow }}</p>
           <h1>{{ currentTitle.title }}</h1>
