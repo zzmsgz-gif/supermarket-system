@@ -1436,7 +1436,7 @@ i.req { color: var(--danger); font-style: normal; }
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: linear-gradient(150deg, #fff6ea, #ffead4);
+  background: linear-gradient(150deg, #eafaf3, #d6f1e6);
 }
 
 .detail-image img { width: 100%; height: 100%; object-fit: cover; }
@@ -1465,9 +1465,29 @@ i.req { color: var(--danger); font-style: normal; }
   background: var(--surface-soft);
 }
 
-.detail-price strong { color: var(--danger); font-size: 28px; }
+.detail-price strong { color: #e34d1f; font-size: 28px; }
 .detail-origin { color: var(--muted); font-size: 13px; text-decoration: line-through; }
 .detail-unit { color: var(--muted); font-size: 13px; }
+
+.activity-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(120deg, #04523c, #0d7a5f);
+  box-shadow: 0 8px 20px rgba(4, 82, 60, 0.18);
+}
+
+.activity-tag {
+  padding: 3px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
 
 .detail-meta {
   display: grid;
@@ -1509,7 +1529,7 @@ i.req { color: var(--danger); font-style: normal; }
   box-shadow: none;
 }
 
-.qty-picker button:hover { background: #ffe9d2; }
+.qty-picker button:hover { background: var(--brand-soft); }
 .qty-picker span { min-width: 46px; color: var(--ink); font-weight: 600; text-align: center; }
 
 .detail-section {
