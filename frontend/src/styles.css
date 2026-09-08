@@ -125,10 +125,9 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 .header-inner {
   max-width: 1480px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: auto minmax(360px, 1fr) auto;
-  gap: 18px;
+  display: flex;
   align-items: center;
+  gap: 20px;
 }
 
 .brand {
@@ -161,34 +160,161 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   font-size: 12px;
 }
 
-.nav-list {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
+.header-inner .icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
-.nav-list button {
-  min-height: 36px;
+/* 头部搜索框：白底胶囊 + 聚焦绿色描边/光环，绿色搜索按钮（贴近参考模板） */
+.header-search {
+  flex: 1 1 auto;
+  max-width: 620px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 6px 0 16px;
+  background: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(4, 82, 60, 0.18);
+  transition: border-color .2s, box-shadow .2s;
+}
+
+.header-search:focus-within {
+  border-color: #fff;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.28), 0 6px 18px rgba(4, 82, 60, 0.22);
+}
+
+.header-search .i-search { color: var(--brand-deep); }
+
+.header-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  height: 100%;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.header-search input::placeholder { color: #9aa6a1; }
+
+.header-search button {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand), #12c48b);
   color: #fff;
-  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0, 168, 112, 0.32);
+  transition: transform .15s, box-shadow .2s;
+}
+
+.header-search button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 18px rgba(0, 168, 112, 0.4);
+}
+
+.header-search button:active { transform: translateY(0); }
+
+/* 导航行：位于头部第二行，白字链接 + 选中白底胶囊 */
+.header-nav {
+  max-width: 1480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.header-nav button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14.5px;
+  font-weight: 600;
   white-space: nowrap;
   box-shadow: none;
+  border-radius: 999px;
+  transition: background .18s, color .18s;
 }
 
-.nav-list button:hover, .nav-list button.active {
+.header-nav button:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+.header-nav button.active {
   background: #fff;
   color: var(--brand-deep);
-  box-shadow: 0 9px 20px rgba(4, 82, 60, 0.16);
+  box-shadow: 0 8px 18px rgba(4, 82, 60, 0.2);
 }
+
+/* 账户区：购物车胶囊 + 注册实心按钮 */
+.cart-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: none;
+  transition: background .18s, border-color .18s;
+}
+
+.cart-pill:hover { background: #fff; color: var(--brand-deep); border-color: #fff; }
+
+.cart-badge {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--warn);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--hero-a);
+}
+
+.btn-solid {
+  height: 38px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand-deep);
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(4, 82, 60, 0.2);
+  transition: transform .15s, box-shadow .2s;
+}
+
+.btn-solid:hover { transform: translateY(-1px); box-shadow: 0 9px 18px rgba(4, 82, 60, 0.28); }
 
 .account-panel {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
+  flex: 0 0 auto;
   min-width: 0;
   color: #fff;
 }
@@ -2650,3 +2776,110 @@ button.mini.danger:hover {
 .shop-filters { align-items: center; }
 .shop-filters .search-box { display: flex; gap: 8px; min-width: 220px; }
 .shop-filters .search-box button { flex-shrink: 0; padding-inline: 18px; }
+
+/* ============ 页脚 ============ */
+.site-footer {
+  margin-top: 56px;
+  background: #0f1a17;
+  color: #8d9c97;
+  font-size: 12.5px;
+}
+
+.footer-inner {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 48px 24px 34px;
+  display: grid;
+  grid-template-columns: 1.5fr repeat(4, 1fr);
+  gap: 30px;
+}
+
+.footer-brand .footer-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.footer-brand .footer-logo .brand-mark { width: 36px; height: 36px; font-size: 17px; border-radius: 11px; }
+
+.footer-brand > p {
+  line-height: 1.8;
+  max-width: 300px;
+  margin-bottom: 18px;
+}
+
+.footer-sub {
+  display: flex;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 22px;
+  padding: 4px;
+  max-width: 300px;
+}
+
+.footer-sub input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: 0;
+  color: #fff;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+
+.footer-sub input::placeholder { color: #6f7d79; }
+
+.footer-sub button {
+  border: 0;
+  background: var(--brand);
+  color: #fff;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: background .2s;
+}
+
+.footer-sub button:hover { background: var(--brand-dark); }
+
+.footer-sub-msg { margin-top: 10px; color: #7ff0c4; font-size: 12px; }
+
+.footer-col h5 {
+  color: #fff;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.footer-col a {
+  display: block;
+  margin-bottom: 10px;
+  color: #8d9c97;
+  cursor: pointer;
+  transition: color .18s;
+}
+
+.footer-col a:hover { color: #fff; }
+
+.footer-copy {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px 24px;
+  text-align: center;
+  color: #5d6b67;
+  font-size: 12.5px;
+}
+
+/* 页脚窄屏堆叠 */
+@media (max-width: 980px) {
+  .footer-inner { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 560px) {
+  .footer-inner { grid-template-columns: 1fr; gap: 22px; }
+}
