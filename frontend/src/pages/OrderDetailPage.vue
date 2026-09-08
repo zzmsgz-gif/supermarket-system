@@ -2,7 +2,6 @@
 <section class="data-panel">
         <div class="panel-head">
           <button class="ghost" @click="closeOrderDetail">← 返回</button>
-          <h2>订单详情</h2>
           <span v-if="orderDetail.data" class="order-no-display">订单号：{{ orderDetail.data.orderNo }}</span>
         </div>
         <div v-if="orderDetail.loading" class="empty">加载中…</div>
@@ -13,8 +12,8 @@
             <div class="order-row"><span>支付状态</span><b>{{ formatPaymentStatus(orderDetail.data.paymentStatus) }}</b></div>
             <div class="order-row"><span>商品小计</span><b>{{ money(orderDetail.data.totalAmount) }}</b></div>
             <div class="order-row" v-if="Number(orderDetail.data.freightAmount || 0) > 0"><span>运费</span><b>+ {{ money(orderDetail.data.freightAmount) }}</b></div>
-            <div class="order-row" v-if="Number(orderDetail.data.discountAmount || 0) > 0"><span>优惠券</span><b style="color:#e4393c">- {{ money(orderDetail.data.discountAmount) }}</b></div>
-            <div class="order-row" v-if="Number(orderDetail.data.activityDiscount || 0) > 0"><span>活动优惠（{{ orderDetail.data.activityName }}）</span><b style="color:#e4393c">- {{ money(orderDetail.data.activityDiscount) }}</b></div>
+            <div class="order-row" v-if="Number(orderDetail.data.discountAmount || 0) > 0"><span>优惠券</span><b style="color:var(--danger)">- {{ money(orderDetail.data.discountAmount) }}</b></div>
+            <div class="order-row" v-if="Number(orderDetail.data.activityDiscount || 0) > 0"><span>活动优惠（{{ orderDetail.data.activityName }}）</span><b style="color:var(--danger)">- {{ money(orderDetail.data.activityDiscount) }}</b></div>
             <div class="order-row"><span>实付金额</span><b>{{ money(orderDetail.data.payAmount) }}</b></div>
             <div class="order-row"><span>收货人</span><b>{{ orderDetail.data.receiverName }} {{ orderDetail.data.receiverPhone }}</b></div>
             <div class="order-row"><span>收货地址</span><b>{{ orderDetail.data.receiverAddress }}</b></div>

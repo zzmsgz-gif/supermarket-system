@@ -1,7 +1,6 @@
 <template>
 <section class="data-panel">
         <div class="panel-head">
-          <h2>我的订单</h2>
           <button @click="loadOrders">刷新</button>
         </div>
         <div v-if="!orders.items?.length" class="empty">暂无订单</div>
