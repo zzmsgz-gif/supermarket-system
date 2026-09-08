@@ -16,7 +16,11 @@
         <strong>{{ money(product.price) }}</strong>
         <span v-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
       </div>
-      <small>库存 {{ product.stock }}</small>
+      <small :class="{ 'low-stock': lowStock }">
+        <template v-if="lowStock">仅剩 {{ product.stock }} 件</template>
+        <template v-else>库存 {{ product.stock }}</template>
+        <template v-if="salesText"> · 已售 {{ salesText }}</template>
+      </small>
     </div>
     <div class="price-line" v-else>
       <div class="price-main"><strong>{{ money(product.price) }}</strong></div>
@@ -30,6 +34,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { money, initials, formatUnit, discountSave } from '../utils/format';
 
 const props = defineProps({
@@ -42,4 +47,17 @@ const props = defineProps({
 });
 
 defineEmits(['open', 'add']);
+
+// 库存预警：低于阈值且仍有货时高亮，比干巴巴的「库存 N」更能促单
+const lowStock = computed(() => {
+  const stock = Number(props.product.stock || 0);
+  const threshold = Number(props.product.lowStockThreshold || 0);
+  return threshold > 0 && stock > 0 && stock <= threshold;
+});
+
+const salesText = computed(() => {
+  const sales = Number(props.product.sales || 0);
+  if (sales <= 0) return '';
+  return sales >= 10000 ? `${(sales / 10000).toFixed(1)}万` : String(sales);
+});
 </script>

@@ -1,5 +1,6 @@
 package com.example.supermarket.config;
 
+import java.nio.charset.StandardCharsets;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,9 @@ public class DataSeeder {
         try {
             ResourceDatabasePopulator populator =
                     new ResourceDatabasePopulator(new ClassPathResource(SEED_RESOURCE));
+            // 必须显式指定 UTF-8：不指定时 ResourceDatabasePopulator 用平台默认编码，
+            // 中文 Windows 上是 GBK，会把 UTF-8 的 seed-data.sql 读成乱码并写库（表现为页面中文全是"鐢熼矞椋熷搧"）。
+            populator.setSqlScriptEncoding(StandardCharsets.UTF_8.name());
             populator.setContinueOnError(false);
             populator.execute(dataSource);
             log.info("[seed] 基础主数据导入/自愈完成");
