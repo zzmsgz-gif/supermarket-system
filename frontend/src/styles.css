@@ -3031,3 +3031,27 @@ button.mini.danger:hover {
   .promise-item { justify-content: flex-start; }
   .header-utility .u-slogan { display: none; }
 }
+
+/* ===== 购物车页：凑单进度条 + 游客提示 ===== */
+.cart-progress {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px dashed #cfe3db;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fbfefd, #f3f8f6);
+}
+.cp-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cp-text { font-size: 13px; color: #33413c; }
+.cp-text .cp-gap { color: var(--accent); font-size: 15px; }
+.cart-progress .ghost { height: 30px; padding: 0 14px; font-size: 12.5px; }
+.cp-track { height: 6px; margin-top: 10px; border-radius: 99px; background: #e3eee9; overflow: hidden; }
+.cp-track i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--brand), #12c48b); transition: width 0.3s; }
+.cart-guest-hint {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
