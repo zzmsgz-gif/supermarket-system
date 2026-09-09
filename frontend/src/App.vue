@@ -41,12 +41,12 @@
         </div>
 
         <section class="account-panel">
+          <button v-if="!isAdmin" class="cart-pill" @click="navigate('cart')" aria-label="购物车">
+            <svg class="icon i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.5a1.8 1.8 0 0 0 1.8-1.4L21.5 7H6"/></svg>
+            购物车
+            <span v-if="cartBadgeCount" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
+          </button>
           <template v-if="session.user">
-            <button class="cart-pill" @click="navigate('cart')">
-              <svg class="icon i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.5a1.8 1.8 0 0 0 1.8-1.4L21.5 7H6"/></svg>
-              购物车
-              <span v-if="cartBadgeCount" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
-            </button>
             <div class="account-user">
               <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @click="avatarInput?.click()" />
               <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
@@ -369,6 +369,141 @@ const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminOrderStats = ref([]);
 const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
 const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
+
+/* ===== 游客购物车：未登录先本地暂存，登录后并入服务端购物车 ===== */
+const GUEST_CART_KEY = 'supermarket_guest_cart';
+const guestCartRows = ref([]); // [{ productId, quantity, skuSpec }]
+const guestProductCache = new Map(); // productId -> 商品快照（渲染本地车用）
+const pendingCheckout = ref(false); // 游客点结算 → 登录完成后继续去结算
+
+function readGuestCart() {
+  try { const raw = localStorage.getItem(GUEST_CART_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+function writeGuestCart() {
+  localStorage.setItem(GUEST_CART_KEY, JSON.stringify(guestCartRows.value));
+}
+function persistGuestFromItems() {
+  guestCartRows.value = (cart.items || []).map((i) => ({ productId: i.productId, quantity: Number(i.quantity) || 1, skuSpec: i.skuSpec || '' }));
+  writeGuestCart();
+}
+function recomputeCartTotals() {
+  const selected = (cart.items || []).filter((i) => i.selected !== false);
+  cart.selectedCount = selected.reduce((s, i) => s + Number(i.quantity || 0), 0);
+  cart.selectedAmount = +selected
+    .reduce((s, i) => s + Number(i.productPrice || 0) * Number(i.quantity || 0), 0)
+    .toFixed(2);
+}
+// 用本地行 + 商品快照重建与后端一致形状的 cart（字段名对齐 CartItemResponse），页面无需分叉
+async function refreshGuestCartView() {
+  const rows = readGuestCart();
+  if (!rows.length) { cart.items = []; cart.selectedCount = 0; cart.selectedAmount = 0; return; }
+  const items = [];
+  for (const row of rows) {
+    let p = guestProductCache.get(row.productId);
+    if (!p || (p.price == null && p.productPrice == null)) {
+      try { p = await api.get(`/products/${row.productId}`); guestProductCache.set(row.productId, p); } catch { /* 商品可能已下架 */ }
+    }
+    if (!p) continue;
+    const price = Number(p.price ?? p.productPrice ?? 0);
+    const orig = Number(p.originalPrice ?? p.productOriginalPrice ?? price);
+    const stock = Number(p.stock ?? 0);
+    const qty = Math.max(1, Math.min(Number(row.quantity) || 1, Math.max(stock, 1)));
+    items.push({
+      id: 'g' + row.productId + '|' + (row.skuSpec || ''),
+      productId: p.id ?? row.productId,
+      productName: p.name || '商品',
+      productCoverUrl: p.coverUrl || '',
+      skuSpec: row.skuSpec || '',
+      productPrice: price,
+      productOriginalPrice: orig,
+      stock,
+      unit: p.unit || '',
+      quantity: qty,
+      selected: true,
+      subtotalAmount: +(price * qty).toFixed(2),
+    });
+    if (qty !== (Number(row.quantity) || 1)) row.quantity = qty;
+  }
+  if (JSON.stringify(rows) !== JSON.stringify(guestCartRows.value)) { guestCartRows.value = rows; writeGuestCart(); }
+  cart.items = items;
+  recomputeCartTotals();
+}
+async function guestAdd(product, quantity = 1, skuSpec = '') {
+  const q = Math.max(1, Number(quantity) || 1);
+  const stock = Number(product.stock ?? product.stockQuantity ?? 0);
+  const rows = readGuestCart();
+  const idx = rows.findIndex((r) => r.productId === product.id && (r.skuSpec || '') === (skuSpec || ''));
+  const cur = idx >= 0 ? Number(rows[idx].quantity) || 0 : 0;
+  if (stock > 0 && cur + q > stock) { fail(`库存不足：仅剩 ${stock} 件，购物车中已有 ${cur} 件`, '库存不足'); return false; }
+  if (idx >= 0) rows[idx].quantity = cur + q; else rows.push({ productId: product.id, quantity: q, skuSpec: skuSpec || '' });
+  guestCartRows.value = rows;
+  writeGuestCart();
+  if (product?.id) guestProductCache.set(product.id, product);
+  await refreshGuestCartView();
+  return true;
+}
+function guestRemoveItem(id) {
+  cart.items = (cart.items || []).filter((i) => i.id !== id);
+  persistGuestFromItems();
+  recomputeCartTotals();
+}
+function guestClear() {
+  cart.items = [];
+  cart.selectedCount = 0;
+  cart.selectedAmount = 0;
+  guestCartRows.value = [];
+  localStorage.removeItem(GUEST_CART_KEY);
+}
+async function mergeGuestCartToServer() {
+  const rows = readGuestCart();
+  if (!rows.length || !session.user) return;
+  let added = 0;
+  let merged = 0;
+  for (const row of rows) {
+    try {
+      await api.post('/cart/items', { productId: row.productId, quantity: Math.max(1, Number(row.quantity) || 1), skuSpec: row.skuSpec || undefined });
+      added += Math.max(1, Number(row.quantity) || 1);
+      merged += 1;
+    } catch (e) {
+      if (e?.authExpired) throw e;
+      fail(e?.message || '部分本地商品未能并入购物车');
+    }
+  }
+  guestCartRows.value = [];
+  localStorage.removeItem(GUEST_CART_KEY);
+  guestProductCache.clear();
+  if (added > 0) {
+    notice.value = `已将本地购物车 ${merged} 种 / ${added} 件商品并入你的账户`;
+    await loadCart();
+  }
+}
+// 活动规则缓存拉取（凑单进度条用；公开接口，游客也可调）
+async function ensureActiveActivities() {
+  if (activeActivities.value.length) return;
+  try { activeActivities.value = (await api.get('/activities/active')) || []; } catch { /* 非关键 */ }
+}
+// 凑单进度条：找最近一个未达门槛的全单满减/折扣
+const cartActivityProgress = computed(() => {
+  const amount = cartLocalTotal.value;
+  const rules = (activeActivities.value || [])
+    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0 && String(a.scope || 'ALL') === 'ALL')
+    .sort((x, y) => Number(x.threshold) - Number(y.threshold));
+  if (!rules.length || amount <= 0) return null;
+  const next = rules.find((a) => amount < Number(a.threshold));
+  const reachedTop = amount >= Number(rules[rules.length - 1].threshold);
+  const target = next || rules[rules.length - 1];
+  const benefit = target.type === 'DISCOUNT'
+    ? `打 ${Math.round(Number(target.discount) * 10)} 折`
+    : `立减 ¥${Number(target.discount)}`;
+  return {
+    benefit,
+    gap: reachedTop ? 0 : Math.max(Number(target.threshold) - amount, 0),
+    threshold: Number(target.threshold),
+    amount,
+    percent: Math.min(100, Math.round((amount / Number(target.threshold)) * 100)),
+    reachedTop,
+  };
+});
 const orders = reactive({ items: [] });
 const addresses = ref([]);
 const selectedAddressId = ref(null);
@@ -820,6 +955,7 @@ async function submitLogin() {
     await refreshForSession();
     closeAuth();
     showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+    if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
   } catch (err) {
     fail(err.message || '登录失败，请检查用户名或密码');
   } finally {
@@ -859,6 +995,7 @@ async function submitRegister() {
     await refreshForSession();
     closeAuth();
     showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
+    if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
   } catch (err) {
     const msg = err.message || '注册失败，请稍后重试';
     if (msg.includes('用户名')) authErrors.username = msg;
@@ -880,7 +1017,7 @@ function logout() {
   navigate('shop');
   notice.value = '已退出登录';
   disposeCharts();
-
+  loadCart(); // 游客态：清掉服务端 cart 视图，回到本地车状态
 }
 
 // token 过期/失效：后端返回 401 时由 api 客户端广播，这里优雅回到未登录态（不卡死界面）
@@ -889,6 +1026,7 @@ function handleAuthExpired() {
   rememberUser(null);
   if (route.name !== 'shop') navigate('shop');
   notice.value = '登录已过期，请重新登录';
+  loadCart();
 }
 if (typeof window !== 'undefined') {
   window.addEventListener('auth-expired', handleAuthExpired);
@@ -1176,7 +1314,11 @@ function resetFilters() {
 
 async function addToCart(product) {
   if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
-  if (!session.user) { fail('请先登录后再加入购物车'); return; }
+  if (!session.user) {
+    const ok = await guestAdd(product, 1);
+    if (ok) navigate('cart');
+    return;
+  }
   const stock = Number(product.stock || 0);
   if (stock <= 0) { fail(`${product.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
   const existing = (cart.items || []).find((i) => i.productId === product.id);
@@ -1194,7 +1336,8 @@ async function addToCart(product) {
 }
 
 async function loadCart() {
-  if (!session.user || isAdmin.value) return;
+  if (isAdmin.value) return;
+  if (!session.user) { await refreshGuestCartView(); return; }
   const cartData = await api.get('/cart');
   Object.assign(cart, cartData);
   cartStore.setCart(cartData);
@@ -1282,6 +1425,12 @@ function onQtyChange(item) {
 
 async function onQtyInput(item) {
   clearTimeout(cartSyncTimers[item.id]);
+  if (!session.user) {
+    // 游客：本地车直接改本地存储并即时重算合计（无需网络防抖）
+    persistGuestFromItems();
+    recomputeCartTotals();
+    return;
+  }
   cartSyncTimers[item.id] = setTimeout(async () => {
     const max = Number(item.stock || 0);
     const qty = Number(item.quantity) || 1;
@@ -1302,6 +1451,7 @@ async function onQtyInput(item) {
 }
 
 async function removeCartItem(id) {
+  if (!session.user) { guestRemoveItem(id); return; }
   await run(() => api.delete(`/cart/items/${id}`).then(loadCart), '购物车商品已删除');
 
 }
@@ -1314,6 +1464,7 @@ async function clearCart() {
     danger: true,
   });
   if (!confirmed) return;
+  if (!session.user) { guestClear(); return; }
   const ids = (cart.items || []).map((item) => item.id);
   await run(async () => {
     await Promise.all(ids.map((id) => api.delete(`/cart/items/${id}`)));
@@ -1348,6 +1499,7 @@ async function saveAddress() {
 
 async function goCheckout() {
   if (!cart.items?.length) { fail('购物车为空，请先添加商品'); return; }
+  if (!session.user) { pendingCheckout.value = true; openAuth('login'); return; }
   if (!addresses.value.length) await loadAddresses();
   if (!selectedAddressId.value && addresses.value.length) {
     selectedAddressId.value = (addresses.value.find((item) => item.isDefault) || addresses.value[0]).id;
@@ -1594,7 +1746,17 @@ function changeDetailQty(delta) {
 
 async function addDetailToCart() {
   if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
-  if (!session.user) { fail('请先登录后再加入购物车'); return; }
+  if (!session.user) {
+    const ok = await guestAdd(
+      { id: productDetail.data?.id, name: productDetail.data?.name, stock: productDetail.data?.stock,
+        price: productDetail.data?.price, originalPrice: productDetail.data?.originalPrice,
+        coverUrl: productDetail.data?.coverUrl, unit: productDetail.data?.unit },
+      detailQuantity.value || 1,
+      selectedSpecText.value || ''
+    );
+    if (ok) navigate('cart');
+    return;
+  }
   const stock = Number(productDetail.data?.stock || 0);
   const qty = Number(detailQuantity.value || 1);
   if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
@@ -1841,12 +2003,14 @@ async function refreshForSession() {
     return;
   }
   await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses()]);
+  // 登录/注册成功后：把游客本地购物车并入服务端
+  await mergeGuestCartToServer();
 
 }
 
 watch(view, async (next) => {
   ensureAllowedView();
-  if (next === 'cart') await loadCart();
+  if (next === 'cart') { await loadCart(); await ensureActiveActivities(); }
   if (next === 'checkout') { await loadWallet(); await loadAddresses(); await loadMyCoupons(); await loadUsableCoupons(); }
   if (next === 'orders') await loadOrders();
   if (next === 'coupons') await loadCoupons();
@@ -1876,6 +2040,8 @@ onMounted(async () => {
     await loadProducts();
     await loadHomeChannels();
     if (session.user) await refreshForSession();
+    else await refreshGuestCartView(); // 游客：水合本地购物车（角标/购物车页）
+    await ensureActiveActivities();
     syncRoute();
   });
 
@@ -1890,6 +2056,6 @@ onBeforeUnmount(() => {
 });
 const adminCtx = { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openOrderDetail, orderChart, orderChartEl, orderChartOption, orderDetail, orders, productChart, productChartEl, productChartOption, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, session, showAlert, stockAlerts };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSyncTimers, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderChart, orderChartEl, orderChartOption, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productChart, productChartEl, productChartOption, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, view, wallet, watch };
+const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSyncTimers, cartActivityProgress, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderChart, orderChartEl, orderChartOption, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productChart, productChartEl, productChartOption, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, view, wallet, watch };
 provide('appCtx', appCtx);
 </script>

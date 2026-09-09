@@ -4,6 +4,19 @@
           <h2>购物车</h2>
           <button v-if="cart.items?.length" class="ghost danger" @click="clearCart">清空购物车</button>
         </div>
+
+        <div v-if="cartActivityProgress && cart.items?.length" class="cart-progress">
+          <div class="cp-top">
+            <span class="cp-text">
+              <template v-if="cartActivityProgress.reachedTop">已满足满 {{ money(cartActivityProgress.threshold) }} 门槛，可{{ cartActivityProgress.benefit }}</template>
+              <template v-else>再买 <b class="cp-gap">{{ money(cartActivityProgress.gap) }}</b>，可{{ cartActivityProgress.benefit }}</template>
+            </span>
+            <button class="ghost" @click="navigate('shop')">去凑单</button>
+          </div>
+          <div class="cp-track"><i :style="{ width: cartActivityProgress.percent + '%' }"></i></div>
+        </div>
+
+        <div v-if="!session.user && cart.items?.length" class="cart-guest-hint">游客模式：商品暂存在本机浏览器，登录后会自动并入你的账户购物车并继续结算。</div>
         <div v-if="!cart.items?.length" class="empty">购物车为空，先去挑选商品吧</div>
         <div v-for="item in cart.items" :key="item.id" class="list-row cart-item">
           <img v-if="item.productCoverUrl" :src="item.productCoverUrl" class="order-item-img" alt="商品图片" />
@@ -27,7 +40,7 @@
           </div>
         </div>
 
-        <div v-if="cart.items?.length" class="coupon-block">
+        <div v-if="cart.items?.length && session.user" class="coupon-block">
           <h3>优惠券</h3>
           <div class="coupon-list">
             <button class="coupon-opt" :class="{ on: !selectedUserCouponId }" @click="chooseNoCoupon">不使用优惠券</button>
