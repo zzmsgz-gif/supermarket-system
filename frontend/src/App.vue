@@ -76,21 +76,20 @@
 
       <div class="header-nav-band">
         <nav class="header-nav">
-          <button class="allcat" @click="navigate('shop')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>全部商品分类</button>
           <div class="nav-links">
-            <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页</button>
-            <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
-            <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
-            <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
-            <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
-            <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
+            <button :class="{ active: view === 'shop' }" @click="navigate('shop')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v11h5v-6h4v6h5V10"/></svg><span>首页</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12a1 1 0 0 1 1 1v19l-3.5-2.5L12 22l-3.5-2.5L5 22V3a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg><span>我的订单</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M12 7v10" stroke-dasharray="2.5 3"/></svg><span>优惠券</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg><span>收货地址</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M15.5 15.5h1.5"/></svg><span>账户充值</span></button>
+            <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>后台管理</span></button>
           </div>
         </nav>
       </div>
     </header>
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
-      <header class="topbar" v-if="view !== 'product'">
+      <header class="topbar" v-if="view !== 'product' && view !== 'shop'">
         <div>
           <p class="eyebrow">{{ currentTitle.eyebrow }}</p>
           <h1>{{ currentTitle.title }}</h1>
