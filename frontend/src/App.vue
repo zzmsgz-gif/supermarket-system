@@ -77,12 +77,14 @@
       <div class="header-nav-band">
         <nav class="header-nav">
           <button class="allcat" @click="navigate('shop')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>全部商品分类</button>
-          <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
-          <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
-          <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
+          <div class="nav-links">
+            <button :class="{ active: view === 'shop' }" @click="navigate('shop')">首页</button>
+            <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')">我的订单</button>
+            <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')">优惠券</button>
+            <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')">收货地址</button>
+            <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')">账户充值</button>
+            <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')">后台管理</button>
+          </div>
         </nav>
       </div>
     </header>
