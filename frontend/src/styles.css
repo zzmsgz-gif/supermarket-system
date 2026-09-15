@@ -2463,6 +2463,20 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   border-radius: 10px; font-size: 12px; font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
+/* 商品卡活动角标（只在活动限定了分类/单品时出现，全场活动不显示 —— 见 App.vue productActivityTag）。
+   ⚠️ 此前这个类**一直没有样式**，元素就是一段无定位的裸文字，被 overflow:hidden 的图片压在下面、
+   从来没显示出来过（DOM 里能查到 textContent，所以只看 DOM 的验证会误判为"已渲染"）。
+   图片四角已被占满：左上省/热/新/会员、左下秒杀、右上收藏 → 它只能放右下。
+   用白底描边而非实心底色，与那几个实心角标区分开，避免被读成又一种"折扣力度"标记。 */
+.activity-chip {
+  position: absolute; right: 8px; bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 2px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  background: rgba(255, 255, 255, 0.94); color: var(--brand-deep);
+  border: 1px solid var(--brand); border-radius: 10px;
+  font-size: 11px; font-weight: 600; line-height: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
 .detail-discount {
   display: inline-block; margin-left: 10px;
   padding: 2px 8px; background: #fdecea; color: var(--danger);
