@@ -44,6 +44,15 @@ public class SysUser {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal balance;
 
+    @Column(name = "points", nullable = false)
+    private Long points = 0L;
+
+    @Column(name = "member_level", nullable = false)
+    private Integer memberLevel = 0;
+
+    @Column(name = "total_spent", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalSpent = BigDecimal.ZERO;
+
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 
@@ -134,6 +143,30 @@ public class SysUser {
 
     public void setBalance(BigDecimal balance) {
         this.balance = balance;
+    }
+
+    public Long getPoints() {
+        return points;
+    }
+
+    public void setPoints(Long points) {
+        this.points = points;
+    }
+
+    public Integer getMemberLevel() {
+        return memberLevel;
+    }
+
+    public void setMemberLevel(Integer memberLevel) {
+        this.memberLevel = memberLevel;
+    }
+
+    public BigDecimal getTotalSpent() {
+        return totalSpent;
+    }
+
+    public void setTotalSpent(BigDecimal totalSpent) {
+        this.totalSpent = totalSpent;
     }
 
     public LocalDateTime getLastLoginAt() {

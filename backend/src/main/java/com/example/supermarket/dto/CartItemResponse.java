@@ -1,8 +1,10 @@
 package com.example.supermarket.dto;
 
 import com.example.supermarket.entity.CartItem;
+import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.Product;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 public class CartItemResponse {
 
@@ -19,11 +21,25 @@ public class CartItemResponse {
     private Integer quantity;
     private Boolean selected;
     private BigDecimal subtotalAmount;
+    /** 命中限时秒杀时才有值，供购物车打出「秒杀」标识与倒计时 */
+    private Long flashSaleId;
+    private BigDecimal flashPrice;
+    private LocalDateTime flashEndTime;
 
     public CartItemResponse() {
     }
 
     public static CartItemResponse from(CartItem item, Product product) {
+        return from(item, product, null);
+    }
+
+    /**
+     * 结算单价取「正常售价 / 会员价 / 秒杀价」三者最低 —— 必须与
+     * {@code OrderService.buildOrderItem} 的算法逐字一致，否则购物车/结算预览会和实际下单对不上。
+     *
+     * @param flashSale 该商品此刻进行中的秒杀场次，没有则传 null
+     */
+    public static CartItemResponse from(CartItem item, Product product, FlashSale flashSale) {
         CartItemResponse response = new CartItemResponse();
         response.setId(item.getId());
         response.setProductId(product.getId());
@@ -31,13 +47,25 @@ public class CartItemResponse {
         response.setProductSku(product.getSku());
         response.setProductCoverUrl(product.getCoverUrl());
         response.setSkuSpec(item.getSkuSpec());
-        response.setProductPrice(product.getPrice());
-        response.setProductOriginalPrice(product.getOriginalPrice());
+        BigDecimal unitPrice = product.getPrice();
+        if (product.getMemberPrice() != null && product.getMemberPrice().compareTo(unitPrice) < 0) {
+            unitPrice = product.getMemberPrice();
+        }
+        if (flashSale != null && flashSale.getFlashPrice().compareTo(unitPrice) < 0) {
+            unitPrice = flashSale.getFlashPrice();
+            response.setFlashSaleId(flashSale.getId());
+            response.setFlashPrice(flashSale.getFlashPrice());
+            response.setFlashEndTime(flashSale.getEndTime());
+        }
+        response.setProductPrice(unitPrice);
+        // 划线对照价：命中秒杀时用商品正常售价（秒杀前的价），与订单行的 original_price 同口径
+        response.setProductOriginalPrice(response.getFlashSaleId() != null
+                ? product.getPrice() : product.getOriginalPrice());
         response.setStock(product.getStock());
         response.setUnit(product.getUnit());
         response.setQuantity(item.getQuantity());
         response.setSelected(Byte.valueOf((byte) 1).equals(item.getSelected()));
-        response.setSubtotalAmount(product.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+        response.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(item.getQuantity())));
         return response;
     }
 
@@ -143,6 +171,30 @@ public class CartItemResponse {
 
     public void setSubtotalAmount(BigDecimal subtotalAmount) {
         this.subtotalAmount = subtotalAmount;
+    }
+
+    public Long getFlashSaleId() {
+        return flashSaleId;
+    }
+
+    public void setFlashSaleId(Long flashSaleId) {
+        this.flashSaleId = flashSaleId;
+    }
+
+    public BigDecimal getFlashPrice() {
+        return flashPrice;
+    }
+
+    public void setFlashPrice(BigDecimal flashPrice) {
+        this.flashPrice = flashPrice;
+    }
+
+    public LocalDateTime getFlashEndTime() {
+        return flashEndTime;
+    }
+
+    public void setFlashEndTime(LocalDateTime flashEndTime) {
+        this.flashEndTime = flashEndTime;
     }
 
 }

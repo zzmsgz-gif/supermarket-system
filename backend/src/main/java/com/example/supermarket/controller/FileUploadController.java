@@ -3,7 +3,9 @@ package com.example.supermarket.controller;
 import com.example.supermarket.common.ApiResponse;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.security.CurrentUser;
+import com.example.supermarket.storage.BytesMultipartFile;
 import com.example.supermarket.storage.FileStorageService;
+import com.example.supermarket.storage.ImageCompressor;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/files")
 public class FileUploadController {
 
-    private static final Set<String> ALLOWED_TYPES = Set.of("product", "avatar", "review");
+    private static final Set<String> ALLOWED_TYPES = Set.of("product", "avatar", "review", "banner");
     private static final List<String> ALLOWED_CONTENT =
             List.of("image/jpeg", "image/png", "image/webp", "image/gif");
     private static final long MAX_SIZE = 10 * 1024 * 1024;
@@ -52,7 +54,16 @@ public class FileUploadController {
             throw new BusinessException(403, "仅管理员可上传商品 / 分类图片");
         }
         try {
-            String url = fileStorageService.store(type, file);
+            // 大图自动压缩：3.8MB 的原图缩到 1600 宽 + JPEG，避免前台轮播/列表加载卡顿
+            MultipartFile effective = file;
+            byte[] compressed = ImageCompressor.shrinkIfNeeded(file.getBytes());
+            if (compressed != null) {
+                String base = file.getOriginalFilename() == null ? "image" : file.getOriginalFilename();
+                int dot = base.lastIndexOf('.');
+                if (dot > 0) base = base.substring(0, dot);
+                effective = new BytesMultipartFile(base + ".jpg", "image/jpeg", compressed);
+            }
+            String url = fileStorageService.store(type, effective);
             return ApiResponse.ok(Map.of("url", url));
         } catch (Exception e) {
             throw new BusinessException(500, "文件存储失败：" + e.getMessage());

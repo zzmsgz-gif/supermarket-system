@@ -14,7 +14,9 @@ import com.example.supermarket.repository.ProductAttributeRepository;
 import com.example.supermarket.repository.ProductCategoryRepository;
 import com.example.supermarket.repository.ProductImageRepository;
 import com.example.supermarket.repository.ProductRepository;
+import com.example.supermarket.dto.RatingSummaryResponse;
 import com.example.supermarket.repository.PageDwellRepository;
+import com.example.supermarket.repository.ProductReviewRepository;
 import com.example.supermarket.repository.ProductSkuRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
@@ -50,6 +52,7 @@ public class ProductService {
     private final ProductSkuRepository skuRepository;
     private final ProductAttributeRepository attributeRepository;
     private final PageDwellRepository dwellRepository;
+    private final ProductReviewRepository productReviewRepository;
 
     public ProductService(
             ProductRepository productRepository,
@@ -57,7 +60,8 @@ public class ProductService {
             ProductImageRepository imageRepository,
             ProductSkuRepository skuRepository,
             ProductAttributeRepository attributeRepository,
-            PageDwellRepository dwellRepository
+            PageDwellRepository dwellRepository,
+            ProductReviewRepository productReviewRepository
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
@@ -65,6 +69,18 @@ public class ProductService {
         this.skuRepository = skuRepository;
         this.attributeRepository = attributeRepository;
         this.dwellRepository = dwellRepository;
+        this.productReviewRepository = productReviewRepository;
+    }
+
+    /** 全量商品星级聚合（评价数>0 的商品），供商品卡/详情展示平均星级 */
+    @Transactional(readOnly = true)
+    public List<RatingSummaryResponse> ratingSummary() {
+        return productReviewRepository.aggregateRatingByProduct().stream()
+                .map(row -> new RatingSummaryResponse(
+                        (Long) row[0],
+                        Math.round(((Number) row[1]).doubleValue() * 10) / 10.0,
+                        (Long) row[2]))
+                .toList();
     }
 
     @Transactional(readOnly = true)

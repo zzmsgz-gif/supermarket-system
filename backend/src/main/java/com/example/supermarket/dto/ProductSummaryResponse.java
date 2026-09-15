@@ -13,6 +13,7 @@ public class ProductSummaryResponse {
     private String coverUrl;
     private BigDecimal price;
     private BigDecimal originalPrice;
+    private BigDecimal memberPrice;
     private Integer stock;
     private Integer sales;
     private String unit;
@@ -35,6 +36,7 @@ public class ProductSummaryResponse {
         response.setCoverUrl(product.getCoverUrl());
         response.setPrice(product.getPrice());
         response.setOriginalPrice(product.getOriginalPrice());
+        response.setMemberPrice(product.getMemberPrice());
         response.setStock(product.getStock());
         response.setSales(product.getSales());
         response.setUnit(product.getUnit());
@@ -108,6 +110,14 @@ public class ProductSummaryResponse {
 
     public void setOriginalPrice(BigDecimal originalPrice) {
         this.originalPrice = originalPrice;
+    }
+
+    public BigDecimal getMemberPrice() {
+        return memberPrice;
+    }
+
+    public void setMemberPrice(BigDecimal memberPrice) {
+        this.memberPrice = memberPrice;
     }
 
     public Integer getStock() {

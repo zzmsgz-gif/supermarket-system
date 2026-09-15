@@ -217,6 +217,12 @@ public class ActivityService {
             if (rate.compareTo(BigDecimal.ZERO) <= 0 || rate.compareTo(BigDecimal.ONE) >= 0) {
                 return BigDecimal.ZERO;
             }
+            // 折扣活动同样必须满足门槛：未达门槛不打折（此前缺失校验，导致单件低价商品也被打折）
+            if (activity.getThreshold() != null
+                    && activity.getThreshold().compareTo(BigDecimal.ZERO) > 0
+                    && qualifying.compareTo(activity.getThreshold()) < 0) {
+                return BigDecimal.ZERO;
+            }
             return qualifying.multiply(BigDecimal.ONE.subtract(rate)).setScale(2, RoundingMode.HALF_UP);
         }
         return BigDecimal.ZERO;

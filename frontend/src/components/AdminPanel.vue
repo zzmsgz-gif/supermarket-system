@@ -45,17 +45,67 @@
                 <strong>{{ dashboardStats.totalStock }}</strong>
               </div>
               <div class="stat-card">
-                <small>订单数量</small>
+                <small>注册用户</small>
+                <strong>{{ dashboardStats.userCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>订单总数</small>
                 <strong>{{ dashboardStats.orderCount }}</strong>
               </div>
               <div class="stat-card">
-                <small>成交金额</small>
+                <small>累计成交</small>
                 <strong>{{ money(dashboardStats.salesAmount) }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>今日成交</small>
+                <strong>{{ money(dashboardStats.todaySalesAmount) }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>待发货</small>
+                <strong>{{ dashboardStats.pendingShipCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>待付款</small>
+                <strong>{{ dashboardStats.pendingPayCount }}</strong>
               </div>
             </div>
             <div class="chart-grid">
-              <div ref="productChartEl" class="chart-box"></div>
-              <div ref="orderChartEl" class="chart-box"></div>
+              <div class="chart-box chart-box--trend">
+                <div v-show="trendHasData" ref="trendChartEl" class="trend-canvas"></div>
+                <div v-show="!trendHasData" class="trend-empty">
+                  <empty-state icon="ticket" text="近 7 天暂无成交，出单后这里会生长出趋势曲线" />
+                </div>
+              </div>
+              <div ref="salesChartEl" class="chart-box"></div>
+            </div>
+            <div class="dash-grid">
+              <div class="dash-card">
+                <div class="panel-head"><h3>待办速览</h3></div>
+                <div class="todo-list">
+                  <button class="todo-item" @click="selectAdminMenu('orders')">
+                    <span>待发货订单</span><b>{{ dashboardStats.pendingShipCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                  <button class="todo-item" @click="selectAdminMenu('orders')">
+                    <span>待付款订单</span><b>{{ dashboardStats.pendingPayCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                  <button class="todo-item" @click="selectAdminMenu('refunds')">
+                    <span>售后待审核</span><b>{{ dashboardStats.refundApplyingCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                </div>
+              </div>
+              <div class="dash-card">
+                <div class="panel-head">
+                  <h3>低库存预警</h3>
+                  <button class="ghost" @click="selectAdminMenu('stock')">全部 ›</button>
+                </div>
+                <empty-state v-if="!stockAlerts.length" icon="cart" text="暂无低库存商品，备货充足" />
+                <ul v-else class="stock-list">
+                  <li v-for="p in stockAlerts.slice(0, 5)" :key="p.id">
+                    <span>{{ p.name }}</span>
+                    <b class="danger">剩 {{ p.stock }} / 阈值 {{ p.lowStockThreshold }}</b>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
 
@@ -105,7 +155,7 @@
                       <td><span :class="['tag', orderStatusTag(order.status)]">{{ formatOrderStatus(order.status) }}</span></td>
                       <td>{{ formatPaymentStatus(order.paymentStatus) }}</td>
                       <td>{{ order.receiverName || '-' }}<span class="cell-sub">{{ order.receiverPhone || '' }}</span></td>
-                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)" class="cell-sub">已优惠 {{ money(Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)) }}</span></td>
+                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
                       <td>
                         <template v-if="order.shipNo">{{ order.shipCompany }}<span class="cell-sub">{{ order.shipNo }}</span></template>
                         <span v-else class="cell-muted">未发货</span>
@@ -181,7 +231,7 @@
                     <tr>
                       <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span></td>
                       <td><span :class="['tag', refundStatusTag(order.refundStatus)]">{{ formatRefundStatus(order.refundStatus) }}</span></td>
-                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span></td>
+                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
                       <td>{{ order.refundReason || '未填写' }}</td>
                       <td>{{ formatDate(order.createdAt) }}</td>
                       <td class="col-action">
@@ -316,6 +366,10 @@
                   <span class="field-label">原价（划线价，选填）</span>
                   <input v-model.number="productForm.originalPrice" type="number" step="0.01" min="0" placeholder="高于售价时显示划线优惠" />
                 </label>
+                <label class="field">
+                  <span class="field-label">会员价（选填）</span>
+                  <input v-model.number="productForm.memberPrice" type="number" step="0.01" min="0" placeholder="低于售价时，会员按此价结算" />
+                </label>
                 <p v-if="Number(formDiscount.save) > 0" class="field-hint discount-hint">优惠提示：省 {{ money(formDiscount.save) }}，约 {{ formDiscount.rate }} 折</p>
                 <label class="field">
                   <span class="field-label">{{ editingProductId ? '库存（设定值）' : '初始库存' }} <i class="req">*</i></span>
@@ -440,6 +494,7 @@
                     <th>商品编号</th>
                     <th>所属分类</th>
                     <th>售价</th>
+                    <th>会员价</th>
                     <th>库存</th>
                     <th>累计销量</th>
                     <th>状态</th>
@@ -457,6 +512,7 @@
                         <span v-if="Number(product.originalPrice) > 0" class="cell-sub origin-sub">原价 {{ money(product.originalPrice) }}</span>
                         <span class="cell-sub">/ {{ formatUnit(product.unit) || '件' }}</span>
                       </td>
+                      <td><span v-if="Number(product.memberPrice) > 0" class="cell-strong member-price-cell">{{ money(product.memberPrice) }}</span><span v-else class="cell-sub">—</span></td>
                       <td><span :class="['tag', Number(product.stock) <= 10 ? 'warn' : '']">{{ product.stock }}</span></td>
                       <td>{{ product.sales ?? 0 }}</td>
                       <td><span :class="['tag', product.status === 'ON_SALE' ? 'ok' : 'muted']">{{ formatProductStatus(product.status) }}</span></td>
@@ -671,6 +727,261 @@
             </template>
           </div>
 
+          <!-- ===== 经营看板：时间维度 + 环比 + 结构分析 ===== -->
+          <div v-if="adminMenu === 'insights'" class="data-panel">
+            <div class="insights-bar">
+              <div class="range-tabs">
+                <button
+                  v-for="opt in [{ k: 'today', t: '今日' }, { k: '7d', t: '近 7 天' }, { k: '30d', t: '近 30 天' }, { k: '90d', t: '近 90 天' }]"
+                  :key="opt.k"
+                  class="ghost mini"
+                  :class="{ on: insightsRange === opt.k }"
+                  @click="changeInsightsRange(opt.k)"
+                >{{ opt.t }}</button>
+              </div>
+              <button class="ghost mini" :disabled="insightsLoading" @click="loadInsights">
+                {{ insightsLoading ? '加载中…' : '刷新' }}
+              </button>
+            </div>
+
+            <p v-if="!insights" class="empty-hint">{{ insightsLoading ? '正在加载经营数据…' : '暂无数据' }}</p>
+            <template v-else>
+              <p class="insights-note">
+                {{ insightsRangeLabel }}（{{ insights.fromDate }} ~ {{ insights.toDate }}）·
+                成交额与订单数按<b>订单创建时间</b>落在区间内、订单状态为已支付统计，与「数据统计」口径一致；
+                环比对照紧邻的等长上一区间。
+              </p>
+
+              <!-- 核心指标 -->
+              <div class="stat-grid">
+                <div class="stat-card">
+                  <small>成交额（GMV）</small>
+                  <strong>{{ money(insights.trade.gmv) }}</strong>
+                  <span class="growth" :class="growthClass(insights.growth.gmvPercent)">
+                    {{ growthText(insights.growth.gmvPercent) }}
+                  </span>
+                </div>
+                <div class="stat-card">
+                  <small>成交订单数</small>
+                  <strong>{{ insights.trade.paidOrderCount }}</strong>
+                  <span class="growth" :class="growthClass(insights.growth.orderPercent)">
+                    {{ growthText(insights.growth.orderPercent) }}
+                  </span>
+                </div>
+                <div class="stat-card">
+                  <small>客单价</small>
+                  <strong>{{ money(insights.trade.avgOrderValue) }}</strong>
+                  <span class="growth" :class="growthClass(insights.growth.avgOrderPercent)">
+                    {{ growthText(insights.growth.avgOrderPercent) }}
+                  </span>
+                </div>
+                <div class="stat-card">
+                  <small>新增用户</small>
+                  <strong>{{ insights.users.newUserCount }}</strong>
+                  <span class="growth flat">区间内注册</span>
+                </div>
+                <div class="stat-card">
+                  <small>复购率</small>
+                  <strong>{{ pctText(insights.users.repurchaseRate) }}</strong>
+                  <span class="growth flat">{{ insights.users.repeatBuyerCount }}/{{ insights.users.buyerCount }} 人复购</span>
+                </div>
+                <div class="stat-card">
+                  <small>退款</small>
+                  <strong>{{ insights.trade.refundCount }} 单</strong>
+                  <span class="growth flat">合计 {{ money(insights.trade.refundAmount) }}</span>
+                </div>
+                <div class="stat-card">
+                  <small>待发货</small>
+                  <strong>{{ insights.trade.pendingShipCount }}</strong>
+                  <span class="growth flat">需尽快处理</span>
+                </div>
+                <div class="stat-card">
+                  <small>待付款</small>
+                  <strong>{{ insights.trade.pendingPayCount }}</strong>
+                  <span class="growth flat">超时自动关闭</span>
+                </div>
+              </div>
+
+              <div class="insights-cols">
+                <!-- 成交趋势 -->
+                <div class="insights-block">
+                  <h4>成交趋势</h4>
+                  <div class="trend-bars">
+                    <div v-for="point in insights.trend" :key="point.date" class="trend-col"
+                         :title="`${point.date}：${point.orderCount} 单 / ${money(point.salesAmount)}`">
+                      <i :style="{ height: (insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0) > 0
+                        ? Math.max(4, Math.round(Number(point.salesAmount || 0) * 100 / insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0)))
+                        : 4) + '%' }"></i>
+                      <small>{{ point.date.slice(5) }}</small>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 会员等级分布 -->
+                <div class="insights-block">
+                  <h4>会员等级分布</h4>
+                  <div class="dist-list">
+                    <div v-for="level in insights.memberLevels" :key="level.level" class="dist-row">
+                      <span class="dist-label">{{ level.name }}</span>
+                      <div class="dist-bar"><i :style="{ width: (insights.memberLevels.reduce((m, l) => Math.max(m, l.userCount), 0) > 0
+                        ? Math.round(level.userCount * 100 / insights.memberLevels.reduce((m, l) => Math.max(m, l.userCount), 0))
+                        : 0) + '%' }"></i></div>
+                      <b>{{ level.userCount }} 人</b>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="insights-cols">
+                <!-- 品类占比 -->
+                <div class="insights-block">
+                  <h4>品类销售占比</h4>
+                  <p v-if="!insights.categoryShare.length" class="empty-hint">区间内暂无成交</p>
+                  <div v-else class="dist-list">
+                    <div v-for="cat in insights.categoryShare" :key="cat.categoryId" class="dist-row">
+                      <span class="dist-label">{{ cat.categoryName }}</span>
+                      <div class="dist-bar"><i :style="{ width: (cat.percent || 0) + '%' }"></i></div>
+                      <b>{{ pctText(cat.percent) }} · {{ money(cat.amount) }}</b>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 畅销商品 -->
+                <div class="insights-block">
+                  <h4>畅销商品 Top {{ insights.topProducts.length || 0 }}</h4>
+                  <p v-if="!insights.topProducts.length" class="empty-hint">区间内暂无成交</p>
+                  <div v-else class="dist-list">
+                    <div v-for="item in insights.topProducts" :key="item.productId" class="dist-row">
+                      <span class="dist-label">{{ item.productName }}</span>
+                      <div class="dist-bar"><i :style="{ width: Math.round(Number(item.quantity) * 100 / maxProductQuantity) + '%' }"></i></div>
+                      <b>{{ item.quantity }} 件 · {{ money(item.amount) }}</b>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 秒杀效果 -->
+              <div class="insights-block">
+                <h4>限时秒杀效果</h4>
+                <p v-if="!insights.flashSales.length" class="empty-hint">还没有秒杀场次</p>
+                <table v-else class="admin-table">
+                  <thead>
+                    <tr><th>场次</th><th>商品</th><th>秒杀价</th><th>名额进度</th><th>已售件数</th><th>成交额</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="sale in insights.flashSales" :key="sale.id">
+                      <td>{{ sale.name }}</td>
+                      <td>{{ sale.productName }}</td>
+                      <td>{{ money(sale.flashPrice) }}</td>
+                      <td>
+                        <div class="dist-bar slim"><i :style="{ width: (sale.soldPercent || 0) + '%' }"></i></div>
+                        <span class="cell-sub">{{ sale.soldQuota }}/{{ sale.totalQuota }}（{{ pctText(sale.soldPercent) }}）</span>
+                      </td>
+                      <td>{{ sale.soldQuantity }}</td>
+                      <td>{{ money(sale.amount) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
+
+          <!-- ===== 限时秒杀管理 ===== -->
+          <div v-if="adminMenu === 'flashSales'" class="data-panel">
+            <div class="form-block">
+              <div class="form-title">
+                <span>{{ flashEditingId ? '编辑秒杀场次' : '新增秒杀场次' }}</span>
+                <button v-if="!flashFormOpen" class="ghost mini" @click="openFlashForm(null)">＋ 新增场次</button>
+                <button v-else class="ghost mini" @click="closeFlashForm">收起</button>
+              </div>
+
+              <div v-if="flashFormOpen" class="compact-form form-bar">
+                <label class="field">
+                  <span class="field-label">秒杀商品<i class="req">*</i></span>
+                  <select v-model.number="flashForm.productId">
+                    <option v-for="p in flashProductOptions" :key="p.id" :value="p.id">
+                      {{ p.name }}（售价 {{ money(p.price) }}）
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">场次名</span>
+                  <input v-model="flashForm.name" placeholder="留空自动生成，如「早市秒杀」" />
+                </label>
+                <label class="field">
+                  <span class="field-label">秒杀价<i class="req">*</i></span>
+                  <input v-model.number="flashForm.flashPrice" type="number" step="0.01" min="0.01" placeholder="必须低于商品售价" />
+                </label>
+                <label class="field">
+                  <span class="field-label">秒杀名额<i class="req">*</i></span>
+                  <input v-model.number="flashForm.totalQuota" type="number" min="1" placeholder="如 30" />
+                </label>
+                <label class="field">
+                  <span class="field-label">每人限购</span>
+                  <input v-model.number="flashForm.perUserLimit" type="number" min="0" placeholder="0 表示不限购" />
+                </label>
+                <label class="field">
+                  <span class="field-label">排序</span>
+                  <input v-model.number="flashForm.sortNo" type="number" placeholder="越小越靠前" />
+                </label>
+                <label class="field">
+                  <span class="field-label">开始时间<i class="req">*</i></span>
+                  <input v-model="flashForm.startTime" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span class="field-label">结束时间<i class="req">*</i></span>
+                  <input v-model="flashForm.endTime" type="datetime-local" />
+                </label>
+                <label class="field">
+                  <span class="field-label">状态</span>
+                  <select v-model.number="flashForm.status">
+                    <option :value="1">启用（到时间自动开抢）</option>
+                    <option :value="0">停用（前台不展示）</option>
+                  </select>
+                </label>
+                <div class="store-form-actions">
+                  <button class="primary" @click="saveFlashSale">{{ flashEditingId ? '保存修改' : '创建场次' }}</button>
+                  <button class="ghost" @click="closeFlashForm">取消</button>
+                </div>
+              </div>
+            </div>
+
+            <table class="admin-table">
+              <thead>
+                <tr><th>场次</th><th>商品</th><th>秒杀价 / 售价</th><th>名额</th><th>限购</th><th>档期</th><th>状态</th><th class="col-action">操作</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="sale in adminFlashSales" :key="sale.id">
+                  <td><span class="cell-strong">{{ sale.name }}</span></td>
+                  <td>{{ sale.productName }}</td>
+                  <td>
+                    <span class="cell-strong">{{ money(sale.flashPrice) }}</span>
+                    <span class="cell-sub">售价 {{ money(sale.price) }}</span>
+                  </td>
+                  <td>
+                    {{ sale.soldQuota }}/{{ sale.totalQuota }}
+                    <span class="cell-sub">剩 {{ sale.remainingQuota }} 件</span>
+                  </td>
+                  <td>{{ sale.perUserLimit > 0 ? sale.perUserLimit + ' 件' : '不限' }}</td>
+                  <td>
+                    {{ (sale.startTime || '').slice(0, 16).replace('T', ' ') }}
+                    <span class="cell-sub">至 {{ (sale.endTime || '').slice(0, 16).replace('T', ' ') }}</span>
+                  </td>
+                  <td>
+                    <span :class="flashStateClass(sale)">{{ flashStateLabel(sale) }}</span>
+                    <span v-if="Number(sale.status) === 0" class="cell-sub">已停用</span>
+                  </td>
+                  <td class="col-action">
+                    <button class="ghost mini" @click="openFlashForm(sale)">编辑</button>
+                    <button class="ghost mini" @click="toggleFlashStatus(sale)">{{ Number(sale.status) === 1 ? '停用' : '启用' }}</button>
+                    <button class="ghost mini danger" @click="deleteFlashSale(sale)">删除</button>
+                  </td>
+                </tr>
+                <tr v-if="!adminFlashSales.length"><td colspan="8" class="cell-muted">暂无秒杀场次，点右上角「＋ 新增场次」创建</td></tr>
+              </tbody>
+            </table>
+          </div>
+
           <div v-if="adminMenu === 'activities'" class="data-panel">
             <div class="form-block">
               <div class="form-title">
@@ -800,6 +1111,230 @@
             </template>
           </div>
 
+          <div v-if="adminMenu === 'notices'" class="data-panel">
+            <div class="toolbar">
+              <button @click="openAnnouncementForm(null)">发布公告</button>
+              <span v-if="adminAnnouncements.length" class="tag muted">共 {{ adminAnnouncements.length }} 条</span>
+            </div>
+
+            <div v-if="announcementFormOpen" class="form-card admin-form-card">
+              <div class="form-title">
+                <span>{{ announcementForm.id ? '编辑公告' : '发布公告' }}</span>
+                <small>启用的公告按排序值从小到大展示在前台「商城公告」栏</small>
+              </div>
+              <div class="admin-form-grid">
+                <label class="field span-all">
+                  <span class="field-label">标题 <i class="req">*</i></span>
+                  <input v-model="announcementForm.title" maxlength="120" placeholder="如：国庆期间配送时效调整" />
+                </label>
+                <label class="field">
+                  <span class="field-label">类型</span>
+                  <select v-model="announcementForm.type">
+                    <option value="NOTICE">公告</option>
+                    <option value="ACTIVITY">活动</option>
+                    <option value="SERVICE">服务</option>
+                    <option value="WARNING">提醒</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">排序值</span>
+                  <input v-model.number="announcementForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
+                </label>
+                <div class="field">
+                  <span class="field-label">是否启用</span>
+                  <label class="check-line"><input type="checkbox" v-model="announcementForm.enabled" /> 启用（前台可见）</label>
+                </div>
+              </div>
+              <label class="field span-all">
+                <span class="field-label">公告内容 <i class="req">*</i></span>
+                <textarea v-model="announcementForm.content" rows="4" maxlength="500" placeholder="公告正文，最多 500 字"></textarea>
+              </label>
+              <div class="admin-form-foot">
+                <button class="ghost" @click="closeAnnouncementForm">取消</button>
+                <button @click="saveAnnouncement">保存</button>
+              </div>
+            </div>
+
+            <template v-else>
+              <div class="admin-cards" v-if="adminAnnouncements.length">
+                <div v-for="a in adminAnnouncements" :key="a.id" class="admin-card">
+                  <span :class="['tag', 'type-chip', noticeTypeClass(a.type)]">{{ noticeTypeLabel(a.type) }}</span>
+                  <div class="card-info">
+                    <p class="card-title"><span class="card-title-text">{{ a.title }}</span></p>
+                    <p v-if="a.content" class="card-content">{{ a.content }}</p>
+                    <p class="card-meta">
+                      <span>发布 {{ formatDate(a.publishTime) }}</span>
+                      <span>排序 {{ a.sortOrder }} · 越小越靠前</span>
+                      <span :class="Number(a.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(a.enabled) === 1 ? '启用中' : '已停用' }}</span>
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghost" @click="openAnnouncementForm(a)">编辑</button>
+                    <button class="ghost" @click="toggleAnnouncement(a)">{{ Number(a.enabled) === 1 ? '停用' : '启用' }}</button>
+                    <button class="ghost danger" @click="deleteAnnouncement(a)">删除</button>
+                  </div>
+                </div>
+              </div>
+              <empty-state v-else icon="receipt" text="还没有公告，点上方「发布公告」发第一条" />
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'banners'" class="data-panel">
+            <div class="toolbar">
+              <button @click="openBannerForm(null)">新建轮播位</button>
+              <span v-if="adminBanners.length" class="tag muted">共 {{ adminBanners.length }} 张</span>
+            </div>
+
+            <div v-if="bannerFormOpen" class="form-card admin-form-card">
+              <div class="form-title">
+                <span>{{ bannerForm.id ? '编辑轮播位' : '新建轮播位' }}</span>
+                <small>建议 16:9 横图；宽超 1600px 或大 500KB 自动压缩，点击前台可跳转关联商品</small>
+              </div>
+              <div class="field">
+                <span class="field-label">轮播图片 <i class="req">*</i></span>
+                <ImageUpload v-model="bannerForm.imageUrl" :multiple="false" :max="1" type="banner" @upload-state="v => (bannerUploading = v)" />
+              </div>
+              <div class="admin-form-grid">
+                <label class="field">
+                  <span class="field-label">跳转商品（可选）</span>
+                  <select v-model="bannerForm.linkProductId">
+                    <option :value="null">不跳转，仅展示</option>
+                    <option v-for="p in (adminProducts.items || [])" :key="p.id" :value="p.id">{{ p.name }}</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field-label">排序值</span>
+                  <input v-model.number="bannerForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
+                </label>
+                <p class="field-hint span-all" style="align-self: end;">是否展示用列表里的「停用 / 启用」控制；新建默认启用、排在最后。</p>
+              </div>
+              <div class="admin-form-foot">
+                <button class="ghost" @click="closeBannerForm">取消</button>
+                <button :disabled="bannerUploading" @click="saveBanner">{{ bannerUploading ? '图片上传中…' : '保存' }}</button>
+              </div>
+            </div>
+
+            <template v-else>
+              <div class="admin-cards" v-if="adminBanners.length">
+                <div v-for="(b, bi) in adminBanners" :key="b.id" class="admin-card">
+                  <span class="banner-pos" :title="'前台轮播第 ' + (bi + 1) + ' 张'">{{ bi + 1 }}</span>
+                  <div class="banner-cover">
+                    <img v-if="b.imageUrl" :src="b.imageUrl" alt="" />
+                    <span v-else class="cover-empty">无图</span>
+                  </div>
+                  <div class="card-info">
+                    <p class="card-title">
+                      <span :class="['tag', Number(b.enabled) === 1 ? 'ok' : 'muted']">{{ Number(b.enabled) === 1 ? '启用中' : '已停用' }}</span>
+                      <span class="card-title-text">{{ b.linkProductId ? (adminProductName(b.linkProductId) || ('跳转商品 #' + b.linkProductId)) : '仅展示，点击不跳转' }}</span>
+                    </p>
+                    <p class="card-meta">
+                      <span>排序值 {{ b.sortOrder }} · 越小越靠前</span>
+                      <span>前台轮播第 {{ bi + 1 }} 张</span>
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghost" @click="openBannerForm(b)">编辑</button>
+                    <button class="ghost" @click="toggleBanner(b)">{{ Number(b.enabled) === 1 ? '停用' : '启用' }}</button>
+                    <button class="ghost danger" @click="deleteBanner(b)">删除</button>
+                  </div>
+                </div>
+              </div>
+              <empty-state v-else icon="ticket" text="还没有轮播位：新建后前台轮播优先展示这里的内容" />
+            </template>
+          </div>
+
+          <div v-if="adminMenu === 'stores'" class="data-panel">
+            <div class="toolbar">
+              <button class="primary" @click="openStoreForm(null)">+ 新增门店</button>
+              <span class="result-count">共 {{ adminStores.length }} 家门店 · 营业 {{ adminStores.filter((s) => Number(s.status) === 1).length }} 家</span>
+              <button class="ghost" @click="loadAdminStores">刷新</button>
+            </div>
+
+            <form v-if="storeFormOpen" class="compact-form form-bar" @submit.prevent="saveStore">
+              <label class="field">
+                <span class="field-label">门店名称 <i class="req">*</i></span>
+                <input v-model="storeForm.name" maxlength="80" placeholder="如：南山科技园店" />
+              </label>
+              <label class="field field-wide">
+                <span class="field-label">门店地址 <i class="req">*</i></span>
+                <input v-model="storeForm.address" maxlength="255" placeholder="如：深圳市南山区科技园南区 8 栋 1 层" />
+              </label>
+              <label class="field">
+                <span class="field-label">联系电话</span>
+                <input v-model="storeForm.phone" maxlength="20" placeholder="选填" />
+              </label>
+              <label class="field">
+                <span class="field-label">营业时间</span>
+                <input v-model="storeForm.businessHours" maxlength="60" placeholder="如 08:00-22:00" />
+              </label>
+              <label class="field">
+                <span class="field-label">城市</span>
+                <input v-model="storeForm.city" maxlength="40" placeholder="选填" />
+              </label>
+              <label class="field">
+                <span class="field-label">区县</span>
+                <input v-model="storeForm.district" maxlength="40" placeholder="选填" />
+              </label>
+              <label class="field">
+                <span class="field-label">排序（越小越靠前）</span>
+                <input v-model.number="storeForm.sortNo" type="number" min="0" />
+              </label>
+              <label class="field">
+                <span class="field-label">状态</span>
+                <select v-model.number="storeForm.status">
+                  <option :value="1">营业（前台可选）</option>
+                  <option :value="0">停业（前台不可选）</option>
+                </select>
+              </label>
+              <label class="field field-wide">
+                <span class="field-label">自提须知</span>
+                <input v-model="storeForm.pickupNotice" maxlength="255" placeholder="显示在结算页门店下方，如：下单后约 1 小时可自提，凭自提码取货" />
+              </label>
+              <p class="field-hint field-wide" v-if="storeEditingId">正在编辑「{{ storeForm.name || '门店' }}」，保存后更新该门店</p>
+              <div class="store-form-actions field-wide">
+                <button class="primary" type="submit">保存门店</button>
+                <button class="ghost" type="button" @click="closeStoreForm">取消</button>
+              </div>
+            </form>
+
+            <empty-state v-if="!adminStores.length" icon="cart" text="还没有门店：新增后即可在结算页选择「门店自提」" />
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>门店名称</th>
+                    <th>地址</th>
+                    <th>电话</th>
+                    <th>营业时间</th>
+                    <th>排序</th>
+                    <th>状态</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="store in adminStores" :key="store.id">
+                    <td>
+                      <span class="cell-strong">{{ store.name }}</span>
+                      <span v-if="store.city || store.district" class="cell-sub">{{ store.city }}{{ store.district }}</span>
+                    </td>
+                    <td>{{ store.address }}</td>
+                    <td>{{ store.phone || '-' }}</td>
+                    <td>{{ store.businessHours || '-' }}</td>
+                    <td>{{ store.sortNo }}</td>
+                    <td><span :class="['tag', Number(store.status) === 1 ? 'ok' : 'muted']">{{ Number(store.status) === 1 ? '营业' : '停业' }}</span></td>
+                    <td class="col-action">
+                      <div class="row-actions">
+                        <button class="ghost" @click="openStoreForm(store)">编辑</button>
+                        <button :class="Number(store.status) === 1 ? 'danger' : ''" @click="toggleStoreStatus(store)">{{ Number(store.status) === 1 ? '停业' : '恢复营业' }}</button>
+                        <button class="danger ghost" @click="deleteStore(store)">删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div v-if="adminMenu === 'users'" class="data-panel">
             <div class="toolbar">
               <div class="search-box admin-search">
@@ -835,6 +1370,8 @@
                     <th>手机号</th>
                     <th>角色</th>
                     <th>钱包余额</th>
+                    <th>会员等级</th>
+                    <th>积分</th>
                     <th>状态</th>
                     <th>注册时间</th>
                     <th class="col-action">操作</th>
@@ -847,6 +1384,8 @@
                     <td>{{ user.phone || '-' }}</td>
                     <td><span :class="['tag', user.role === 'ADMIN' ? 'warn' : 'muted']">{{ formatRole(user.role) }}</span></td>
                     <td>{{ money(user.balance) }}</td>
+                    <td><span :class="['tag', Number(user.memberLevel) > 0 ? 'warn' : 'muted']">{{ memberLevelName(user.memberLevel) }}</span></td>
+                    <td>{{ user.points ?? 0 }}</td>
                     <td><span :class="['tag', user.status === 1 ? 'ok' : 'muted']">{{ user.status === 1 ? '启用' : '禁用' }}</span></td>
                     <td>{{ formatDate(user.createdAt) }}</td>
                     <td class="col-action">
@@ -876,7 +1415,7 @@
 <script setup>
 import { ref, reactive, computed, toRef, nextTick } from 'vue';
 import { api } from '../api/client';
-import { discountRate, discountSave, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
+import { discountRate, discountSave, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
 
 const props = defineProps({
@@ -891,7 +1430,11 @@ const props = defineProps({
 const isAdmin = { value: true };
 const view = toRef(props, 'view');
 const categories = toRef(props, 'categories');
-const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openOrderDetail, orderChart, orderChartEl, orderChartOption, orderDetail, orders, productChart, productChartEl, productChartOption, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, session, showAlert, stockAlerts } = props.adminCtx;
+const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminChartProducts, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, salesChart, salesChartEl, salesTopChartOption, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, trendChart, trendChartEl, trendChartOption } = props.adminCtx;
+
+// 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
+const MEMBER_LEVEL_NAMES = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
+const memberLevelName = (level) => MEMBER_LEVEL_NAMES[Number(level) || 0] || '普通会员';
 
 const adminActivities = reactive({ items: [], page: 1, size: 10, total: 0 });
 
@@ -1028,6 +1571,301 @@ const activityForm = reactive({ id: null, name: '', type: 'FULL_REDUCTION', scop
 
 const adminIcon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 
+/* ---------------- 门店自提（后台） ---------------- */
+const adminStores = ref([]);
+const storeFormOpen = ref(false);
+const storeEditingId = ref(null);
+const storeForm = reactive({
+  name: '', address: '', phone: '', businessHours: '', city: '', district: '',
+  pickupNotice: '', status: 1, sortNo: 0,
+});
+
+async function loadAdminStores() {
+  if (!isAdmin.value) return;
+  try {
+    adminStores.value = (await api.get('/admin/stores')) || [];
+  } catch (err) {
+    fail(err?.message || '门店列表加载失败');
+  }
+}
+
+function resetStoreForm() {
+  storeEditingId.value = null;
+  Object.assign(storeForm, {
+    name: '', address: '', phone: '', businessHours: '', city: '', district: '',
+    pickupNotice: '', status: 1, sortNo: 0,
+  });
+}
+
+function openStoreForm(store) {
+  if (store) {
+    storeEditingId.value = store.id;
+    Object.assign(storeForm, {
+      name: store.name || '',
+      address: store.address || '',
+      phone: store.phone || '',
+      businessHours: store.businessHours || '',
+      city: store.city || '',
+      district: store.district || '',
+      pickupNotice: store.pickupNotice || '',
+      status: Number(store.status) === 0 ? 0 : 1,
+      sortNo: Number(store.sortNo || 0),
+    });
+  } else {
+    resetStoreForm();
+  }
+  storeFormOpen.value = true;
+}
+
+function closeStoreForm() {
+  storeFormOpen.value = false;
+  resetStoreForm();
+}
+
+function storePayload() {
+  return {
+    name: storeForm.name.trim(),
+    address: storeForm.address.trim(),
+    phone: storeForm.phone.trim(),
+    businessHours: storeForm.businessHours.trim(),
+    city: storeForm.city.trim(),
+    district: storeForm.district.trim(),
+    pickupNotice: storeForm.pickupNotice.trim(),
+    status: Number(storeForm.status) === 0 ? 0 : 1,
+    sortNo: Number(storeForm.sortNo) || 0,
+  };
+}
+
+async function saveStore() {
+  if (!storeForm.name.trim()) { fail('请填写门店名称'); return; }
+  if (!storeForm.address.trim()) { fail('请填写门店地址'); return; }
+  const payload = storePayload();
+  try {
+    await run(async () => {
+      if (storeEditingId.value) await api.put(`/admin/stores/${storeEditingId.value}`, payload);
+      else await api.post('/admin/stores', payload);
+      await loadAdminStores();
+    }, storeEditingId.value ? '门店已更新' : '门店已新增');
+    closeStoreForm();
+  } catch (err) {
+    // run() 已弹出错误提示；保持表单打开便于修正
+  }
+}
+
+async function toggleStoreStatus(store) {
+  const next = Number(store.status) === 1 ? 0 : 1;
+  try {
+    await run(async () => {
+      await api.patch(`/admin/stores/${store.id}/status`, { status: next });
+      await loadAdminStores();
+    }, next === 1 ? `「${store.name}」已恢复营业` : `「${store.name}」已停业，前台不再可选`);
+  } catch (err) {
+    // 已在 run() 中提示
+  }
+}
+
+async function deleteStore(store) {
+  const confirmed = await askConfirm({
+    title: '删除门店',
+    message: `删除后「${store.name}」将从自提门店列表移除，已下单订单里的门店快照不受影响。`,
+    confirmText: '确认删除',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await run(async () => {
+      await api.delete(`/admin/stores/${store.id}`);
+      await loadAdminStores();
+    }, '门店已删除');
+  } catch (err) {
+    // 已在 run() 中提示
+  }
+}
+
+/* ===================== 限时秒杀管理 =====================
+   状态与函数刻意放在本组件内（AdminPanel 已直接 import api），
+   避免往 App.vue 那个超长 adminCtx 单行对象里塞键（改起来容易静默失败）。 */
+const adminFlashSales = ref([]);
+const flashFormOpen = ref(false);
+const flashEditingId = ref(null);
+const flashProductOptions = ref([]);
+const flashForm = reactive({
+  productId: 0, name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
+  startTime: '', endTime: '', status: 1, sortNo: 0,
+});
+
+async function loadAdminFlashSales() {
+  if (!isAdmin.value) return;
+  try {
+    adminFlashSales.value = (await api.get('/admin/flash-sales')) || [];
+  } catch (err) {
+    fail(err?.message || '秒杀场次加载失败');
+  }
+}
+
+// 秒杀商品候选：走后台商品接口（含已下架商品，便于提前排期）
+async function loadFlashProductOptions() {
+  try {
+    const page = await api.get('/admin/products?page=1&size=100');
+    flashProductOptions.value = (page && page.items) || [];
+  } catch (err) {
+    flashProductOptions.value = [];
+  }
+}
+
+function flashStateLabel(sale) {
+  if (sale.state === 'RUNNING') return '进行中';
+  if (sale.state === 'UPCOMING') return '未开始';
+  return '已结束';
+}
+
+function flashStateClass(sale) {
+  if (sale.state === 'RUNNING') return 'tag ok';
+  if (sale.state === 'UPCOMING') return 'tag amber';
+  return 'tag muted';
+}
+
+// 把后端返回的 ISO 时间转成 <input type="datetime-local"> 需要的 yyyy-MM-ddTHH:mm
+function toDateTimeInput(value) {
+  if (!value) return '';
+  const text = String(value);
+  return text.length >= 16 ? text.slice(0, 16) : text;
+}
+
+function openFlashForm(sale) {
+  if (!flashProductOptions.value.length) loadFlashProductOptions();
+  flashEditingId.value = sale ? sale.id : null;
+  Object.assign(flashForm, sale
+    ? {
+        productId: Number(sale.productId),
+        name: sale.name || '',
+        flashPrice: Number(sale.flashPrice),
+        totalQuota: Number(sale.totalQuota),
+        perUserLimit: Number(sale.perUserLimit || 0),
+        startTime: toDateTimeInput(sale.startTime),
+        endTime: toDateTimeInput(sale.endTime),
+        status: Number(sale.status),
+        sortNo: Number(sale.sortNo || 0),
+      }
+    : {
+        productId: flashProductOptions.value.length ? Number(flashProductOptions.value[0].id) : 0,
+        name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
+        startTime: '', endTime: '', status: 1, sortNo: 0,
+      });
+  flashFormOpen.value = true;
+}
+
+function closeFlashForm() {
+  flashFormOpen.value = false;
+  flashEditingId.value = null;
+}
+
+async function saveFlashSale() {
+  if (!flashForm.productId) { fail('请选择秒杀商品'); return; }
+  if (!(Number(flashForm.flashPrice) > 0)) { fail('请填写大于 0 的秒杀价'); return; }
+  if (!(Number(flashForm.totalQuota) >= 1)) { fail('秒杀名额至少为 1'); return; }
+  if (!flashForm.startTime || !flashForm.endTime) { fail('请选择开始与结束时间'); return; }
+  if (flashForm.startTime >= flashForm.endTime) { fail('开始时间必须早于结束时间'); return; }
+  const payload = {
+    productId: Number(flashForm.productId),
+    name: flashForm.name.trim() || null,
+    flashPrice: Number(flashForm.flashPrice),
+    totalQuota: Number(flashForm.totalQuota),
+    perUserLimit: Number(flashForm.perUserLimit || 0),
+    startTime: flashForm.startTime,
+    endTime: flashForm.endTime,
+    status: Number(flashForm.status),
+    sortNo: Number(flashForm.sortNo || 0),
+  };
+  try {
+    await run(async () => {
+      if (flashEditingId.value) await api.put(`/admin/flash-sales/${flashEditingId.value}`, payload);
+      else await api.post('/admin/flash-sales', payload);
+      await loadAdminFlashSales();
+    }, flashEditingId.value ? '秒杀场次已更新' : '秒杀场次已创建');
+    closeFlashForm();
+  } catch (err) {
+    // run() 已提示错误（如"秒杀价必须低于商品售价"/"该商品已有未结束的场次"），保持表单打开
+  }
+}
+
+async function toggleFlashStatus(sale) {
+  const next = Number(sale.status) === 1 ? 0 : 1;
+  try {
+    await run(async () => {
+      await api.patch(`/admin/flash-sales/${sale.id}/status`, { status: next });
+      await loadAdminFlashSales();
+    }, next === 1 ? `「${sale.name}」已启用` : `「${sale.name}」已停用，前台不再展示`);
+  } catch (err) {
+    // 已在 run() 中提示
+  }
+}
+
+async function deleteFlashSale(sale) {
+  const confirmed = await askConfirm({
+    title: '删除秒杀场次',
+    message: `删除后「${sale.name}」将从前台秒杀区移除。已下单订单里的秒杀价与名额快照不受影响。`,
+    confirmText: '确认删除',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await run(async () => {
+      await api.delete(`/admin/flash-sales/${sale.id}`);
+      await loadAdminFlashSales();
+    }, '秒杀场次已删除');
+  } catch (err) {
+    // 已在 run() 中提示
+  }
+}
+
+/* ===================== 经营看板 ===================== */
+const insightsRange = ref('7d');
+const insights = ref(null);
+const insightsLoading = ref(false);
+
+async function loadInsights() {
+  if (!isAdmin.value) return;
+  insightsLoading.value = true;
+  try {
+    insights.value = await api.get(`/admin/stats/dashboard?range=${insightsRange.value}`);
+  } catch (err) {
+    fail(err?.message || '经营数据加载失败');
+  } finally {
+    insightsLoading.value = false;
+  }
+}
+
+async function changeInsightsRange(range) {
+  insightsRange.value = range;
+  await loadInsights();
+}
+
+function pctText(value) {
+  if (value === null || value === undefined) return '—';
+  return `${value}%`;
+}
+
+// 环比上升/下降的展示样式：上升用绿(好)、下降用红(差)——经营指标不看股市红绿习惯
+function growthClass(value) {
+  if (value === null || value === undefined) return 'flat';
+  return value >= 0 ? 'up' : 'down';
+}
+
+function growthText(value) {
+  if (value === null || value === undefined) return '不可比';
+  return `${value >= 0 ? '+' : ''}${value}%`;
+}
+
+const maxProductQuantity = computed(() => {
+  const list = (insights.value && insights.value.topProducts) || [];
+  return list.reduce((max, item) => Math.max(max, Number(item.quantity || 0)), 0) || 1;
+});
+
+const insightsRangeLabel = computed(() => ({
+  today: '今日', '7d': '近 7 天', '30d': '近 30 天', '90d': '近 90 天',
+}[insightsRange.value] || '近 7 天'));
+
 const adminIcons = {
   dashboard: adminIcon('<rect x="3.5" y="11" width="4.5" height="9.5" rx="1"/><rect x="9.75" y="3.5" width="4.5" height="17" rx="1"/><rect x="16" y="7.5" width="4.5" height="13" rx="1"/>'),
   orders: adminIcon('<rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/>'),
@@ -1038,10 +1876,14 @@ const adminIcons = {
   coupons: adminIcon('<path d="M3.5 8.5A2 2 0 0 1 5.5 6.5h13a2 2 0 0 1 2 2v1.6a2.4 2.4 0 0 0 0 3.8v1.6a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-1.6a2.4 2.4 0 0 0 0-3.8V8.5z"/><path d="M12 8v8"/>'),
   users: adminIcon('<circle cx="9" cy="8" r="3.4"/><path d="M3 20.2c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"/><path d="M16.2 5.2a3 3 0 0 1 0 5.6"/><path d="M18.4 14.9c1.9.7 3 2.4 3 4.4"/>'),
   activities: adminIcon('<path d="M3.5 16.5 9 11l3.5 3.5L20.5 7"/><path d="M15.5 7H20.5V12"/>'),
+  stores: adminIcon('<path d="M4 9.5 5.2 4.5h13.6L20 9.5"/><path d="M4 9.5h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-10z"/><path d="M9.5 20.5v-5h5v5"/>'),
+  insights: adminIcon('<path d="M4 19.5h16"/><path d="M7 16.5V10M12 16.5V5.5M17 16.5v-4.5"/>'),
+  flashSales: adminIcon('<path d="M13.5 2.5 5 13.5h5.5l-1 8 9-11h-5.5l.5-8z"/>'),
 };
 
 const adminMenuItems = computed(() => [
   { key: 'dashboard', label: '数据统计', desc: '平台经营概览：商品、库存、订单与成交额', group: '经营' },
+  { key: 'insights', label: '经营看板', desc: '按时间维度看成交、客单价、复购与品类结构，含环比', group: '经营' },
   { key: 'orders', label: '订单管理', desc: '查询订单、录入快递单号发货、完成或取消订单', group: '经营', badge: (adminOrders.total || 0) || '' },
   { key: 'refunds', label: '售后管理', desc: '审核用户的退款申请，同意后款项退回用户钱包', group: '经营', badge: (refundOrders.total || 0) || '', warn: true },
   { key: 'stock', label: '库存预警', desc: '低于预警阈值的商品列表，支持一键补货', group: '经营', badge: stockAlerts.value.length || '', warn: true },
@@ -1049,6 +1891,10 @@ const adminMenuItems = computed(() => [
   { key: 'categories', label: '分类管理', desc: '维护商品分类与排序', group: '管理', badge: categories.value.length || '' },
   { key: 'coupons', label: '优惠券管理', desc: '创建满减券、发放与停用', group: '管理', badge: (adminCoupons.total || 0) || '' },
   { key: 'activities', label: '营销活动', desc: '创建满减/折扣活动，按全场、类目或商品精准投放', group: '管理', badge: (adminActivities.total || 0) || '' },
+  { key: 'flashSales', label: '限时秒杀', desc: '按商品开秒杀场次：秒杀价、独立名额、每人限购与档期', group: '管理', badge: adminFlashSales.value.filter((f) => f.state === 'RUNNING').length || '' },
+  { key: 'notices', label: '公告管理', desc: '发布商城公告：置顶排序、类型分类、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
+  { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
+  { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
 ]);
 
@@ -1067,19 +1913,49 @@ const adminMenuGroups = computed(() => {
 
 const currentAdminMenu = computed(() => adminMenuItems.value.find((item) => item.key === adminMenu.value) || adminMenuItems.value[0]);
 
+// 仪表盘 KPI：全部来自后端 /admin/stats/overview 全量聚合口径（旧实现用分页第一页凑数，订单/商品一多就不准）
 const dashboardStats = computed(() => {
-  const productItems = adminProducts.items || [];
-  const orderItems = adminOrders.items || [];
-  const paidOrders = orderItems.filter((order) => ['PAID', 'SHIPPED', 'COMPLETED'].includes(order.status));
+  const o = adminStatsOverview.value || {};
   return {
-    productCount: productItems.length,
-    totalStock: productItems.reduce((sum, product) => sum + Number(product.stock || 0), 0),
-    orderCount: orderItems.length,
-    userCount: (adminUsers.items || []).length,
-    salesAmount: paidOrders.reduce((sum, order) => sum + Number(order.payAmount || 0), 0),
+    productCount: Number(o.productTotal || 0),
+    totalStock: Number(o.stockTotal || 0),
+    userCount: Number(o.userTotal || 0),
+    orderCount: Number(o.orderTotal || 0),
+    salesAmount: Number(o.salesAmount || 0),
+    todayOrderCount: Number(o.todayOrderCount || 0),
+    todaySalesAmount: Number(o.todaySalesAmount || 0),
+    pendingShipCount: Number(o.pendingShipCount || 0),
+    pendingPayCount: Number(o.pendingPayCount || 0),
+    refundApplyingCount: Number(o.refundApplyingCount || 0),
   };
-
 });
+
+function noticeTypeLabel(type) {
+  if (type === 'ACTIVITY') return '活动';
+  if (type === 'SERVICE') return '服务';
+  if (type === 'WARNING') return '提醒';
+  return '公告';
+}
+
+// 公告类型的配色（复用 .tag 变体：公告=蓝 / 活动=绿 / 服务=灰 / 提醒=红）
+function noticeTypeClass(type) {
+  if (type === 'ACTIVITY') return 'ok';
+  if (type === 'WARNING') return 'warn';
+  if (type === 'SERVICE') return 'muted';
+  return 'info';
+}
+
+// 轮播卡上显示的跳转商品名（后台商品列表是分页的，不在当前页时回退成 #id）
+function adminProductName(id) {
+  if (!id) return '';
+  const hit = (adminProducts.items || []).find((p) => String(p.id) === String(id));
+  return hit ? hit.name : '';
+}
+
+// 近 7 天有任一成交才画趋势图，否则显示空状态（全 0 贴地直线很丑）
+const trendHasData = computed(() =>
+  ((adminStatsOverview.value && adminStatsOverview.value.salesTrend) || [])
+    .some((p) => Number(p.orderCount || 0) > 0 || Number(p.salesAmount || 0) > 0));
 
 async function searchAdminProducts() {
   adminProducts.page = 1;
@@ -1120,6 +1996,8 @@ async function saveProduct() {
   if (!productForm.sku.trim()) { fail('请填写商品编号'); return; }
   if (!(productForm.price > 0)) { fail('售价必须大于 0'); return; }
   if (productForm.originalPrice && Number(productForm.originalPrice) < Number(productForm.price)) { fail('原价不能低于售价'); return; }
+  if (productForm.memberPrice && Number(productForm.memberPrice) <= 0) { fail('会员价必须大于 0'); return; }
+  if (productForm.memberPrice && Number(productForm.memberPrice) >= Number(productForm.price)) { fail('会员价需低于售价，否则不会生效'); return; }
   if (!(productForm.stock >= 0)) { fail('库存不能为负数'); return; }
   if (!productForm.categoryId) { fail('请选择所属分类'); return; }
   if (productForm.unit === 'custom' && !(productForm.customUnit || '').trim()) { fail('请填写自定义计价单位'); return; }
@@ -1128,6 +2006,7 @@ async function saveProduct() {
     categoryId: Number(productForm.categoryId),
     coverUrl: productForm.coverUrl || '',
     originalPrice: productForm.originalPrice ? Number(productForm.originalPrice) : null,
+    memberPrice: productForm.memberPrice ? Number(productForm.memberPrice) : null,
     unit: productForm.unit === 'custom' ? (productForm.customUnit || '').trim() : (productForm.unit || 'piece'),
     brand: productForm.brand || '',
     isHot: productForm.isHot ? 1 : 0,
@@ -1170,7 +2049,7 @@ async function saveProduct() {
 }
 
 function resetProductForm() {
-  Object.assign(productForm, { categoryId: '', sku: '', name: '', subtitle: '', description: '', coverUrl: '', price: 0, originalPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
+  Object.assign(productForm, { categoryId: '', sku: '', name: '', subtitle: '', description: '', coverUrl: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
 }
 
 async function openEditProduct(product) {
@@ -1186,6 +2065,7 @@ async function openEditProduct(product) {
     coverUrl: d.coverUrl || '',
     price: d.price != null ? Number(d.price) : 0,
     originalPrice: d.originalPrice != null ? Number(d.originalPrice) : '',
+    memberPrice: d.memberPrice != null ? Number(d.memberPrice) : '',
     stock: d.stock != null ? Number(d.stock) : 0,
     brand: d.brand || '',
     isHot: Number(d.isHot) === 1,
@@ -1363,7 +2243,9 @@ async function submitRefundReview(id) {
     details: order
       ? [
           { label: '订单号', value: order.orderNo },
-          { label: '退款金额', value: money(order.payAmount) },
+          { label: '商品小计', value: money(order.totalAmount) },
+          ...(orderSavedTotal(order) > 0 ? [{ label: '已优惠', value: `- ${money(orderSavedTotal(order))}` }] : []),
+          { label: '退款金额（实付）', value: money(order.payAmount) },
           { label: '退款原因', value: order.refundReason || '未填写' },
         ]
       : [],
@@ -1684,7 +2566,9 @@ async function cancelAdminOrder(id) {
     details: order
       ? [
           { label: '订单号', value: order.orderNo },
-          { label: '订单金额', value: money(order.payAmount) },
+          { label: '商品小计', value: money(order.totalAmount) },
+          ...(orderSavedTotal(order) > 0 ? [{ label: '已优惠', value: `- ${money(orderSavedTotal(order))}` }] : []),
+          { label: '订单金额（实付）', value: money(order.payAmount) },
           { label: '是否已付款', value: paid ? '已付款，将原路退回钱包' : '未付款' },
         ]
       : [],
@@ -1810,6 +2694,7 @@ async function toggleUser(user) {
 
 const adminMenuLoaders = {
   dashboard: () => refreshAdminData(),
+  insights: () => loadInsights(),
   orders: () => loadAdminOrders(),
   refunds: () => loadRefundOrders(),
   stock: () => loadStockAlerts(),
@@ -1817,6 +2702,10 @@ const adminMenuLoaders = {
   categories: () => loadCategories(),
   coupons: () => loadAdminCoupons(),
   activities: () => loadAdminActivities(),
+  flashSales: () => loadAdminFlashSales(),
+  notices: () => loadAdminAnnouncements(),
+  stores: () => loadAdminStores(),
+  banners: () => loadAdminBanners(),
   users: () => loadAdminUsers(),
 };
 

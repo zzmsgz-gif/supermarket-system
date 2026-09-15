@@ -11,6 +11,10 @@ import OrdersPage from '../pages/OrdersPage.vue'
 import CouponsPage from '../pages/CouponsPage.vue'
 import AddressesPage from '../pages/AddressesPage.vue'
 import RechargePage from '../pages/RechargePage.vue'
+import PointsPage from '../pages/PointsPage.vue'
+import FavoritesPage from '../pages/FavoritesPage.vue'
+import MessagesPage from '../pages/MessagesPage.vue'
+import LegalPage from '../pages/LegalPage.vue'
 import AdminPanel from '../components/AdminPanel.vue'
 
 export const routes = [
@@ -24,6 +28,12 @@ export const routes = [
   { path: '/coupons', name: 'coupons', component: CouponsPage },
   { path: '/addresses', name: 'addresses', component: AddressesPage },
   { path: '/recharge', name: 'recharge', component: RechargePage },
+  { path: '/points', name: 'points', component: PointsPage },
+  { path: '/favorites', name: 'favorites', component: FavoritesPage },
+  { path: '/messages', name: 'messages', component: MessagesPage },
+  // 协议 / 隐私政策：正文由后台维护（legal-docs 接口），游客也能查看
+  { path: '/terms', name: 'terms', component: LegalPage },
+  { path: '/privacy', name: 'privacy', component: LegalPage },
   // 后台面板：路由表映射 AdminPanel（语义清晰），但 App.vue 用 v-else 直接挂载并传 props，
   // 因此此处映射实际不参与渲染，仅保证路由可被识别。
   { path: '/admin', name: 'admin', component: AdminPanel },

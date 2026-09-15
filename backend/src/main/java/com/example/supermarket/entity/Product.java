@@ -41,6 +41,9 @@ public class Product {
     @Column(name = "original_price", precision = 10, scale = 2)
     private BigDecimal originalPrice;
 
+    @Column(name = "member_price", precision = 10, scale = 2)
+    private BigDecimal memberPrice;
+
     @Column(nullable = false)
     private Integer stock;
 
@@ -150,6 +153,14 @@ public class Product {
 
     public void setOriginalPrice(BigDecimal originalPrice) {
         this.originalPrice = originalPrice;
+    }
+
+    public BigDecimal getMemberPrice() {
+        return memberPrice;
+    }
+
+    public void setMemberPrice(BigDecimal memberPrice) {
+        this.memberPrice = memberPrice;
     }
 
     public Integer getStock() {

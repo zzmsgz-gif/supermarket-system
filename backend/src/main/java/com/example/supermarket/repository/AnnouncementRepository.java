@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 public interface AnnouncementRepository extends JpaRepository<Announcement, Long>, JpaSpecificationExecutor<Announcement> {
 
     List<Announcement> findByEnabledAndDeletedOrderBySortOrderAscPublishTimeDesc(Byte enabled, Byte deleted);
+
+    List<Announcement> findByDeletedOrderBySortOrderAscPublishTimeDesc(Byte deleted);
 }

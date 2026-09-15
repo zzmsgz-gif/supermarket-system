@@ -14,6 +14,10 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Optional<Product> findByIdAndStatusAndDeleted(Long id, String status, Byte deleted);
 
+    Optional<Product> findByIdAndDeleted(Long id, Byte deleted);
+
+    List<Product> findByIdInAndDeleted(java.util.Collection<Long> ids, Byte deleted);
+
     boolean existsBySkuAndDeleted(String sku, Byte deleted);
 
     boolean existsBySkuAndDeletedAndIdNot(String sku, Byte deleted, Long id);
@@ -47,4 +51,12 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     @Query("select p from Product p where p.deleted = 0 and p.stock <= p.lowStockThreshold order by p.stock asc")
     java.util.List<Product> findLowStockProducts();
+
+    /* ===== 数据统计聚合 ===== */
+
+    @Query("select count(p) from Product p where p.deleted = 0 and p.status = 'ON_SALE'")
+    long countOnSaleProducts();
+
+    @Query("select coalesce(sum(p.stock), 0) from Product p where p.deleted = 0 and p.status = 'ON_SALE'")
+    long sumOnSaleStock();
 }

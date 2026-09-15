@@ -32,7 +32,7 @@ const props = defineProps({
   type: { type: String, default: 'misc' },
   max: { type: Number, default: 9 },
 });
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'upload-state']);
 
 const uploading = ref(false);
 const error = ref('');
@@ -69,6 +69,7 @@ async function onPick(e) {
   }
   error.value = '';
   uploading.value = true;
+  emit('upload-state', true);
   try {
     const urls = [];
     for (const f of files) {
@@ -83,6 +84,7 @@ async function onPick(e) {
     error.value = err?.message || '上传失败，请重试';
   } finally {
     uploading.value = false;
+    emit('upload-state', false);
     e.target.value = '';
   }
 }

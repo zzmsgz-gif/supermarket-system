@@ -1,28 +1,36 @@
 version: "3.9"
 
+# 所有口令都从环境变量读取，仓库里不存明文。
+# 用法：把 .env.example 复制成 .env 填好口令（.env 已被 .gitignore 忽略），
+#       或在执行 docker compose 前先 export 这几个变量。
+# 未设置时 compose 会直接报错退出，避免"悄悄用了空口令/默认口令"。
 services:
   mysql:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: zzmsgz
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请先设置 MYSQL_ROOT_PASSWORD（可写在 .env 里）}
       MYSQL_DATABASE: supermarket_system
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pzzmsgz"]
+      # 用 CMD-SHELL + $$（容器内展开）以免口令出现在 compose 展开结果里
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7.0-alpine
-    command: ["redis-server", "--requirepass", "zzmsgz", "--appendonly", "no"]
+    environment:
+      # healthcheck 在容器内执行，需要这个变量
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请先设置 REDIS_PASSWORD（可写在 .env 里）}
+    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly no"]
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "zzmsgz", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -32,13 +40,13 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      DB_USERNAME: root
-      DB_PASSWORD: zzmsgz
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请先设置 MYSQL_ROOT_PASSWORD（可写在 .env 里）}
       # Redis 缓存开关：true 启用，后端会把商品详情/热门/新品写入 Redis
       APP_CACHE_ENABLED: "true"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
-      SPRING_DATA_REDIS_PASSWORD: zzmsgz
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?请先设置 REDIS_PASSWORD（可写在 .env 里）}
     ports:
       - "8080:8080"
     depends_on:

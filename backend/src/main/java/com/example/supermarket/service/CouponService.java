@@ -206,8 +206,12 @@ public class CouponService {
                 .toList();
     }
 
+    /** 核销结果：券名快照 + 实际抵扣金额（券名要落到订单上，订单详情才能说清用了哪张券） */
+    public record CouponUsage(String couponName, BigDecimal discountAmount) {
+    }
+
     @Transactional
-    public BigDecimal consumeForOrder(Long userId, Long userCouponId, Long orderId, BigDecimal orderTotal) {
+    public CouponUsage consumeForOrder(Long userId, Long userCouponId, Long orderId, BigDecimal orderTotal) {
         UserCoupon userCoupon = userCouponRepository.findByIdAndUserIdForUpdate(userCouponId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Coupon not found"));
         Coupon coupon = getActiveCoupon(userCoupon.getCouponId());
@@ -225,7 +229,7 @@ public class CouponService {
         userCoupon.setOrderId(orderId);
         userCoupon.setUsedAt(now);
         userCouponRepository.save(userCoupon);
-        return coupon.getDiscountAmount();
+        return new CouponUsage(coupon.getName(), coupon.getDiscountAmount());
     }
 
     @Transactional

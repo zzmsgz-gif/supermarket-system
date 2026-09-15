@@ -37,6 +37,20 @@ public class OrderItem {
     @Column(name = "product_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal productPrice;
 
+    /**
+     * 下单时的划线价（原价）快照，仅用于订单详情展示「划线优惠（已省）」。
+     * 商品没有划线价时为 null；历史订单未回填（当时的原价已不可考），保持 null 即可不展示该行。
+     */
+    @Column(name = "original_price", precision = 10, scale = 2)
+    private BigDecimal originalPrice;
+
+    /**
+     * 命中的秒杀场次 id 快照。取消/超时/退款时据此回退秒杀名额；
+     * 秒杀价本身体现在 {@code productPrice}（与会员价同一套口径），不另加优惠金额列。
+     */
+    @Column(name = "flash_sale_id")
+    private Long flashSaleId;
+
     @Column(nullable = false)
     private Integer quantity;
 
@@ -105,6 +119,22 @@ public class OrderItem {
 
     public void setProductPrice(BigDecimal productPrice) {
         this.productPrice = productPrice;
+    }
+
+    public BigDecimal getOriginalPrice() {
+        return originalPrice;
+    }
+
+    public void setOriginalPrice(BigDecimal originalPrice) {
+        this.originalPrice = originalPrice;
+    }
+
+    public Long getFlashSaleId() {
+        return flashSaleId;
+    }
+
+    public void setFlashSaleId(Long flashSaleId) {
+        this.flashSaleId = flashSaleId;
     }
 
     public Integer getQuantity() {

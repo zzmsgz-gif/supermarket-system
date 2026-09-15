@@ -12,6 +12,8 @@ public class OrderItemResponse {
     private String productCoverUrl;
     private String skuSpec;
     private BigDecimal productPrice;
+    private BigDecimal originalPrice;
+    private Long flashSaleId;
     private Integer quantity;
     private BigDecimal subtotalAmount;
 
@@ -24,6 +26,8 @@ public class OrderItemResponse {
         response.setProductCoverUrl(item.getProductCoverUrl());
         response.setSkuSpec(item.getSkuSpec());
         response.setProductPrice(item.getProductPrice());
+        response.setOriginalPrice(item.getOriginalPrice());
+        response.setFlashSaleId(item.getFlashSaleId());
         response.setQuantity(item.getQuantity());
         response.setSubtotalAmount(item.getSubtotalAmount());
         return response;
@@ -83,6 +87,22 @@ public class OrderItemResponse {
 
     public void setProductPrice(BigDecimal productPrice) {
         this.productPrice = productPrice;
+    }
+
+    public BigDecimal getOriginalPrice() {
+        return originalPrice;
+    }
+
+    public void setOriginalPrice(BigDecimal originalPrice) {
+        this.originalPrice = originalPrice;
+    }
+
+    public Long getFlashSaleId() {
+        return flashSaleId;
+    }
+
+    public void setFlashSaleId(Long flashSaleId) {
+        this.flashSaleId = flashSaleId;
     }
 
     public Integer getQuantity() {

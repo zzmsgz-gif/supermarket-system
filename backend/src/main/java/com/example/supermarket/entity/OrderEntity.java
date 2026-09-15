@@ -13,6 +13,10 @@ import java.time.LocalDateTime;
 @Table(name = "orders")
 public class OrderEntity {
 
+    /** 履约方式：送货上门 / 门店自提 */
+    public static final String FULFILLMENT_DELIVERY = "DELIVERY";
+    public static final String FULFILLMENT_PICKUP = "PICKUP";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -50,6 +54,25 @@ public class OrderEntity {
     @Column(name = "receiver_address", nullable = false, length = 300)
     private String receiverAddress;
 
+    /** DELIVERY 送货上门 / PICKUP 门店自提 */
+    @Column(name = "fulfillment_type", nullable = false, length = 20)
+    private String fulfillmentType = FULFILLMENT_DELIVERY;
+
+    @Column(name = "pickup_store_id")
+    private Long pickupStoreId;
+
+    /** 下单时的门店名快照（门店改名不影响历史订单） */
+    @Column(name = "pickup_store_name", length = 80)
+    private String pickupStoreName;
+
+    /** 自提码：取订单号后 6 位，到店出示核销 */
+    @Column(name = "pickup_code", length = 16)
+    private String pickupCode;
+
+    /** 配送时段，如 2026-09-15 09:00-11:00 */
+    @Column(name = "delivery_slot", length = 60)
+    private String deliverySlot;
+
     @Column(length = 500)
     private String remark;
 
@@ -74,6 +97,10 @@ public class OrderEntity {
     @Column(name = "user_coupon_id")
     private Long userCouponId;
 
+    /** 券名快照：券被删改后订单详情仍能说清"用了哪张券"（与 activityName 同思路） */
+    @Column(name = "coupon_name", length = 120)
+    private String couponName;
+
     @Column(name = "activity_id")
     private Long activityId;
 
@@ -82,6 +109,25 @@ public class OrderEntity {
 
     @Column(name = "activity_name", length = 120)
     private String activityName;
+
+    @Column(name = "member_discount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal memberDiscount = BigDecimal.ZERO;
+
+    /**
+     * 积分抵扣的实际金额（非点数）。持久化而非由 pointsUsed/100 现算：
+     * 兑换比例将来若调整，历史订单的账目仍需按当时实际抵扣额呈现，否则会对不上账。
+     */
+    @Column(name = "points_discount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal pointsDiscount = BigDecimal.ZERO;
+
+    @Column(name = "points_used", nullable = false)
+    private Long pointsUsed = 0L;
+
+    @Column(name = "points_earned", nullable = false)
+    private Long pointsEarned = 0L;
+
+    @Column(name = "member_level", nullable = false)
+    private Integer memberLevel = 0;
 
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
@@ -200,6 +246,46 @@ public class OrderEntity {
         this.receiverAddress = receiverAddress;
     }
 
+    public String getFulfillmentType() {
+        return fulfillmentType;
+    }
+
+    public void setFulfillmentType(String fulfillmentType) {
+        this.fulfillmentType = fulfillmentType;
+    }
+
+    public Long getPickupStoreId() {
+        return pickupStoreId;
+    }
+
+    public void setPickupStoreId(Long pickupStoreId) {
+        this.pickupStoreId = pickupStoreId;
+    }
+
+    public String getPickupStoreName() {
+        return pickupStoreName;
+    }
+
+    public void setPickupStoreName(String pickupStoreName) {
+        this.pickupStoreName = pickupStoreName;
+    }
+
+    public String getPickupCode() {
+        return pickupCode;
+    }
+
+    public void setPickupCode(String pickupCode) {
+        this.pickupCode = pickupCode;
+    }
+
+    public String getDeliverySlot() {
+        return deliverySlot;
+    }
+
+    public void setDeliverySlot(String deliverySlot) {
+        this.deliverySlot = deliverySlot;
+    }
+
     public String getRemark() {
         return remark;
     }
@@ -264,6 +350,14 @@ public class OrderEntity {
         this.userCouponId = userCouponId;
     }
 
+    public String getCouponName() {
+        return couponName;
+    }
+
+    public void setCouponName(String couponName) {
+        this.couponName = couponName;
+    }
+
     public Long getActivityId() {
         return activityId;
     }
@@ -286,6 +380,46 @@ public class OrderEntity {
 
     public void setActivityName(String activityName) {
         this.activityName = activityName;
+    }
+
+    public BigDecimal getMemberDiscount() {
+        return memberDiscount;
+    }
+
+    public void setMemberDiscount(BigDecimal memberDiscount) {
+        this.memberDiscount = memberDiscount;
+    }
+
+    public BigDecimal getPointsDiscount() {
+        return pointsDiscount;
+    }
+
+    public void setPointsDiscount(BigDecimal pointsDiscount) {
+        this.pointsDiscount = pointsDiscount;
+    }
+
+    public Long getPointsUsed() {
+        return pointsUsed;
+    }
+
+    public void setPointsUsed(Long pointsUsed) {
+        this.pointsUsed = pointsUsed;
+    }
+
+    public Long getPointsEarned() {
+        return pointsEarned;
+    }
+
+    public void setPointsEarned(Long pointsEarned) {
+        this.pointsEarned = pointsEarned;
+    }
+
+    public Integer getMemberLevel() {
+        return memberLevel;
+    }
+
+    public void setMemberLevel(Integer memberLevel) {
+        this.memberLevel = memberLevel;
     }
 
     public LocalDateTime getPaidAt() {

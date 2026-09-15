@@ -134,6 +134,7 @@ public class AdminProductService {
         product.setPrice(request.getPrice());
         validatePrices(request.getPrice(), request.getOriginalPrice());
         product.setOriginalPrice(request.getOriginalPrice());
+        product.setMemberPrice(request.getMemberPrice());
         product.setUnit(normalize(request.getUnit()));
         product.setBrand(trimToNull(request.getBrand()));
         product.setIsHot(request.getIsHot() == null ? product.getIsHot() : request.getIsHot());
@@ -340,6 +341,7 @@ public class AdminProductService {
         product.setPrice(request.getPrice());
         validatePrices(request.getPrice(), request.getOriginalPrice());
         product.setOriginalPrice(request.getOriginalPrice());
+        product.setMemberPrice(request.getMemberPrice());
         product.setStock(request.getStock());
         product.setLowStockThreshold(request.getLowStockThreshold() == null ? 10 : request.getLowStockThreshold());
         product.setUnit(normalize(request.getUnit()));

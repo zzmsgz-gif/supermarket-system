@@ -18,6 +18,11 @@ public class OrderResponse {
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;
+    private String fulfillmentType;
+    private Long pickupStoreId;
+    private String pickupStoreName;
+    private String pickupCode;
+    private String deliverySlot;
     private String remark;
     private String shipCompany;
     private String shipNo;
@@ -26,9 +31,15 @@ public class OrderResponse {
     private String refundRemark;
     private LocalDateTime refundedAt;
     private Long userCouponId;
+    private String couponName;
     private Long activityId;
     private BigDecimal activityDiscount;
     private String activityName;
+    private BigDecimal memberDiscount;
+    private BigDecimal pointsDiscount;
+    private Long pointsUsed;
+    private Long pointsEarned;
+    private Integer memberLevel;
     private LocalDateTime paidAt;
     private LocalDateTime shippedAt;
     private LocalDateTime completedAt;
@@ -50,6 +61,11 @@ public class OrderResponse {
         response.setReceiverName(order.getReceiverName());
         response.setReceiverPhone(order.getReceiverPhone());
         response.setReceiverAddress(order.getReceiverAddress());
+        response.setFulfillmentType(order.getFulfillmentType());
+        response.setPickupStoreId(order.getPickupStoreId());
+        response.setPickupStoreName(order.getPickupStoreName());
+        response.setPickupCode(order.getPickupCode());
+        response.setDeliverySlot(order.getDeliverySlot());
         response.setRemark(order.getRemark());
         response.setShipCompany(order.getShipCompany());
         response.setShipNo(order.getShipNo());
@@ -58,9 +74,15 @@ public class OrderResponse {
         response.setRefundRemark(order.getRefundRemark());
         response.setRefundedAt(order.getRefundedAt());
         response.setUserCouponId(order.getUserCouponId());
+        response.setCouponName(order.getCouponName());
         response.setActivityId(order.getActivityId());
         response.setActivityDiscount(order.getActivityDiscount());
         response.setActivityName(order.getActivityName());
+        response.setMemberDiscount(order.getMemberDiscount());
+        response.setPointsDiscount(order.getPointsDiscount());
+        response.setPointsUsed(order.getPointsUsed());
+        response.setPointsEarned(order.getPointsEarned());
+        response.setMemberLevel(order.getMemberLevel());
         response.setPaidAt(order.getPaidAt());
         response.setShippedAt(order.getShippedAt());
         response.setCompletedAt(order.getCompletedAt());
@@ -159,6 +181,46 @@ public class OrderResponse {
         this.receiverAddress = receiverAddress;
     }
 
+    public String getFulfillmentType() {
+        return fulfillmentType;
+    }
+
+    public void setFulfillmentType(String fulfillmentType) {
+        this.fulfillmentType = fulfillmentType;
+    }
+
+    public Long getPickupStoreId() {
+        return pickupStoreId;
+    }
+
+    public void setPickupStoreId(Long pickupStoreId) {
+        this.pickupStoreId = pickupStoreId;
+    }
+
+    public String getPickupStoreName() {
+        return pickupStoreName;
+    }
+
+    public void setPickupStoreName(String pickupStoreName) {
+        this.pickupStoreName = pickupStoreName;
+    }
+
+    public String getPickupCode() {
+        return pickupCode;
+    }
+
+    public void setPickupCode(String pickupCode) {
+        this.pickupCode = pickupCode;
+    }
+
+    public String getDeliverySlot() {
+        return deliverySlot;
+    }
+
+    public void setDeliverySlot(String deliverySlot) {
+        this.deliverySlot = deliverySlot;
+    }
+
     public String getRemark() {
         return remark;
     }
@@ -223,6 +285,14 @@ public class OrderResponse {
         this.userCouponId = userCouponId;
     }
 
+    public String getCouponName() {
+        return couponName;
+    }
+
+    public void setCouponName(String couponName) {
+        this.couponName = couponName;
+    }
+
     public Long getActivityId() {
         return activityId;
     }
@@ -245,6 +315,46 @@ public class OrderResponse {
 
     public void setActivityName(String activityName) {
         this.activityName = activityName;
+    }
+
+    public BigDecimal getMemberDiscount() {
+        return memberDiscount;
+    }
+
+    public void setMemberDiscount(BigDecimal memberDiscount) {
+        this.memberDiscount = memberDiscount;
+    }
+
+    public BigDecimal getPointsDiscount() {
+        return pointsDiscount;
+    }
+
+    public void setPointsDiscount(BigDecimal pointsDiscount) {
+        this.pointsDiscount = pointsDiscount;
+    }
+
+    public Long getPointsUsed() {
+        return pointsUsed;
+    }
+
+    public void setPointsUsed(Long pointsUsed) {
+        this.pointsUsed = pointsUsed;
+    }
+
+    public Long getPointsEarned() {
+        return pointsEarned;
+    }
+
+    public void setPointsEarned(Long pointsEarned) {
+        this.pointsEarned = pointsEarned;
+    }
+
+    public Integer getMemberLevel() {
+        return memberLevel;
+    }
+
+    public void setMemberLevel(Integer memberLevel) {
+        this.memberLevel = memberLevel;
     }
 
     public LocalDateTime getPaidAt() {

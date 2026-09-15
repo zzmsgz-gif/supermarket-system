@@ -12,6 +12,9 @@ public class UserResponse {
     private String email;
     private String role;
     private BigDecimal balance;
+    private Long points;
+    private Integer memberLevel;
+    private BigDecimal totalSpent;
     private String avatarUrl;
 
     public UserResponse() {
@@ -26,6 +29,9 @@ public class UserResponse {
         response.setEmail(user.getEmail());
         response.setRole(user.getRole());
         response.setBalance(user.getBalance());
+        response.setPoints(user.getPoints());
+        response.setMemberLevel(user.getMemberLevel());
+        response.setTotalSpent(user.getTotalSpent());
         response.setAvatarUrl(user.getAvatarUrl());
         return response;
     }
@@ -84,6 +90,30 @@ public class UserResponse {
 
     public void setBalance(BigDecimal balance) {
         this.balance = balance;
+    }
+
+    public Long getPoints() {
+        return points;
+    }
+
+    public void setPoints(Long points) {
+        this.points = points;
+    }
+
+    public Integer getMemberLevel() {
+        return memberLevel;
+    }
+
+    public void setMemberLevel(Integer memberLevel) {
+        this.memberLevel = memberLevel;
+    }
+
+    public BigDecimal getTotalSpent() {
+        return totalSpent;
+    }
+
+    public void setTotalSpent(BigDecimal totalSpent) {
+        this.totalSpent = totalSpent;
     }
 
     public String getAvatarUrl() {

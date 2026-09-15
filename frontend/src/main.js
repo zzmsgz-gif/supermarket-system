@@ -16,6 +16,7 @@ import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
 import StarRating from './components/StarRating.vue';
 import ImageUpload from './components/ImageUpload.vue';
+import EmptyState from './components/EmptyState.vue';
 import './styles.css';
 
 const app = createApp(App);
@@ -40,5 +41,6 @@ app.component('CouponCard', CouponCard);
 app.component('AddressCard', AddressCard);
 app.component('StarRating', StarRating);
 app.component('ImageUpload', ImageUpload);
+app.component('EmptyState', EmptyState);
 
 app.mount('#app');

@@ -2,6 +2,7 @@ package com.example.supermarket.config;
 
 import com.example.supermarket.entity.SysUser;
 import com.example.supermarket.repository.SysUserRepository;
+import com.example.supermarket.service.LegalDocService;
 import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +37,7 @@ public class BootstrapAdminConfig {
     public CommandLineRunner bootstrapAdmin(
             SchemaTimestampFixer schemaTimestampFixer,
             DataSeeder dataSeeder,
+            LegalDocService legalDocService,
             SysUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             @Value("${app.bootstrap.admin-username:}") String adminUsername,
@@ -46,6 +48,8 @@ public class BootstrapAdminConfig {
             schemaTimestampFixer.fix();
             // 2) 导入/自愈基础主数据（分类/商品/活动/优惠券）。
             dataSeeder.seed();
+            // 3) 补齐协议/隐私正文（幂等：只在缺行时写入模板，不覆盖后台改过的内容）
+            legalDocService.ensureDefaults();
 
             String username = adminUsername == null ? "" : adminUsername.trim();
             if (username.isEmpty()) {

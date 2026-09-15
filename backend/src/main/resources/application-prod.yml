@@ -13,11 +13,13 @@ spring:
   application:
     name: supermarket-backend
   datasource:
-    # Railway 上设置 SPRING_DATASOURCE_URL 为完整 JDBC 串（由 MySQL 服务的私有变量拼出）；
-    # 本地若用 prod profile，保留默认值即可（DB_USERNAME/DB_PASSWORD 仍可用环境变量覆盖）。
+    # Railway 上设置 SPRING_DATASOURCE_URL 为完整 JDBC 串（由 MySQL 服务的私有变量拼出）。
+    # ⚠️ DB_PASSWORD 刻意不给默认值：本文件会被提交，写上真实口令等于把密码公开
+    # （此仓库是公开仓库，历史上就这样泄露过本机 MySQL 口令，已清理）。
+    # 本地要跑 prod profile 时请先 export DB_PASSWORD。
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/supermarket_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:zzmsgz}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
