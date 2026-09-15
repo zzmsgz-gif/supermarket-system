@@ -596,12 +596,16 @@ function activityMatches(a, product) {
 const topActivity = computed(() => [...(activeActivities.value || [])]
   .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
   .sort((x, y) => activityOffset(y) - activityOffset(x))[0] || null);
-// 商品卡角标：该商品命中的活动里「最省」的那个 —— 与 topActivity 及后端同口径。
-// 不要退回「第一个命中的」：那可能显示「满200打8折」，而结算实际按「满200减50」给，
-// 角标与实付对不上，用户会当成欺骗。
+// 商品卡角标：只在活动**限定了分类或单品**（scope ≠ ALL）时才显示，且取命中的活动里「最省」的那个。
+//
+// 为什么排除全场活动：全场活动对每一张商品卡都是同一句话，一屏重复几十次没有任何信息量，
+// 反而把真正有区分度的「分类专属 / 单品专属」活动淹没了；全场活动交给页头公告条统一宣传。
+// 为什么取「最省」而不是「第一个命中的」：角标必须与结算实际生效的那条一致，
+// 否则会出现「卡上写满200打8折、实付按满200减50」，被当成欺骗。
 function productActivityTag(product) {
   const hits = (activeActivities.value || [])
     .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
+    .filter((a) => String(a.scope || 'ALL') !== 'ALL')
     .filter((a) => activityMatches(a, product));
   if (!hits.length) return '';
   return activitySlogan([...hits].sort((x, y) => activityOffset(y) - activityOffset(x))[0]);
