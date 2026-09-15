@@ -45,7 +45,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/uploads/**", "/api/uploads/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/activities", "/activities/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/announcements", "/announcements/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/banners", "/banners/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/recommendations", "/recommendations/**").permitAll()
+                        // 履约选项（自提门店列表 / 可选配送时段）：结算页需要在登录前的落地页可读
+                        .requestMatchers(HttpMethod.GET, "/stores", "/stores/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/delivery-slots", "/delivery-slots/**").permitAll()
+                        // 限时秒杀 / 协议与隐私正文：游客也要能看到
+                        .requestMatchers(HttpMethod.GET, "/flash-sales", "/flash-sales/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/legal-docs", "/legal-docs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/dwell", "/dwell/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/dwell").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/index.html", "/swagger-ui/**",
@@ -55,11 +62,20 @@ public class SecurityConfig {
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
-                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
-                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                    response.setContentType("application/json;charset=UTF-8");
-                    response.getWriter().write("{\"code\":40101,\"message\":\"登录已过期，请重新登录\"}");
-                }))
+                .exceptionHandling(ex -> ex
+                        // 未登录 / token 失效 → 401（前端据此清 token 并弹登录）
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"code\":40101,\"message\":\"登录已过期，请重新登录\"}");
+                        })
+                        // 已登录但角色不足 → 403。此前缺这个 handler 会落到 401，
+                        // 让前端把「没权限」误判成「登录过期」而把用户登出。
+                        .accessDeniedHandler((request, response, deniedException) -> {
+                            response.setStatus(HttpStatus.FORBIDDEN.value());
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"code\":40301,\"message\":\"当前账号没有该操作权限\"}");
+                        }))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .httpBasic(AbstractHttpConfigurer::disable)

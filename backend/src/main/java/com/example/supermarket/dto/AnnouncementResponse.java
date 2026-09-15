@@ -10,6 +10,7 @@ public class AnnouncementResponse {
     private String content;
     private String type;
     private Integer sortOrder;
+    private Integer enabled;
     private LocalDateTime publishTime;
     private LocalDateTime createdAt;
 
@@ -20,9 +21,18 @@ public class AnnouncementResponse {
         r.setContent(a.getContent());
         r.setType(a.getType());
         r.setSortOrder(a.getSortOrder());
+        r.setEnabled(Integer.valueOf(a.getEnabled()));
         r.setPublishTime(a.getPublishTime());
         r.setCreatedAt(a.getCreatedAt());
         return r;
+    }
+
+    public Integer getEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(Integer enabled) {
+        this.enabled = enabled;
     }
 
     public Long getId() {

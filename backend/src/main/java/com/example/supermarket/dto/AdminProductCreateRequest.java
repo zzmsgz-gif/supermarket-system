@@ -37,6 +37,9 @@ public class AdminProductCreateRequest {
     @DecimalMin(value = "0.0", inclusive = true, message = "Original price must be greater than or equal to 0")
     private BigDecimal originalPrice;
 
+    @DecimalMin(value = "0.0", inclusive = true, message = "Member price must be greater than or equal to 0")
+    private BigDecimal memberPrice;
+
     @NotNull(message = "Stock is required")
     @Min(value = 0, message = "Stock must be greater than or equal to 0")
     private Integer stock;
@@ -130,6 +133,14 @@ public class AdminProductCreateRequest {
 
     public void setOriginalPrice(BigDecimal originalPrice) {
         this.originalPrice = originalPrice;
+    }
+
+    public BigDecimal getMemberPrice() {
+        return memberPrice;
+    }
+
+    public void setMemberPrice(BigDecimal memberPrice) {
+        this.memberPrice = memberPrice;
     }
 
     public Integer getStock() {

@@ -34,6 +34,9 @@ CREATE TABLE sys_user (
     role VARCHAR(20) NOT NULL DEFAULT 'USER' COMMENT 'USER or ADMIN',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
     balance DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT 'Wallet balance',
+    points BIGINT NOT NULL DEFAULT 0 COMMENT '会员积分余额',
+    member_level INT NOT NULL DEFAULT 0 COMMENT '会员等级 0普通/1银卡/2金卡/3钻石',
+    total_spent DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '累计消费金额(用于升级)',
     last_login_at DATETIME DEFAULT NULL COMMENT 'Last login time',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -74,6 +77,7 @@ CREATE TABLE product (
     cover_url VARCHAR(500) DEFAULT NULL COMMENT 'Cover image URL',
     price DECIMAL(10, 2) NOT NULL COMMENT 'Current selling price',
     original_price DECIMAL(10, 2) DEFAULT NULL COMMENT 'Original price',
+    member_price DECIMAL(10, 2) DEFAULT NULL COMMENT '会员价(选填,低于售价时会员按此价结算)',
     stock INT NOT NULL DEFAULT 0 COMMENT 'Available stock',
     low_stock_threshold INT NOT NULL DEFAULT 10 COMMENT 'Alert when stock <= this',
     sales INT NOT NULL DEFAULT 0 COMMENT 'Sold quantity',
@@ -200,9 +204,20 @@ CREATE TABLE orders (
     refund_remark VARCHAR(255) DEFAULT NULL COMMENT 'Admin review remark',
     refunded_at DATETIME DEFAULT NULL COMMENT 'Refund finished time',
     user_coupon_id BIGINT UNSIGNED DEFAULT NULL COMMENT 'Used user coupon id',
+    coupon_name VARCHAR(120) DEFAULT NULL COMMENT '优惠券名称快照',
     activity_id BIGINT UNSIGNED DEFAULT NULL COMMENT 'Applied activity id',
     activity_discount DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT 'Activity discount amount',
     activity_name VARCHAR(120) DEFAULT NULL COMMENT 'Applied activity name snapshot',
+    member_discount DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT '会员等级折扣金额',
+    points_discount DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT '积分抵扣金额',
+    points_used BIGINT NOT NULL DEFAULT 0 COMMENT '本单抵扣积分',
+    points_earned BIGINT NOT NULL DEFAULT 0 COMMENT '本单获得积分',
+    member_level INT NOT NULL DEFAULT 0 COMMENT '下单时会员等级',
+    fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'DELIVERY' COMMENT 'DELIVERY 送货上门 / PICKUP 门店自提',
+    pickup_store_id BIGINT UNSIGNED DEFAULT NULL COMMENT '自提门店 id',
+    pickup_store_name VARCHAR(80) DEFAULT NULL COMMENT '自提门店名快照',
+    pickup_code VARCHAR(16) DEFAULT NULL COMMENT '自提码（订单号后 6 位）',
+    delivery_slot VARCHAR(60) DEFAULT NULL COMMENT '配送时段快照',
     paid_at DATETIME DEFAULT NULL,
     shipped_at DATETIME DEFAULT NULL,
     completed_at DATETIME DEFAULT NULL,
@@ -245,6 +260,8 @@ CREATE TABLE order_item (
     product_cover_url VARCHAR(500) DEFAULT NULL COMMENT 'Cover URL snapshot',
     sku_spec VARCHAR(255) DEFAULT NULL COMMENT 'Selected SKU spec snapshot',
     product_price DECIMAL(10, 2) NOT NULL COMMENT 'Price snapshot',
+    original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '下单时划线价快照，仅用于展示已省金额',
+    flash_sale_id BIGINT DEFAULT NULL COMMENT '命中的秒杀场次 id（取消/超时/退款时回退名额用）',
     quantity INT NOT NULL COMMENT 'Purchased quantity',
     subtotal_amount DECIMAL(10, 2) NOT NULL COMMENT 'Item subtotal',
     PRIMARY KEY (id),
@@ -429,7 +446,7 @@ INSERT INTO sys_user (
 ) VALUES (
     'admin',
     '$2a$10$7EqJtq98hPqEX7fNZaFWoO4s0J0kX0GfQp3R9GQ5P4GfKf5M7D6fK',
-    'System Administrator',
+    '系统管理员',
     'ADMIN',
     1
 );
@@ -535,4 +552,117 @@ CREATE TABLE announcement (
     KEY idx_announcement_enabled_sort (enabled, sort_order, publish_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商城公告';
 
+CREATE TABLE point_ledger (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    type VARCHAR(20) NOT NULL COMMENT 'EARN/REDEEM/REFUND/ADJUST',
+    amount BIGINT NOT NULL COMMENT '本次变动绝对值',
+    balance_after BIGINT NOT NULL COMMENT '变动后积分余额',
+    ref_order_id BIGINT DEFAULT NULL,
+    remark VARCHAR(255) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_point_ledger_user (user_id),
+    INDEX idx_point_ledger_order (ref_order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员积分流水';
+
+CREATE TABLE user_favorite (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    price_at_favorite DECIMAL(10,2) NOT NULL COMMENT '收藏当时的售价（降价提醒基线）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_favorite (user_id, product_id),
+    KEY idx_user_favorite_product (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品收藏';
+
+CREATE TABLE price_alert (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    old_price DECIMAL(10,2) NOT NULL COMMENT '基线价（=收藏时售价）',
+    new_price DECIMAL(10,2) NOT NULL COMMENT '检测到降价时的现价',
+    drop_amount DECIMAL(10,2) NOT NULL COMMENT '降幅金额 = old_price - new_price',
+    is_read TINYINT NOT NULL DEFAULT 0 COMMENT '0未读 1已读',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_price_alert (user_id, product_id),
+    KEY idx_price_alert_unread (user_id, is_read)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='收藏商品降价提醒';
+
+CREATE TABLE store (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    name VARCHAR(80) NOT NULL COMMENT '门店名称',
+    address VARCHAR(255) NOT NULL COMMENT '门店地址',
+    phone VARCHAR(20) DEFAULT NULL,
+    business_hours VARCHAR(60) DEFAULT NULL COMMENT '营业/自提时间',
+    city VARCHAR(40) DEFAULT NULL,
+    district VARCHAR(40) DEFAULT NULL,
+    pickup_notice VARCHAR(255) DEFAULT NULL COMMENT '自提须知',
+    status TINYINT NOT NULL DEFAULT 1 COMMENT '1 营业 0 停业',
+    sort_no INT NOT NULL DEFAULT 0,
+    deleted TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_store_name (name),
+    KEY idx_store_status_sort (deleted, status, sort_no),
+    CONSTRAINT chk_store_status CHECK (status IN (0, 1)),
+    CONSTRAINT chk_store_deleted CHECK (deleted IN (0, 1))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='门店/自提点';
+
+CREATE TABLE user_message (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    type VARCHAR(20) NOT NULL COMMENT 'ORDER/MEMBER/COUPON/SYSTEM',
+    title VARCHAR(120) NOT NULL,
+    content VARCHAR(500) DEFAULT NULL,
+    link_view VARCHAR(40) DEFAULT NULL COMMENT '跳转目标：orders/orderDetail/coupons/points/shop/favorites',
+    link_ref VARCHAR(64) DEFAULT NULL COMMENT '跳转参数（订单 id 等）',
+    dedupe_key VARCHAR(120) DEFAULT NULL COMMENT '幂等键',
+    is_read TINYINT NOT NULL DEFAULT 0 COMMENT '0 未读 1 已读',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_message_dedupe (user_id, dedupe_key),
+    INDEX idx_user_message_unread (user_id, is_read),
+    INDEX idx_user_message_type (user_id, type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内消息';
+
+INSERT INTO store (name, address, phone, business_hours, city, district, pickup_notice, status, sort_no, deleted) VALUES
+    ('南山科技园店', '深圳市南山区科技园南区 8 栋 1 层', '0755-8600 1001', '08:00-22:00', '深圳市', '南山区', '下单后约 1 小时可自提，凭自提码到服务台取货。', 1, 10, 0),
+    ('福田购物公园店', '深圳市福田区购物公园 B1 层 B103', '0755-8600 1002', '07:30-22:30', '深圳市', '福田区', '地下一层生鲜区旁，冷链商品由店员协助打包。', 1, 20, 0),
+    ('宝安中心店', '深圳市宝安区中心路 66 号 1 层', '0755-8600 1003', '08:00-21:30', '深圳市', '宝安区', '自提请出示自提码，可代取（需报手机号后四位）。', 1, 30, 0);
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE flash_sale (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(80) NOT NULL COMMENT '场次名，如「早市秒杀」',
+    product_id BIGINT NOT NULL,
+    flash_price DECIMAL(10, 2) NOT NULL COMMENT '秒杀价（必须低于商品售价）',
+    total_quota INT NOT NULL COMMENT '秒杀总名额（与商品库存相互独立）',
+    sold_quota INT NOT NULL DEFAULT 0 COMMENT '已抢名额',
+    per_user_limit INT NOT NULL DEFAULT 0 COMMENT '每人限购件数，0=不限',
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    status TINYINT NOT NULL DEFAULT 1 COMMENT '1 启用 0 停用',
+    sort_no INT NOT NULL DEFAULT 0,
+    deleted TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_flash_sale_window (deleted, status, start_time, end_time),
+    KEY idx_flash_sale_product (product_id, deleted, status, end_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='限时秒杀场次';
+
+CREATE TABLE legal_doc (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    doc_key VARCHAR(40) NOT NULL COMMENT 'TERMS / PRIVACY',
+    title VARCHAR(120) NOT NULL,
+    content TEXT NOT NULL COMMENT '正文，含【】占位符，上线前须替换为真实主体信息',
+    version VARCHAR(20) DEFAULT NULL,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    sort_no INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_legal_doc_key (doc_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='协议/隐私等法律文本（后台可编辑，正文由应用启动时幂等写入模板）';

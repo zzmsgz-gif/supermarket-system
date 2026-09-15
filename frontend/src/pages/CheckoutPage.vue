@@ -5,6 +5,49 @@
         </div>
 
         <div class="checkout-block">
+          <h3>配送方式</h3>
+          <div class="fulfill-tabs">
+            <button type="button" :class="{ on: !isPickup }" @click="selectFulfillment('DELIVERY')">
+              <b>送货上门</b><small>配送到家，可选时段</small>
+            </button>
+            <button type="button" :class="{ on: isPickup }" @click="selectFulfillment('PICKUP')">
+              <b>门店自提</b><small>到店取货，无需收货地址</small>
+            </button>
+          </div>
+
+          <!-- 送货上门：期望配送时段 -->
+          <div v-if="!isPickup" class="slot-picker">
+            <span class="field-label">期望配送时段（选填）</span>
+            <select v-model="fulfillment.slot">
+              <option value="">尽快送达</option>
+              <option v-for="slot in deliverySlots" :key="slot.value" :value="slot.value">{{ slot.label }}</option>
+            </select>
+          </div>
+
+          <!-- 门店自提：选门店 -->
+          <div v-else class="store-picker">
+            <span class="field-label">自提门店</span>
+            <div v-if="!stores.length" class="empty">暂无可自提门店，请改选送货上门</div>
+            <div v-else class="store-list">
+              <button
+                v-for="store in stores"
+                :key="store.id"
+                type="button"
+                class="store-chip"
+                :class="{ on: Number(store.id) === activeStoreId }"
+                @click="selectStore(store.id)"
+              >
+                <b>{{ store.name }}</b>
+                <small>{{ store.address }}</small>
+                <small v-if="store.businessHours">营业 {{ store.businessHours }}<template v-if="store.phone"> · {{ store.phone }}</template></small>
+              </button>
+            </div>
+            <p v-if="selectedStore && selectedStore.pickupNotice" class="pickup-notice">📌 {{ selectedStore.pickupNotice }}</p>
+            <p class="pickup-contact" v-if="session.user">自提联系人：{{ session.user.nickname || session.user.username }} {{ session.user.phone || '' }}</p>
+          </div>
+        </div>
+
+        <div class="checkout-block" v-if="!isPickup">
           <h3>收货地址</h3>
           <div v-if="selectedAddress" class="addr-card selected">
             <strong>{{ selectedAddress.receiverName }} {{ selectedAddress.receiverPhone }}</strong>
@@ -60,11 +103,33 @@
         </div>
 
         <div class="checkout-summary">
+          <div class="row"><span>配送方式</span><strong>{{ isPickup
+            ? '门店自提 · ' + (selectedStore ? selectedStore.name : '待选择门店')
+            : '送货上门 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
           <div class="row"><span>商品合计</span><strong>{{ money(cartLocalTotal) }}</strong></div>
           <div v-if="cartOriginalSave > 0" class="row"><span>划线优惠（已省）</span><strong class="minus">- {{ money(cartOriginalSave) }}</strong></div>
           <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
           <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
-          <div class="row pay"><span>应付金额</span><strong>{{ money(orderPayPreview) }}</strong></div>
+          <div v-if="memberPreview.memberDiscount > 0" class="row"><span>{{ tierNameFor(session.user.memberLevel) }}折扣</span><strong class="minus">- {{ money(memberPreview.memberDiscount) }}</strong></div>
+
+          <div class="checkout-points" v-if="session.user">
+            <label class="points-toggle">
+              <input type="checkbox" v-model="usePoints" :disabled="memberPreview.maxRedeemPoints <= 0 || memberPreview.userPoints <= 0" />
+              <span>使用积分抵扣</span>
+              <small v-if="memberPreview.maxRedeemPoints > 0 && memberPreview.userPoints > 0">（可用 {{ Math.min(memberPreview.userPoints, memberPreview.maxRedeemPoints) }} 分，最多抵 {{ money(memberPreview.maxRedeemValue) }}）</small>
+              <small v-else>当前无可用积分</small>
+            </label>
+            <div class="points-input" v-if="usePoints && memberPreview.maxRedeemPoints > 0">
+              <input type="number" min="0" :max="memberPreview.maxRedeemPoints" v-model.number="pointsToUse" @input="clampPoints" placeholder="输入抵扣积分" />
+              <button class="ghost sm" @click="useMaxPoints" type="button">全部抵扣</button>
+            </div>
+            <div class="row points-row" v-if="usePoints && memberPreview.pointsUsed > 0">
+              <span>积分抵扣（{{ memberPreview.pointsUsed }} 分）</span>
+              <strong class="minus">- {{ money(memberPreview.pointsValue) }}</strong>
+            </div>
+          </div>
+
+          <div class="row pay"><span>应付金额</span><strong>{{ money(memberPreview.finalPay) }}</strong></div>
           <div class="row balance" :class="{ insufficient: !balanceSufficient }">
             <span>账户余额 {{ money(wallet.balance) }}</span>
             <strong :class="balanceSufficient ? 'text-ok' : 'text-warn'">{{ balanceSufficient ? '余额充足' : '余额不足' }}</strong>
@@ -75,7 +140,7 @@
           <button class="ghost" @click="view = 'cart'">返回</button>
           <button v-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
             <span v-if="paying" class="spinner"></span>
-            <span>{{ paying ? '支付处理中…' : '确认付款 ' + money(orderPayPreview) }}</span>
+            <span>{{ paying ? '支付处理中…' : '确认付款 ' + money(memberPreview.finalPay) }}</span>
           </button>
           <button v-else class="primary" disabled>余额不足，无法支付</button>
           <a v-if="!balanceSufficient" class="link" @click="view = 'recharge'">去充值 ›</a>
@@ -89,7 +154,14 @@ export default {
   name: 'CheckoutPage',
   setup() {
     const appCtx = inject('appCtx');
-    return { ...appCtx };
+    const clampPoints = () => {
+      const max = appCtx.memberPreview.value.maxRedeemPoints;
+      const v = Number(appCtx.pointsToUse.value) || 0;
+      if (v < 0) appCtx.pointsToUse.value = 0;
+      else if (v > max) appCtx.pointsToUse.value = max;
+    };
+    const useMaxPoints = () => { appCtx.pointsToUse.value = appCtx.memberPreview.value.maxRedeemPoints; };
+    return { ...appCtx, clampPoints, useMaxPoints };
   }
 };
 </script>

@@ -245,7 +245,7 @@ INSERT INTO sys_user (
 ) VALUES (
     'admin',
     '$2a$10$7EqJtq98hPqEX7fNZaFWoO4s0J0kX0GfQp3R9GQ5P4GfKf5M7D6fK',
-    'System Administrator',
+    '系统管理员',
     'ADMIN',
     1
 );

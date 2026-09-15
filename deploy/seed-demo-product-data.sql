@@ -15,8 +15,8 @@ WHERE id = 35;
 
 -- 图集（复用已有 OSS 封面图，两张）
 INSERT INTO product_image (product_id, url, sort_no, deleted) VALUES
-(35, 'https://super-zzm.oss-cn-beijing.aliyuncs.com/product/2026/ba0ddc7fd9f642599ba87d9c84c20160.png', 0, 0),
-(35, 'https://super-zzm.oss-cn-beijing.aliyuncs.com/product/2026/ba0ddc7fd9f642599ba87d9c84c20160.png', 1, 0);
+(35, NULL, 0, 0),
+(35, NULL, 1, 0);
 
 -- 多规格 SKU：红色/M、蓝色/L
 INSERT INTO product_sku (product_id, spec_json, sku_code, image, sort_no, deleted) VALUES

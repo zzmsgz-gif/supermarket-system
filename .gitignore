@@ -26,6 +26,18 @@ deploy/**/*.jpg
 deploy/**/*.jpeg
 deploy/**/*.gif
 
+# 仓库根目录顶层的调试/走查截图（历次前端走查产物，非源码）。
+# 只匹配根目录，避免误伤 frontend/public 等处的正式图片。
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+
+# 编辑器/重构留下的备份，源码仓库不需要
+*.bak
+*.pre-extract
+*.orig
+
 # 本地运行/构建残留与上传产物（非源码，切勿提交）
 target_del_*/
 backend/uploads/

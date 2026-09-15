@@ -4,7 +4,9 @@
       <div class="header-utility-inner">
         <div class="u-left">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5" rx="1"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-          <span>新人首单立减 <b>¥20</b>，再送 3 张满减券</span>
+          <Transition name="notice-fade" mode="out-in">
+            <span :key="rotatingNotice">{{ rotatingNotice }}</span>
+          </Transition>
         </div>
         <div class="u-right">
           <span class="u-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><polygon points="15 8 19 8 22 11 22 16 15 16"/><circle cx="6" cy="18.5" r="2"/><circle cx="18" cy="18.5" r="2"/></svg>满 ¥99 免运费</span>
@@ -48,7 +50,7 @@
           </button>
           <template v-if="session.user">
             <div class="account-user">
-              <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @click="avatarInput?.click()" />
+              <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @error="imgFallback($event, session.user.nickname || session.user.username)" @click="avatarInput?.click()" />
               <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
               <div class="account-meta">
                 <span>{{ session.user.nickname || session.user.username }}</span>
@@ -58,9 +60,13 @@
             </div>
             <template v-if="!isAdmin">
               <div class="wallet-box">
-                <span>账户余额</span>
+                <span>余额</span>
                 <strong>{{ money(wallet.balance) }}</strong>
               </div>
+              <button class="member-chip" @click="navigate('points')" :title="'等级：' + tierNameFor(session.user.memberLevel)">
+                <span class="member-lv">{{ tierNameFor(session.user.memberLevel) }}</span>
+                <span class="member-pts">{{ session.user.points || 0 }} 积分</span>
+              </button>
               <button class="ghost recharge-entry" @click="navigate('recharge')">去充值</button>
             </template>
             <button class="ghost" @click="logout">退出</button>
@@ -81,6 +87,9 @@
             <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12a1 1 0 0 1 1 1v19l-3.5-2.5L12 22l-3.5-2.5L5 22V3a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg><span>我的订单</span></button>
             <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M12 7v10" stroke-dasharray="2.5 3"/></svg><span>优惠券</span></button>
             <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg><span>收货地址</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'points' }" @click="navigate('points')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M8.5 9.5h5a2 2 0 0 1 0 4h-5a2 2 0 0 0 0 4h5"/></svg><span>我的积分</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'favorites' }" @click="navigate('favorites')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg><span>我的收藏</span><span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
+            <button v-if="!isAdmin" :class="{ active: view === 'messages' }" @click="navigate('messages')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12h5"/></svg><span>消息</span><span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
             <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M15.5 15.5h1.5"/></svg><span>账户充值</span></button>
             <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>后台管理</span></button>
           </div>
@@ -90,10 +99,8 @@
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
       <header class="topbar" v-if="view !== 'product' && view !== 'shop'">
-        <div>
-          <p class="eyebrow">{{ currentTitle.eyebrow }}</p>
-          <h1>{{ currentTitle.title }}</h1>
-        </div>
+        <h1>{{ currentTitle.title }}</h1>
+        <button v-if="['orders', 'coupons', 'points', 'favorites', 'messages'].includes(view)" class="ghost" @click="refreshCurrentPage">刷新</button>
       </header>
 
       <router-view v-if="route.name !== 'admin'" />
@@ -155,12 +162,16 @@
             <h5>售后服务</h5>
             <a>售后政策</a><a>退款说明</a><a>取消订单</a><a>投诉建议</a>
           </div>
+          <div class="footer-col">
+            <h5>法律条款</h5>
+            <a @click="openLegal('TERMS')">用户协议</a><a @click="openLegal('PRIVACY')">隐私政策</a>
+          </div>
         </div>
       </div>
       <div class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</div>
     </footer>
 
-    <div v-if="confirmDialog.open" class="modal-mask" @click.self="resolveConfirm(false)">
+    <div v-if="confirmDialog.open" class="modal-mask modal-mask--float" @click.self="resolveConfirm(false)">
       <div class="modal" role="dialog" aria-modal="true">
         <h3>{{ confirmDialog.title }}</h3>
         <p class="modal-message">{{ confirmDialog.message }}</p>
@@ -177,7 +188,7 @@
       </div>
     </div>
 
-    <div v-if="alertDialog.open" class="modal-mask" @click.self="closeAlert">
+    <div v-if="alertDialog.open" class="modal-mask modal-mask--float" @click.self="closeAlert">
       <div class="modal alert-modal" :class="`alert-${alertDialog.type}`" role="dialog" aria-modal="true">
         <div class="alert-badge">{{ alertDialog.type === 'error' ? '!' : (alertDialog.type === 'success' ? '✓' : 'i') }}</div>
         <h3>{{ alertDialog.title }}</h3>
@@ -188,6 +199,11 @@
       </div>
     </div>
 
+    <!-- 全局成功提示（run(action, message) 的消息）：3 秒自动消失 -->
+    <Transition name="notice-fade">
+      <div v-if="notice" class="app-toast" role="status">{{ notice }}</div>
+    </Transition>
+
     <!-- 登录 / 注册 合一弹窗 -->
     <div v-if="authOpen" class="modal-mask" @click.self="closeAuth">
       <div class="modal auth-modal" role="dialog" aria-modal="true">
@@ -196,6 +212,8 @@
           <button :class="{ active: authTab === 'login' }" type="button" @click="switchAuth('login')">登录</button>
           <button :class="{ active: authTab === 'register' }" type="button" @click="switchAuth('register')">注册</button>
         </div>
+
+        <div v-if="error && authOpen" class="auth-error-banner" role="alert">⚠ {{ error }}</div>
 
         <form v-if="authTab === 'login'" class="auth-form" @submit.prevent="submitLogin">
           <label class="auth-field">
@@ -247,7 +265,8 @@
           </label>
           <label class="auth-agree">
             <input type="checkbox" v-model="registerForm.agree" />
-            我已阅读并同意 <span class="auth-link" @click="forgotPassword">《用户协议》</span>
+            我已阅读并同意 <span class="auth-link" @click="openLegal('TERMS')">《用户协议》</span>
+            与 <span class="auth-link" @click="openLegal('PRIVACY')">《隐私政策》</span>
             <small v-if="authErrors.agree" class="field-hint warn">{{ authErrors.agree }}</small>
           </label>
           <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '注册中…' : '注册并领取新人券' }}</button>
@@ -297,7 +316,7 @@ import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
 import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
-import { money, initials, formatRole, formatOrderStatus, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave } from './utils/format';
+import { money, initials, formatRole, formatOrderStatus, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
 import AdminPanel from './components/AdminPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from './stores/cart';
@@ -360,15 +379,31 @@ async function syncRoute() {
 watch(() => route.fullPath, syncRoute);
 
 const notice = ref('');
+
+// 全局成功提示条（notice 由 run(action, message) 与各处写入）：3 秒自动消失
+let flashTimer = null;
+watch(notice, (msg) => {
+  if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+  if (msg) flashTimer = setTimeout(() => { notice.value = ''; flashTimer = null; }, 3200);
+});
 const error = ref('');
 const avatarInput = ref(null);
 const categories = ref([]);
 const products = reactive({ items: [], page: 1, size: 12, total: 0 });
 const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
-const adminOrderStats = ref([]);
+const adminStatsOverview = ref(null);
 const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
+const adminAnnouncements = ref([]);
+const announcementForm = reactive({ id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
+const announcementFormOpen = ref(false);
+const adminBanners = ref([]);
+const bannerForm = reactive({ id: null, imageUrl: '', linkProductId: null, sortOrder: 0, enabled: true });
+const bannerFormOpen = ref(false);
+const bannerUploading = ref(false);
 const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
+// 商品星级聚合：{ productId: { avg, count } }，商品卡/详情展示平均星级
+const ratingSummaryMap = ref({});
 
 /* ===== 游客购物车：未登录先本地暂存，登录后并入服务端购物车 ===== */
 const GUEST_CART_KEY = 'supermarket_guest_cart';
@@ -392,6 +427,39 @@ function recomputeCartTotals() {
   cart.selectedAmount = +selected
     .reduce((s, i) => s + Number(i.productPrice || 0) * Number(i.quantity || 0), 0)
     .toFixed(2);
+  // 游客态没有后端购物车接口，这里按后端同口径本地预估活动优惠（门槛校验 + 取减免最大者）
+  const act = estimateGuestActivity(selected);
+  cart.activityDiscount = act.activityDiscount;
+  cart.activityName = act.activityName;
+}
+// 与后端 evaluateBestActivity 同口径的本地预估：仅用于游客购物车展示
+function estimateGuestActivity(selected) {
+  if (!selected?.length || !activeActivities.value.length) return { activityDiscount: 0, activityName: null };
+  const byProduct = new Map();
+  for (const it of selected) {
+    const pid = Number(it.productId);
+    byProduct.set(pid, (byProduct.get(pid) || 0) + Number(it.productPrice || 0) * Number(it.quantity || 0));
+  }
+  let best = 0, bestName = null;
+  for (const a of activeActivities.value) {
+    const threshold = Number(a.threshold || 0);
+    const discount = Number(a.discount || 0);
+    if (!(threshold > 0) || !(discount > 0)) continue;
+    const scope = String(a.scope || 'ALL');
+    let qualifying = 0;
+    for (const it of selected) {
+      const pid = Number(it.productId);
+      if (scope === 'ALL') qualifying += Number(it.productPrice || 0) * Number(it.quantity || 0);
+      else if (scope === 'PRODUCT' && Number(a.productId) === pid) qualifying += Number(it.productPrice || 0) * Number(it.quantity || 0);
+      else if (scope === 'CATEGORY' && a.categoryId != null && Number(a.categoryId) === Number(it.categoryId)) qualifying += Number(it.productPrice || 0) * Number(it.quantity || 0);
+    }
+    if (qualifying < threshold) continue;
+    const off = (a.type === 'DISCOUNT' && discount > 0 && discount < 1)
+      ? +(qualifying * (1 - discount)).toFixed(2)
+      : discount;
+    if (off > best) { best = off; bestName = a.name || null; }
+  }
+  return { activityDiscount: best, activityName: bestName };
 }
 // 用本地行 + 商品快照重建与后端一致形状的 cart（字段名对齐 CartItemResponse），页面无需分叉
 async function refreshGuestCartView() {
@@ -411,6 +479,7 @@ async function refreshGuestCartView() {
     items.push({
       id: 'g' + row.productId + '|' + (row.skuSpec || ''),
       productId: p.id ?? row.productId,
+      categoryId: p.categoryId ?? null,
       productName: p.name || '商品',
       productCoverUrl: p.coverUrl || '',
       skuSpec: row.skuSpec || '',
@@ -482,26 +551,108 @@ async function ensureActiveActivities() {
   if (activeActivities.value.length) return;
   try { activeActivities.value = (await api.get('/activities/active')) || []; } catch { /* 非关键 */ }
 }
-// 凑单进度条：找最近一个未达门槛的全单满减/折扣
+// 活动口号：通栏横幅/商品角标共用
+function activitySlogan(a) {
+  if (!a) return '';
+  const t = Number(a.threshold || 0);
+  return a.type === 'DISCOUNT'
+    ? `满${t}打${Math.round(Number(a.discount) * 10)}折`
+    : `满${t}减${Number(a.discount)}`;
+}
+// 全站通栏首推：按「满额时的实际减免」取力度最大者
+// 顶部公告带单条文案：活动名里已含「满/折/减」语义时只显名字，避免与口号重复
+function activityNoticeText(a) {
+  const name = String(a.name || '').trim();
+  const slogan = activitySlogan(a);
+  if (/满|折|减/.test(name)) return name;
+  return name ? `${name} · ${slogan}` : slogan;
+}
+// 公告带轮播：多个营销活动 + 新人福利轮流展示（4s 一换）
+const noticeIndex = ref(0);
+let noticeTimer = null;
+const noticeList = computed(() => {
+  const items = (activeActivities.value || [])
+    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
+    .map((a) => `限时活动 ${activityNoticeText(a)}`);
+  items.push('新人首单立减 ¥20，再送 3 张满减券');
+  return items;
+});
+const rotatingNotice = computed(() => noticeList.value[noticeIndex.value % noticeList.value.length] || '');
+// 到达门槛后能减多少 —— 与后端 evaluateBestActivity「取减免最大者」同一口径
+function activityOffset(a) {
+  return a.type === 'DISCOUNT'
+    ? Number(a.threshold) * (1 - Number(a.discount))
+    : Number(a.discount);
+}
+
+// 商品是否命中该活动（ALL / CATEGORY / PRODUCT 三种范围）
+function activityMatches(a, product) {
+  const scope = String(a.scope || 'ALL');
+  if (scope === 'PRODUCT') return Number(a.productId) === Number(product.id);
+  if (scope === 'CATEGORY') return a.categoryId != null && Number(a.categoryId) === Number(product.categoryId);
+  return true;
+}
+
+const topActivity = computed(() => [...(activeActivities.value || [])]
+  .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
+  .sort((x, y) => activityOffset(y) - activityOffset(x))[0] || null);
+// 商品卡角标：该商品命中的活动里「最省」的那个 —— 与 topActivity 及后端同口径。
+// 不要退回「第一个命中的」：那可能显示「满200打8折」，而结算实际按「满200减50」给，
+// 角标与实付对不上，用户会当成欺骗。
+function productActivityTag(product) {
+  const hits = (activeActivities.value || [])
+    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
+    .filter((a) => activityMatches(a, product));
+  if (!hits.length) return '';
+  return activitySlogan([...hits].sort((x, y) => activityOffset(y) - activityOffset(x))[0]);
+}
+// 凑单进度条：与后端同口径——只有达到门槛的活动才生效，实际生效取「减免金额最大者」，
+// 未达门槛时宣传的也是「达到门槛后减免最大」的同一活动，保证达标前后文案一致。
 const cartActivityProgress = computed(() => {
   const amount = cartLocalTotal.value;
   const rules = (activeActivities.value || [])
-    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0 && String(a.scope || 'ALL') === 'ALL')
-    .sort((x, y) => Number(x.threshold) - Number(y.threshold));
+    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0 && String(a.scope || 'ALL') === 'ALL');
   if (!rules.length || amount <= 0) return null;
-  const next = rules.find((a) => amount < Number(a.threshold));
-  const reachedTop = amount >= Number(rules[rules.length - 1].threshold);
-  const target = next || rules[rules.length - 1];
-  const benefit = target.type === 'DISCOUNT'
-    ? `打 ${Math.round(Number(target.discount) * 10)} 折`
-    : `立减 ¥${Number(target.discount)}`;
+  const discountOf = (a, base) => {
+    if (base < Number(a.threshold)) return 0;
+    if (a.type === 'DISCOUNT') {
+      const rate = Number(a.discount);
+      return (rate > 0 && rate < 1) ? Math.round(base * (1 - rate) * 100) / 100 : 0;
+    }
+    return Number(a.discount);
+  };
+  const benefitOf = (a) => a.type === 'DISCOUNT'
+    ? `打 ${Math.round(Number(a.discount) * 10)} 折`
+    : `立减 ¥${Number(a.discount)}`;
+  // 已达门槛的活动里取减免最大者（与后端 evaluateBestActivity 一致）
+  const bestApplied = rules
+    .map((rule) => ({ rule, off: discountOf(rule, amount) }))
+    .sort((x, y) => y.off - x.off)[0];
+  // 尚未达标的活动里，按「到达门槛后能减多少」取最优者，作为凑单目标
+  const bestUpcoming = rules
+    .filter((a) => amount < Number(a.threshold))
+    .map((rule) => ({ rule, off: discountOf(rule, Number(rule.threshold)) }))
+    .sort((x, y) => y.off - x.off || Number(x.rule.threshold) - Number(y.rule.threshold))[0];
+  // 若继续凑单能换到更大优惠，优先展示凑单提示（当前已享优惠仍由合计区展示）
+  if (bestUpcoming && bestUpcoming.off > (bestApplied ? bestApplied.off : 0)) {
+    const target = bestUpcoming.rule;
+    return {
+      benefit: benefitOf(target),
+      gap: Math.max(Number(target.threshold) - amount, 0),
+      threshold: Number(target.threshold),
+      amount,
+      percent: Math.min(100, Math.round((amount / Number(target.threshold)) * 100)),
+      reachedTop: false,
+    };
+  }
+  if (!bestApplied) return null;
   return {
-    benefit,
-    gap: reachedTop ? 0 : Math.max(Number(target.threshold) - amount, 0),
-    threshold: Number(target.threshold),
+    benefit: benefitOf(bestApplied.rule),
+    gap: 0,
+    threshold: Number(bestApplied.rule.threshold),
     amount,
-    percent: Math.min(100, Math.round((amount / Number(target.threshold)) * 100)),
-    reachedTop,
+    percent: 100,
+    reachedTop: true,
   };
 });
 const orders = reactive({ items: [] });
@@ -593,10 +744,10 @@ const recharge = reactive({
   paying: false,
 });
 const rechargePresets = [50, 100, 200, 500];
-const productChartEl = ref(null);
-const orderChartEl = ref(null);
-let productChart = null;
-let orderChart = null;
+const trendChartEl = ref(null);
+const salesChartEl = ref(null);
+let trendChart = null;
+let salesChart = null;
 
 
 const session = reactive({
@@ -611,7 +762,7 @@ const registerForm = reactive({ username: '', password: '', confirmPassword: '',
 const authErrors = reactive({});
 const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', brand: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
-const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
+const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
 const hotProducts = ref([]);
 const newProducts = ref([]);
 const relatedProducts = ref([]);
@@ -668,15 +819,30 @@ const isAdmin = computed(() => session.user?.role === 'ADMIN');
 const currentTitle = computed(() => ({
   shop: { eyebrow: '商品', title: isAdmin.value ? '上架商品查看' : '商品选购' },
   product: { eyebrow: '商品详情', title: productDetail.data?.name || '商品详情' },
-  cart: { eyebrow: '购物车', title: '购物车结算' },
+  cart: { eyebrow: '购物车', title: '购物车' },
   checkout: { eyebrow: '订单', title: '确认订单' },
   orders: { eyebrow: '订单', title: '我的订单' },
+  orderDetail: { eyebrow: '订单', title: '订单详情' },
   coupons: { eyebrow: '优惠', title: '优惠券' },
   addresses: { eyebrow: '地址', title: '收货地址' },
   recharge: { eyebrow: '钱包', title: '账户充值' },
+  points: { eyebrow: '会员', title: '我的积分' },
+  favorites: { eyebrow: '收藏', title: '我的收藏' },
+  messages: { eyebrow: '通知', title: '消息中心' },
+  terms: { eyebrow: '条款', title: '用户协议' },
+  privacy: { eyebrow: '条款', title: '隐私政策' },
   admin: { eyebrow: '后台', title: '后台管理' },
 
 }[view.value] || { eyebrow: '商品', title: '商品选购' }));
+
+// 二级页页头刷新：订单/优惠券页把刷新动作收进页头，避免卡片里再放一个孤立按钮
+async function refreshCurrentPage() {
+  if (view.value === 'orders') await loadOrders();
+  else if (view.value === 'coupons') await loadCoupons();
+  else if (view.value === 'points') { await loadMemberProfile(); await loadMemberLedger(1); }
+  else if (view.value === 'favorites') { await Promise.all([loadFavorites(), loadPriceAlerts(), loadAlertUnread()]); }
+  else if (view.value === 'messages') { await Promise.all([loadMessages(), loadMessageUnread()]); }
+}
 
 const selectedCoupon = computed(() => usableCoupons.value.find((coupon) => coupon.id === selectedUserCouponId.value) || null);
 
@@ -702,9 +868,100 @@ const orderPayPreview = computed(() => {
   return pay;
 });
 
+// 已勾选件数（结算明细展示用）
+const cartSelectedQty = computed(() => (cart.items || [])
+  .filter((item) => item.selected !== false)
+  .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
+
+// 实际抵扣口径的共省金额：活动优惠 + 优惠券（划线价已体现在现价里，单列展示不计入）
+const cartTotalSaved = computed(() =>
+  Number(cart.activityDiscount || 0)
+  + (selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0));
+
 const selectedAddress = computed(() => addresses.value.find((item) => item.id === selectedAddressId.value) || null);
 
-const balanceSufficient = computed(() => Number(wallet.balance || 0) >= orderPayPreview.value);
+// ---------------- 会员积分体系（前端状态 + 结算预览） ----------------
+const memberProfile = reactive({
+  points: 0, memberLevel: 0, levelName: '', totalSpent: 0,
+  discountRate: 1, nextLevelThreshold: null, nextLevelName: '', progressToNext: 0, maxRedeemRatio: 0.5,
+});
+const memberLedger = reactive({ items: [], total: 0, page: 1, size: 10, loading: false });
+const memberLevels = ref([]);
+const usePoints = ref(false);
+const pointsToUse = ref(0);
+
+// 等级档位兜底（与后端 MemberService 常量一致）：/member/levels 未就绪时也不漏算会员折扣
+const TIER_NAMES_FALLBACK = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
+const TIER_RATES_FALLBACK = [1, 0.98, 0.95, 0.90];
+
+function tierRateForLevel(level) {
+  const lv = Number(level) || 0;
+  const t = memberLevels.value.find((x) => x.level === lv);
+  if (t) return Number(t.rate);
+  if (Number(memberProfile.memberLevel) === lv && memberProfile.discountRate != null) {
+    return Number(memberProfile.discountRate);
+  }
+  return TIER_RATES_FALLBACK[lv] != null ? TIER_RATES_FALLBACK[lv] : 1;
+}
+function tierNameFor(level) {
+  const lv = Number(level) || 0;
+  const t = memberLevels.value.find((x) => x.level === lv);
+  if (t) return t.name;
+  return TIER_NAMES_FALLBACK[lv] || '普通会员';
+}
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+async function loadMemberLevels() {
+  // 该接口需要登录：未登录时会 401（静默忽略，结算时由 tierRateForLevel 兜底）
+  try { memberLevels.value = (await api.get('/member/levels')) || []; } catch (e) { /* ignore */ }
+}
+async function loadMemberProfile() {
+  if (!session.user || isAdmin.value) return;
+  try { Object.assign(memberProfile, (await api.get('/member/profile')) || {}); } catch (e) { /* ignore */ }
+}
+async function loadMemberLedger(page = 1) {
+  if (!session.user || isAdmin.value) return;
+  memberLedger.loading = true;
+  try {
+    const data = await api.get(`/member/ledger?page=${page}&size=${memberLedger.size}`);
+    if (data) {
+      memberLedger.items = data.items || [];
+      memberLedger.total = data.total || 0;
+      memberLedger.page = page;
+    }
+  } catch (e) { /* ignore */ } finally { memberLedger.loading = false; }
+}
+
+// 结算预览：会员折扣 + 积分抵现（与后端 OrderService 口径一致；当前目录无会员价，cartLocalTotal 即后端 totalAmount）
+const memberPreview = computed(() => {
+  const amountAfterPromo = Number(orderPayPreview.value || 0);
+  const level = session.user?.memberLevel || 0;
+  const rate = tierRateForLevel(level);
+  const memberDiscount = rate < 1 ? round2(amountAfterPromo * (1 - rate)) : 0;
+  const payBeforePoints = Math.max(amountAfterPromo - memberDiscount, 0);
+  const maxRedeemValue = round2(payBeforePoints * 0.5);
+  const maxRedeemPoints = Math.floor(maxRedeemValue * 100);
+  const userPoints = Number(session.user?.points || 0);
+  let pointsUsed = 0;
+  if (usePoints.value && userPoints > 0 && maxRedeemPoints > 0) {
+    const want = Number(pointsToUse.value) > 0 ? Number(pointsToUse.value) : userPoints;
+    pointsUsed = Math.max(0, Math.min(userPoints, want, maxRedeemPoints));
+  }
+  const pointsValue = round2(pointsUsed / 100);
+  const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0);
+  return { amountAfterPromo, memberDiscount, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, finalPay };
+});
+
+const balanceSufficient = computed(() => Number(wallet.balance || 0) >= memberPreview.value.finalPay);
+
+// 勾选「使用积分抵扣」时默认填入本次可用最大积分，保证输入框数值与实际抵扣一致
+watch(usePoints, (on) => {
+  if (on) {
+    pointsToUse.value = Math.min(memberPreview.value.userPoints, memberPreview.value.maxRedeemPoints);
+  } else {
+    pointsToUse.value = 0;
+  }
+});
 
 
 
@@ -712,6 +969,323 @@ const balanceSufficient = computed(() => Number(wallet.balance || 0) >= orderPay
 
 
 
+
+/* ---------------- 收藏 + 降价提醒 ---------------- */
+const favoriteIds = ref([]);
+const favorites = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
+const priceAlerts = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
+const alertUnread = ref(0);
+const pendingFavorite = ref(null);
+
+function isFavorite(productId) {
+  return favoriteIds.value.includes(Number(productId));
+}
+
+function setFavoriteLocal(productId, on) {
+  const id = Number(productId);
+  const next = new Set(favoriteIds.value.map(Number));
+  if (on) next.add(id);
+  else next.delete(id);
+  favoriteIds.value = [...next];
+}
+
+async function loadFavoriteIds() {
+  if (!session.user || isAdmin.value) { favoriteIds.value = []; return; }
+  try { favoriteIds.value = ((await api.get('/favorites/ids')) || []).map(Number); } catch (e) { /* ignore */ }
+}
+
+async function loadFavorites(reset = true) {
+  if (!session.user || isAdmin.value) { favorites.items = []; favorites.total = 0; return; }
+  const nextPage = reset ? 1 : favorites.page + 1;
+  favorites.loading = true;
+  try {
+    const data = await api.get(`/favorites?page=${nextPage}&size=${favorites.size}`);
+    const items = data?.items || [];
+    favorites.items = reset ? items : [...favorites.items, ...items];
+    favorites.total = data?.total || 0;
+    favorites.page = nextPage;
+  } catch (e) { /* ignore */ } finally { favorites.loading = false; }
+}
+
+async function loadPriceAlerts(reset = true) {
+  if (!session.user || isAdmin.value) { priceAlerts.items = []; priceAlerts.total = 0; return; }
+  const nextPage = reset ? 1 : priceAlerts.page + 1;
+  priceAlerts.loading = true;
+  try {
+    const data = await api.get(`/price-alerts?page=${nextPage}&size=${priceAlerts.size}`);
+    const items = data?.items || [];
+    priceAlerts.items = reset ? items : [...priceAlerts.items, ...items];
+    priceAlerts.total = data?.total || 0;
+    priceAlerts.page = nextPage;
+  } catch (e) { /* ignore */ } finally { priceAlerts.loading = false; }
+}
+
+async function loadAlertUnread() {
+  if (!session.user || isAdmin.value) { alertUnread.value = 0; return; }
+  try {
+    const data = await api.get('/price-alerts/unread-count');
+    alertUnread.value = Number(data?.count || 0);
+  } catch (e) { /* ignore */ }
+}
+
+async function markAlertsRead() {
+  if (!session.user || isAdmin.value || alertUnread.value <= 0) return;
+  try {
+    await api.post('/price-alerts/read');
+    alertUnread.value = 0;
+    priceAlerts.items = priceAlerts.items.map((item) => ({ ...item, isRead: true }));
+    notice.value = '降价提醒已全部标记为已读';
+  } catch (err) {
+    fail(err?.message || '操作失败，请稍后重试');
+  }
+}
+
+// 收藏/取消收藏：先乐观更新心形状态，失败再回滚；未登录则引导登录并在登录后自动补做
+async function toggleFavorite(product) {
+  const id = Number(product?.id);
+  if (!id) return;
+  if (!session.user) {
+    pendingFavorite.value = product;
+    notice.value = '登录后即可收藏，降价时会提醒你';
+    openAuth('login');
+    return;
+  }
+  const wasFav = isFavorite(id);
+  setFavoriteLocal(id, !wasFav);
+  try {
+    if (wasFav) await api.delete(`/favorites/${id}`);
+    else await api.post(`/favorites/${id}`);
+    notice.value = wasFav ? '已取消收藏' : '已收藏，降价后会在「我的收藏」提醒你';
+    await loadAlertUnread();
+    if (view.value === 'favorites') await Promise.all([loadFavorites(), loadPriceAlerts()]);
+  } catch (err) {
+    setFavoriteLocal(id, wasFav);
+    fail(err?.message || '操作失败，请稍后重试');
+  }
+}
+
+/* ---------------- 履约：送货上门 / 门店自提 + 配送时段 ---------------- */
+const stores = ref([]);
+const deliverySlots = ref([]);
+const fulfillment = reactive({ type: 'DELIVERY', storeId: null, slot: '' });
+
+const isPickup = computed(() => fulfillment.type === 'PICKUP');
+// 生效门店：显式选过就用选的，否则回落到第一家营业门店（与 activeStoreId 保持一致）
+const selectedStore = computed(() => {
+  const id = Number(fulfillment.storeId) || (stores.value.length ? Number(stores.value[0].id) : 0);
+  return stores.value.find((s) => Number(s.id) === id) || null;
+});
+// 自提门店的默认选择：进结算页时若没选过，自动选中第一家营业门店
+const activeStoreId = computed(() => {
+  if (fulfillment.storeId) return Number(fulfillment.storeId);
+  return stores.value.length ? Number(stores.value[0].id) : null;
+});
+
+async function loadStores() {
+  try { stores.value = (await api.get('/stores')) || []; } catch (e) { /* ignore */ }
+}
+
+async function loadDeliverySlots() {
+  try { deliverySlots.value = (await api.get('/delivery-slots')) || []; } catch (e) { /* ignore */ }
+}
+
+// ===== 限时秒杀 =====
+const flashSales = ref([]);
+// 用本地时间戳做倒计时基准：服务端只给「剩余秒数」，前端换算成本地绝对时刻后自行走秒，
+// 这样不会因为请求延迟或前后端时钟不一致而出现倒计时跳变。
+const nowTick = ref(Date.now());
+let flashTickTimer = null;
+
+async function loadFlashSales() {
+  try {
+    const list = (await api.get('/flash-sales')) || [];
+    const now = Date.now();
+    flashSales.value = list.map((f) => ({
+      ...f,
+      // RUNNING 时 targetAt 是结束时刻，UPCOMING 时是开始时刻
+      targetAt: now + Number(f.countdownSeconds || 0) * 1000
+    }));
+  } catch (e) { /* 秒杀是营销位，拉不到就不展示，不打扰用户 */ }
+}
+
+const runningFlashSales = computed(() => flashSales.value.filter((f) => f.state === 'RUNNING'));
+
+function flashRemaining(sale) {
+  if (!sale || !sale.targetAt) return 0;
+  return Math.max(0, Math.floor((sale.targetAt - nowTick.value) / 1000));
+}
+
+// 秒杀档期可能跨天，MM:SS 不够用，这里给到「天/时/分/秒」
+function formatDuration(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const days = Math.floor(s / 86400);
+  const hh = String(Math.floor((s % 86400) / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return days > 0 ? `${days}天 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
+function startFlashTick() {
+  if (flashTickTimer) return;
+  flashTickTimer = setInterval(() => { nowTick.value = Date.now(); }, 1000);
+}
+
+// ===== 秒杀限购：把「还能买几件」提前暴露出来，而不是等用户点结算才报错 =====
+
+/** 该商品此刻进行中的秒杀（同一商品同时只会有一个进行中的场次） */
+function flashSaleOfProduct(productId) {
+  const id = Number(productId);
+  return flashSales.value.find((f) => f.state === 'RUNNING' && Number(f.productId) === id) || null;
+}
+
+/**
+ * 该商品「我还能买几件」—— 直接读后端算好的 myRemainingQuota（= 每人限购 − 我的已购，
+ * 已把未付款订单占用的名额算进去），不在前端重算一遍，避免两处口径漂移。
+ * 返回 null 表示不受限购约束（游客未登录，或该场次不限购）。
+ */
+function flashLimitOfProduct(productId) {
+  const sale = flashSaleOfProduct(productId);
+  if (!sale || sale.myRemainingQuota === null || sale.myRemainingQuota === undefined) return null;
+  return Number(sale.myRemainingQuota);
+}
+
+/**
+ * 购物车里某行最多能加到几件 = min(库存, 秒杀还能买几件)。
+ *
+ * 注意 myRemainingQuota 约束的已经是「购物车件数 + 已购件数」的总和，所以直接当上限用即可，
+ * 不要再减一次购物车里已有的数量，否则会少给一件，用户会觉得"明明说还能买却加不上"。
+ * 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
+ */
+function cartQtyMax(item) {
+  const stock = Number(item?.stock || 0);
+  const byStock = stock > 0 ? stock : 1;
+  const byFlash = flashLimitOfProduct(item?.productId);
+  return byFlash === null ? byStock : Math.max(Math.min(byStock, byFlash), 1);
+}
+
+/** 该行是否因秒杀限购到顶 —— 用于把 + 置灰并在原地说明原因 */
+function cartQtyCapped(item) {
+  const limit = flashLimitOfProduct(item?.productId);
+  return limit !== null && Number(item?.quantity || 0) >= limit;
+}
+
+/**
+ * 因限购被挡时的统一文案（措辞与后端 409 对齐，用户在前端预检和后端拒绝时看到的是同一句话）。
+ *
+ * left = 后端算的「还能买几件」：它只扣了订单已占用的，没有扣购物车里已有的件数，
+ * 所以说「购物车里最多放几件」而不是「你还能买几件」—— 否则与用户眼前看到的数量对不上，
+ * 会被当成系统算错。
+ */
+function flashLimitMessage(productId, left) {
+  const sale = flashSaleOfProduct(productId);
+  const limit = Number(sale?.perUserLimit || 0);
+  const cap = `「${sale?.name || '该秒杀商品'}」每人限购 ${limit} 件`;
+  if (left <= 0) return cap + '，你已经买满了';
+  const bought = limit - Number(left);
+  return cap + `，购物车里最多放 ${left} 件` + (bought > 0 ? `（已下单占用 ${bought} 件）` : '');
+}
+
+// ===== 协议 / 隐私正文（后台可编辑，按 key 拉取） =====
+const legalDocs = reactive({ data: {}, loading: false });
+
+async function loadLegalDoc(docKey) {
+  const key = String(docKey || '').toUpperCase();
+  if (!key) return null;
+  legalDocs.loading = true;
+  try {
+    legalDocs.data[key] = await api.get(`/legal-docs/${key}`);
+    return legalDocs.data[key];
+  } catch (e) {
+    return legalDocs.data[key] || null;
+  } finally {
+    legalDocs.loading = false;
+  }
+}
+
+// 注册弹窗里点《用户协议》《隐私政策》：新标签页打开，避免关掉弹窗丢失已填内容
+function openLegal(docKey) {
+  window.open(docKey === 'PRIVACY' ? '/privacy' : '/terms', '_blank', 'noopener');
+}
+
+function selectFulfillment(type) {
+  fulfillment.type = type === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
+  if (fulfillment.type === 'PICKUP') {
+    fulfillment.slot = '';
+    if (!fulfillment.storeId && stores.value.length) fulfillment.storeId = Number(stores.value[0].id);
+  }
+}
+
+function selectStore(id) {
+  fulfillment.storeId = id ? Number(id) : null;
+}
+
+function resetFulfillment() {
+  fulfillment.type = 'DELIVERY';
+  fulfillment.slot = '';
+}
+
+/* ---------------- 消息中心 ---------------- */
+const messages = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
+const messageUnread = ref(0);
+const messageTypeFilter = ref('');
+
+async function loadMessages(reset = true) {
+  if (!session.user || isAdmin.value) { messages.items = []; messages.total = 0; return; }
+  const nextPage = reset ? 1 : messages.page + 1;
+  messages.loading = true;
+  try {
+    const query = messageTypeFilter.value ? `&type=${messageTypeFilter.value}` : '';
+    const data = await api.get(`/messages?page=${nextPage}&size=${messages.size}${query}`);
+    const items = data?.items || [];
+    messages.items = reset ? items : [...messages.items, ...items];
+    messages.total = data?.total || 0;
+    messages.page = nextPage;
+  } catch (e) { /* ignore */ } finally { messages.loading = false; }
+}
+
+async function loadMessageUnread() {
+  if (!session.user || isAdmin.value) { messageUnread.value = 0; return; }
+  try {
+    const data = await api.get('/messages/unread-count');
+    messageUnread.value = Number(data?.count || 0);
+  } catch (e) { /* ignore */ }
+}
+
+function changeMessageFilter(type) {
+  messageTypeFilter.value = type || '';
+  loadMessages();
+}
+
+async function markMessagesRead() {
+  if (!session.user || isAdmin.value || messageUnread.value <= 0) return;
+  try {
+    await api.post('/messages/read');
+    messageUnread.value = 0;
+    messages.items = messages.items.map((item) => ({ ...item, isRead: true }));
+    notice.value = '消息已全部标记为已读';
+  } catch (err) {
+    fail(err?.message || '操作失败，请稍后重试');
+  }
+}
+
+// 点开消息：先置为已读，再按 linkView 跳到对应页面
+async function openMessage(message) {
+  if (!message) return;
+  if (!message.isRead) {
+    try {
+      await api.post(`/messages/${message.id}/read`);
+      message.isRead = true;
+      messageUnread.value = Math.max(0, messageUnread.value - 1);
+    } catch (e) { /* 已读失败不阻断跳转 */ }
+  }
+  const target = message.linkView;
+  if (target === 'orderDetail' && message.linkRef) navigate('orderDetail', { id: Number(message.linkRef) });
+  else if (target === 'coupons') navigate('coupons');
+  else if (target === 'points') navigate('points');
+  else if (target === 'favorites') navigate('favorites');
+  else if (target === 'orders') navigate('orders');
+  else if (target === 'shop') navigate('shop');
+}
 
 function rememberUser(user) {
   session.user = user;
@@ -727,12 +1301,12 @@ function rememberUser(user) {
 
 }
 
-const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'admin'];
-const ADMIN_MENU_KEYS = ['dashboard', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'users'];
+const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
+const ADMIN_MENU_KEYS = ['dashboard', 'insights', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users'];
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
-    ? ['shop', 'admin', 'product', 'orderDetail'].includes(view.value)
+    ? ['shop', 'admin', 'product', 'orderDetail', 'terms', 'privacy'].includes(view.value)
     : view.value !== 'admin';
   if (allowed) return;
   router.replace({ name: 'shop' });
@@ -837,39 +1411,42 @@ function categoryName(categoryId) {
 
 // 单个购物车项的「原价→现价」省了多少（已乘数量）；不足优惠时返回 0
 
-function productChartOption() {
-  const items = [...(adminChartProducts.value || [])].sort((a, b) => Number(b.stock || 0) - Number(a.stock || 0)).slice(0, 8);
+// 近 7 天成交趋势：管理员判断生意涨跌的第一张图
+function trendChartOption() {
+  const trend = (adminStatsOverview.value && adminStatsOverview.value.salesTrend) || [];
+  const days = trend.map((p) => `${String(p.date).slice(8)}日`);
+  const sales = trend.map((p) => Number(p.salesAmount || 0));
+  const counts = trend.map((p) => Number(p.orderCount || 0));
   return {
-    title: { text: '商品库存排行', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
+    title: { text: '近 7 天成交趋势', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
     tooltip: { trigger: 'axis' },
+    legend: { bottom: 0, left: 'center' },
     grid: { left: 24, right: 18, top: 48, bottom: 72, containLabel: true },
-    xAxis: { type: 'category', data: items.map((item) => item.name), axisLabel: { rotate: 28 } },
-    yAxis: { type: 'value', name: '库存' },
-    series: [{ name: '库存', type: 'bar', data: items.map((item) => Number(item.stock || 0)), itemStyle: { color: '#fa8d1f', borderRadius: [4, 4, 0, 0] } }],
+    xAxis: { type: 'category', data: days, boundaryGap: false },
+    yAxis: [
+      { type: 'value', name: '成交额(¥)' },
+      { type: 'value', name: '订单数', splitLine: { show: false } },
+    ],
+    series: [
+      { name: '成交额', type: 'bar', data: sales, barMaxWidth: 26, itemStyle: { color: '#0aa870', borderRadius: [5, 5, 0, 0] } },
+      { name: '订单数', type: 'line', smooth: true, data: counts, itemStyle: { color: '#ffa042' }, yAxisIndex: 1 },
+    ],
   };
 
 }
 
-function orderChartOption() {
-  const counts = {};
-  (adminOrderStats.value || []).forEach((order) => {
-    const name = formatOrderStatus(order.status);
-    counts[name] = (counts[name] || 0) + 1;
-  });
-  const data = Object.entries(counts).map(([name, value]) => ({ name, value }));
+// 热销商品 TOP8：按销量排序，直接支撑备货与运营决策（取代无行动价值的"库存最多排行"）
+function salesTopChartOption() {
+  const items = [...(adminChartProducts.value || [])]
+    .sort((a, b) => Number(b.sales || 0) - Number(a.sales || 0))
+    .slice(0, 8);
   return {
-    title: { text: '订单状态分布', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
-    tooltip: { trigger: 'item' },
-    legend: { bottom: 0, left: 'center' },
-    color: ['#fa8d1f', '#ffb15b', '#ff6b35', '#ffd08a', '#d6502b', '#f5a03a'],
-    series: [{
-      name: '订单',
-      type: 'pie',
-      radius: ['42%', '68%'],
-      center: ['50%', '48%'],
-      avoidLabelOverlap: true,
-      data: data.length ? data : [{ name: '暂无订单', value: 1, itemStyle: { color: '#cbd5df' } }],
-    }],
+    title: { text: '热销商品 TOP8（按销量）', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
+    tooltip: { trigger: 'axis' },
+    grid: { left: 24, right: 18, top: 48, bottom: 72, containLabel: true },
+    xAxis: { type: 'category', data: items.map((item) => item.name), axisLabel: { rotate: 28 } },
+    yAxis: { type: 'value', name: '销量' },
+    series: [{ name: '销量', type: 'bar', data: items.map((item) => Number(item.sales || 0)), itemStyle: { color: '#12c48b', borderRadius: [4, 4, 0, 0] } }],
   };
 
 }
@@ -880,30 +1457,32 @@ async function renderAdminCharts() {
     return;
   }
   await nextTick();
-  if (productChartEl.value) {
-    if (productChart) productChart.dispose();
-    productChart = echarts.init(productChartEl.value);
-    productChart.setOption(productChartOption(), true);
+  const trendHasData = ((adminStatsOverview.value && adminStatsOverview.value.salesTrend) || [])
+    .some((p) => Number(p.orderCount || 0) > 0 || Number(p.salesAmount || 0) > 0);
+  if (trendChartEl.value && trendHasData) {
+    if (trendChart) trendChart.dispose();
+    trendChart = echarts.init(trendChartEl.value);
+    trendChart.setOption(trendChartOption(), true);
   }
-  if (orderChartEl.value) {
-    if (orderChart) orderChart.dispose();
-    orderChart = echarts.init(orderChartEl.value);
-    orderChart.setOption(orderChartOption(), true);
+  if (salesChartEl.value) {
+    if (salesChart) salesChart.dispose();
+    salesChart = echarts.init(salesChartEl.value);
+    salesChart.setOption(salesTopChartOption(), true);
   }
 
 }
 
 function resizeCharts() {
-  productChart?.resize();
-  orderChart?.resize();
+  trendChart?.resize();
+  salesChart?.resize();
 
 }
 
 function disposeCharts() {
-  productChart?.dispose();
-  orderChart?.dispose();
-  productChart = null;
-  orderChart = null;
+  trendChart?.dispose();
+  salesChart?.dispose();
+  trendChart = null;
+  salesChart = null;
 
 }
 
@@ -940,6 +1519,21 @@ function resetAuthErrors() {
   authErrors.phone = '';
   authErrors.email = '';
   authErrors.agree = '';
+  error.value = '';
+}
+
+// 后端部分错误文案仍是英文，这里统一映射为中文（新后端若已返回中文则原样透传）
+function authErrorText(msg) {
+  if (!msg) return msg;
+  const map = {
+    'username or password is incorrect': '用户名或密码错误',
+    'username already exists': '用户名已存在',
+    'phone already exists': '手机号已被注册',
+    'email already exists': '邮箱已被注册',
+  };
+  const lower = String(msg).toLowerCase();
+  for (const k in map) { if (lower.includes(k)) return map[k]; }
+  return msg;
 }
 
 async function submitLogin() {
@@ -956,8 +1550,14 @@ async function submitLogin() {
     closeAuth();
     showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
     if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
+    // 未登录时点心形收藏 → 登录成功后自动补做
+    if (pendingFavorite.value) {
+      const pendingProduct = pendingFavorite.value;
+      pendingFavorite.value = null;
+      await toggleFavorite(pendingProduct);
+    }
   } catch (err) {
-    fail(err.message || '登录失败，请检查用户名或密码');
+    fail(authErrorText(err.message) || '登录失败，请检查用户名或密码');
   } finally {
     authSubmitting.value = false;
   }
@@ -996,8 +1596,14 @@ async function submitRegister() {
     closeAuth();
     showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
     if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
+    // 未登录时点心形收藏 → 注册成功后自动补做
+    if (pendingFavorite.value) {
+      const pendingProduct = pendingFavorite.value;
+      pendingFavorite.value = null;
+      await toggleFavorite(pendingProduct);
+    }
   } catch (err) {
-    const msg = err.message || '注册失败，请稍后重试';
+    const msg = authErrorText(err.message) || '注册失败，请稍后重试';
     if (msg.includes('用户名')) authErrors.username = msg;
     else if (msg.includes('手机')) authErrors.phone = msg;
     else if (msg.includes('邮箱')) authErrors.email = msg;
@@ -1327,6 +1933,12 @@ async function addToCart(product) {
     fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
     return;
   }
+  // 秒杀每人限购：在这里就把原因说清楚，别让用户点完「加入购物车」才等后端 409 回来
+  const flashLeft = flashLimitOfProduct(product.id);
+  if (flashLeft !== null && currentQty + 1 > flashLeft) {
+    fail(flashLimitMessage(product.id, flashLeft), '超出限购');
+    return;
+  }
   await run(async () => {
     await api.post('/cart/items', { productId: product.id, quantity: 1 });
     await loadCart();
@@ -1406,19 +2018,30 @@ function chooseNoCoupon() {
 
 // 数量改变：价格即时变化（v-model 已更新 item.quantity，计算属性即时重算），
 // 同时防抖把新数量同步到后端，并在合适时机刷新可用券列表。
-// 修复：加入库存上限校验，超出库存时回滚到后端真实数量，避免「库存 5 却显示 6」的假象。
+// 修复：加入库存与秒杀限购上限校验（cartQtyMax = min(库存, 还能买几件)）。
+// 原实现是「先夹到 max 再加 delta」，到顶时反而会多给一件（5→6），这里改成「先加再夹」。
 function stepQty(item, delta) {
-  const max = Number(item.stock || 0);
-  const next = Math.max(1, Math.min(Number(item.quantity) || 1, Math.max(max, 1)) + delta);
+  const max = cartQtyMax(item);
+  const current = Math.max(1, Number(item.quantity) || 1);
+  const next = Math.min(Math.max(current + delta, 1), Math.max(max, 1));
+  if (next === current) return;   // 已到顶，不发这次必然被拒的请求
   item.quantity = next;
   onQtyInput(item);
 }
 
 function onQtyChange(item) {
-  const max = Number(item.stock || 0);
+  const max = cartQtyMax(item);
+  const flashLimit = flashLimitOfProduct(item.productId);
   let q = Number(item.quantity) || 1;
   if (q < 1) q = 1;
-  if (max > 0 && q > max) q = max;
+  if (q > max) {
+    q = max;
+    // 因限购被夹下来时说一句，否则用户会以为「我输入的数字被吞了」
+    if (flashLimit !== null && Number(item.quantity) > flashLimit) {
+      const sale = flashSaleOfProduct(item.productId);
+      notice.value = `「${sale?.name || '该秒杀商品'}」每人限购 ${flashLimit} 件，已为你调整为 ${max} 件`;
+    }
+  }
   item.quantity = q;
   onQtyInput(item);
 }
@@ -1440,11 +2063,19 @@ async function onQtyInput(item) {
       return;
     }
     try {
-      await api.put(`/cart/items/${item.id}`, { quantity: qty, selected: item.selected !== false });
+      // PUT 返回的就是更新后的完整购物车（含 activityDiscount），必须接住，
+      // 否则改数量后活动优惠/应付合计停留在旧值，与结算页对不上
+      const updated = await api.put(`/cart/items/${item.id}`, { quantity: qty, selected: item.selected !== false });
+      if (updated) {
+        Object.assign(cart, updated);
+        cartStore.setCart(updated);
+      }
       await loadUsableCoupons();
     } catch (e) {
-      // 后端可能因库存不足等拒绝，回滚到真实数量并提示，避免界面与库存不一致
-      fail(e?.message || '更新数量失败，已恢复', '库存不足');
+      // 后端可能因库存不足、或超出秒杀每人限购而拒绝，回滚到真实数量并提示，
+      // 避免界面与后端不一致。后端的 409 文案已是中文可读的，直接用。
+      const msg = e?.message || '更新数量失败，已恢复';
+      fail(msg, /限购|买满/.test(msg) ? '超出限购' : '库存不足');
       await loadCart();
     }
   }, 400);
@@ -1512,7 +2143,13 @@ async function goCheckout() {
 
 async function createOrder() {
   if (paying.value) return;
-  if (!selectedAddressId.value) { fail('请先保存或选择收货地址'); return; }
+  // 履约方式二选一：自提要选门店，送货要有收货地址
+  if (isPickup.value) {
+    if (!activeStoreId.value) { fail('请选择自提门店'); return; }
+  } else if (!selectedAddressId.value) {
+    fail('请先保存或选择收货地址');
+    return;
+  }
   const itemIds = (cart.items || []).map((item) => item.id);
   if (!itemIds.length) { fail('购物车为空，请先添加商品'); return; }
   paying.value = true;
@@ -1520,16 +2157,35 @@ async function createOrder() {
     // 模拟支付网关受理：先展示加载态，使模拟支付更逼真
     await new Promise((r) => setTimeout(r, 700));
     await run(async () => {
-      const body = { addressId: selectedAddressId.value, cartItemIds: itemIds, remark: '前端下单' };
+      const body = { cartItemIds: itemIds, remark: '前端下单' };
+      if (isPickup.value) {
+        body.fulfillmentType = 'PICKUP';
+        body.pickupStoreId = activeStoreId.value;
+      } else {
+        body.fulfillmentType = 'DELIVERY';
+        body.addressId = selectedAddressId.value;
+        if (fulfillment.slot) body.deliverySlot = fulfillment.slot;
+      }
       if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
+      if (usePoints.value && memberPreview.value.pointsUsed > 0) {
+        body.usePoints = true;
+        body.pointsToUse = memberPreview.value.pointsUsed;
+      }
       const order = await api.post('/orders', body);
       // 模拟支付：创建后用钱包余额完成支付
       await api.post(`/orders/${order.id}/pay`);
       selectedUserCouponId.value = '';
       userOptedOutCoupon.value = false;
+      usePoints.value = false;
+      pointsToUse.value = 0;
       await loadCart();
       await loadOrders();
       await loadWallet();
+      await loadMe();
+      await loadMemberProfile();
+      await loadMessageUnread();
+      // 下单会占掉秒杀名额（未付款也占），必须重拉，否则「还能买几件」停留在旧值
+      await loadFlashSales();
       navigate('orders');
       return order;
     }, '支付成功，订单已创建');
@@ -1579,7 +2235,8 @@ async function cancelOrder(id) {
   if (!confirmed) return;
   await run(async () => {
     await api.post(`/orders/${id}/cancel`);
-    await Promise.all([loadOrders(), loadWallet(), loadMe()]);
+    // 取消会回退秒杀名额与限购额度，重拉后购物车里的「还能买几件」才会立刻放开
+    await Promise.all([loadOrders(), loadWallet(), loadMe(), loadFlashSales()]);
   }, '订单已取消');
 
 }
@@ -1637,6 +2294,7 @@ async function submitReview(id) {
       imageUrls: reviewForm.images,
     });
     reviewedMap[id] = true;
+    loadRatingSummary(); // 新评价改变平均分，刷新商品卡/详情的星级聚合
     reviewForm.orderId = null;
     reviewForm.images = [];
     await loadProducts();
@@ -1817,6 +2475,134 @@ async function loadAdminProducts() {
 }
 
 // 仪表盘「商品库存排行」需要全量商品，与分页后的表格数据解耦，避免只统计当前页
+/* ===== 公告管理（后台） + 首页公告详情弹层 ===== */
+async function loadAdminAnnouncements() {
+  if (!isAdmin.value) return;
+  try {
+    adminAnnouncements.value = await api.get('/admin/announcements');
+  } catch (e) {
+    adminAnnouncements.value = [];
+  }
+}
+
+function openAnnouncementForm(a) {
+  Object.assign(announcementForm, a
+    ? { id: a.id, title: a.title, content: a.content, type: a.type || 'NOTICE', sortOrder: a.sortOrder || 0, enabled: Number(a.enabled) === 1 }
+    : { id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
+  announcementFormOpen.value = true;
+}
+function closeAnnouncementForm() {
+  announcementFormOpen.value = false;
+  announcementForm.id = null;
+}
+
+async function saveAnnouncement() {
+  const form = announcementForm;
+  if (!form.title.trim() || !form.content.trim()) { showAlert('标题和内容都要填写'); return; }
+  await run(async () => {
+    const payload = { title: form.title.trim(), content: form.content.trim(), type: form.type, sortOrder: Number(form.sortOrder) || 0, enabled: !!form.enabled };
+    if (form.id) await api.put(`/admin/announcements/${form.id}`, payload);
+    else await api.post('/admin/announcements', payload);
+    closeAnnouncementForm();
+    await loadAdminAnnouncements();
+  }, '公告已保存');
+}
+
+async function toggleAnnouncement(a) {
+  await run(async () => {
+    await api.put(`/admin/announcements/${a.id}`, {
+      title: a.title, content: a.content, type: a.type, sortOrder: a.sortOrder || 0,
+      enabled: Number(a.enabled) !== 1,
+    });
+    await loadAdminAnnouncements();
+  }, Number(a.enabled) === 1 ? '公告已停用' : '公告已启用');
+}
+
+async function deleteAnnouncement(a) {
+  const ok = await askConfirm(`确定删除公告「${a.title}」？删除后前台立即消失。`);
+  if (!ok) return;
+  await run(async () => {
+    await api.delete(`/admin/announcements/${a.id}`);
+    await loadAdminAnnouncements();
+  }, '公告已删除');
+}
+
+/* ===== 轮播位管理（后台） ===== */
+async function loadAdminBanners() {
+  if (!isAdmin.value) return;
+  try {
+    adminBanners.value = await api.get('/admin/banners');
+  } catch (e) {
+    adminBanners.value = [];
+  }
+}
+
+function openBannerForm(b) {
+  // 新建时默认排在最后（当前最大排序 + 1），避免多条都是 0 导致播放顺序随机
+  const nextSort = (adminBanners.value || []).reduce((max, item) => Math.max(max, Number(item.sortOrder) || 0), 0) + 1;
+  Object.assign(bannerForm, b
+    ? { id: b.id, imageUrl: b.imageUrl || '', linkProductId: b.linkProductId || null, sortOrder: b.sortOrder || 0, enabled: Number(b.enabled) === 1 }
+    : { id: null, imageUrl: '', linkProductId: null, sortOrder: nextSort, enabled: true });
+  bannerFormOpen.value = true;
+}
+function closeBannerForm() {
+  bannerFormOpen.value = false;
+  bannerForm.id = null;
+}
+
+async function saveBanner() {
+  const form = bannerForm;
+  if (bannerUploading.value) { showAlert('图片还在上传中，请稍候 1-2 秒再保存'); return; }
+  if (!form.imageUrl) { showAlert('请先上传轮播图片'); return; }
+  await run(async () => {
+    const payload = {
+      imageUrl: form.imageUrl,
+      linkProductId: form.linkProductId || null,
+      sortOrder: Number(form.sortOrder) || 0,
+      enabled: !!form.enabled,
+    };
+    if (form.id) await api.put(`/admin/banners/${form.id}`, payload);
+    else await api.post('/admin/banners', payload);
+    closeBannerForm();
+    await loadAdminBanners();
+  }, '轮播位已保存');
+}
+
+async function toggleBanner(b) {
+  await run(async () => {
+    await api.put(`/admin/banners/${b.id}`, {
+      imageUrl: b.imageUrl,
+      linkProductId: b.linkProductId,
+      sortOrder: b.sortOrder || 0,
+      enabled: Number(b.enabled) !== 1,
+    });
+    await loadAdminBanners();
+  }, Number(b.enabled) === 1 ? '轮播位已停用' : '轮播位已启用');
+}
+
+async function deleteBanner(b) {
+  const ok = await askConfirm('确定删除这个轮播位？删除后前台立即不再展示。');
+  if (!ok) return;
+  await run(async () => {
+    await api.delete(`/admin/banners/${b.id}`);
+    await loadAdminBanners();
+  }, '轮播位已删除');
+}
+
+// 公开接口：全量商品星级聚合（有评价的商品才会出现）
+async function loadRatingSummary() {
+  try {
+    const list = await api.get('/products/rating-summary');
+    const map = {};
+    for (const item of list || []) {
+      map[item.productId] = { avg: Number(item.avgRating || 0), count: Number(item.reviewCount || 0) };
+    }
+    ratingSummaryMap.value = map;
+  } catch (e) {
+    ratingSummaryMap.value = {};
+  }
+}
+
 async function loadAdminChartProducts() {
   try {
     const data = await api.get('/admin/products?page=1&size=100');
@@ -1856,13 +2642,14 @@ async function loadAdminOrders() {
   adminOrderJumpPage.value = adminOrders.page;
 }
 
-// 仪表盘「订单状态分布」需要全量订单，与分页后的表格数据解耦，避免只统计当前页
-async function loadAdminOrderStats() {
+// 仪表盘聚合统计：后端一次给全量口径（订单总数/成交额/今日/待办/状态分布），
+// 不再拿分页数据凑 KPI（旧实现请求 size=200 被后端 400 拒绝，环图永远是"暂无订单"）
+async function loadAdminStatsOverview() {
+  if (!isAdmin.value) return;
   try {
-    const data = await api.get('/admin/orders?page=1&size=200');
-    adminOrderStats.value = data.items || [];
+    adminStatsOverview.value = await api.get('/admin/stats/overview');
   } catch (e) {
-    adminOrderStats.value = [];
+    adminStatsOverview.value = null;
   }
 }
 
@@ -1983,7 +2770,7 @@ async function refreshAdminData() {
     loadProducts(),
     loadAdminProducts(),
     loadAdminOrders(),
-    loadAdminOrderStats(),
+    loadAdminStatsOverview(),
     loadAdminUsers(),
     loadRefundOrders(),
     loadStockAlerts(),
@@ -2002,7 +2789,10 @@ async function refreshForSession() {
     await refreshAdminData();
     return;
   }
-  await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses()]);
+  // loadMemberLevels 也要在这里补一次：/member/levels 需要登录，而 app 挂载时的调用发生在登录之前（401），
+  // 不补的话「站内登录 → 结算」这条常见链路上 memberLevels 为空，会员折扣会被漏算。
+  // loadFlashSales 同理，而且它还要拿到「我的已购/未付款占用」——那是带身份的，必须在登录后重拉。
+  await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses(), loadMemberProfile(), loadMemberLevels(), loadFavoriteIds(), loadAlertUnread(), loadMessageUnread(), loadFlashSales()]);
   // 登录/注册成功后：把游客本地购物车并入服务端
   await mergeGuestCartToServer();
 
@@ -2011,7 +2801,10 @@ async function refreshForSession() {
 watch(view, async (next) => {
   ensureAllowedView();
   if (next === 'cart') { await loadCart(); await ensureActiveActivities(); }
-  if (next === 'checkout') { await loadWallet(); await loadAddresses(); await loadMyCoupons(); await loadUsableCoupons(); }
+  if (next === 'checkout') { await loadWallet(); await loadAddresses(); await loadMyCoupons(); await loadUsableCoupons(); usePoints.value = false; pointsToUse.value = 0; resetFulfillment(); await Promise.all([loadStores(), loadDeliverySlots()]); }
+  if (next === 'points') { await loadMemberProfile(); await loadMemberLedger(); }
+  if (next === 'favorites') { await loadFavorites(); await loadPriceAlerts(); await loadAlertUnread(); }
+  if (next === 'messages') { await Promise.all([loadMessages(), loadMessageUnread()]); }
   if (next === 'orders') await loadOrders();
   if (next === 'coupons') await loadCoupons();
   if (next === 'addresses') await loadAddresses();
@@ -2032,13 +2825,18 @@ watch(() => [view.value, adminMenu.value, adminProducts.items, adminOrders.items
 
 
 onMounted(async () => {
+  noticeTimer = setInterval(() => { if (noticeList.value.length > 1) noticeIndex.value += 1; }, 4000);
+  startFlashTick();
   window.addEventListener('resize', resizeCharts);
   window.addEventListener('beforeunload', reportDwell);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
   await run(async () => {
     await loadCategories();
     await loadProducts();
+    await loadRatingSummary();
     await loadHomeChannels();
+    await loadMemberLevels();
+    await loadFlashSales();
     if (session.user) await refreshForSession();
     else await refreshGuestCartView(); // 游客：水合本地购物车（角标/购物车页）
     await ensureActiveActivities();
@@ -2048,14 +2846,16 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  clearInterval(noticeTimer);
+  if (flashTickTimer) { clearInterval(flashTickTimer); flashTickTimer = null; }
   window.removeEventListener('resize', resizeCharts);
   window.removeEventListener('beforeunload', reportDwell);
   document.removeEventListener('visibilitychange', reportDwell);
   disposeCharts();
 
 });
-const adminCtx = { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openOrderDetail, orderChart, orderChartEl, orderChartOption, orderDetail, orders, productChart, productChartEl, productChartOption, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, session, showAlert, stockAlerts };
+const adminCtx = { adminAnnouncements, adminBanners, adminChartProducts, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, salesChart, salesChartEl, salesTopChartOption, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, trendChart, trendChartEl, trendChartOption, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStats, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSyncTimers, cartActivityProgress, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrderStats, loadAdminOrders, loadAdminProducts, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderChart, orderChartEl, orderChartOption, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productChart, productChartEl, productChartOption, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, view, wallet, watch };
+const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, trendChart, trendChartEl, trendChartOption, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>

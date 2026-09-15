@@ -6,6 +6,7 @@ import com.example.supermarket.dto.ProfileUpdateRequest;
 import com.example.supermarket.dto.RegisterRequest;
 import com.example.supermarket.dto.UserResponse;
 import com.example.supermarket.entity.SysUser;
+import com.example.supermarket.entity.UserMessage;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.repository.SysUserRepository;
 import com.example.supermarket.security.CurrentUser;
@@ -29,34 +30,37 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final CouponService couponService;
+    private final MessageService messageService;
 
     public AuthService(
             SysUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            CouponService couponService
+            CouponService couponService,
+            MessageService messageService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.couponService = couponService;
+        this.messageService = messageService;
     }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         String username = request.getUsername().trim();
         if (userRepository.existsByUsernameAndDeleted(username, NOT_DELETED)) {
-            throw new BusinessException(409, "Username already exists");
+            throw new BusinessException(409, "用户名已存在");
         }
 
         String phone = normalizeBlank(request.getPhone());
         if (phone != null && userRepository.existsByPhoneAndDeleted(phone, NOT_DELETED)) {
-            throw new BusinessException(409, "Phone already exists");
+            throw new BusinessException(409, "手机号已被注册");
         }
 
         String email = normalizeBlank(request.getEmail());
         if (email != null && userRepository.existsByEmailAndDeleted(email, NOT_DELETED)) {
-            throw new BusinessException(409, "Email already exists");
+            throw new BusinessException(409, "邮箱已被注册");
         }
 
         SysUser user = new SysUser();
@@ -78,6 +82,11 @@ public class AuthService {
             // 发放新人券失败不应阻断注册
         }
 
+        // 欢迎消息（消息中心的第一条；dedupeKey 保证重复注册调用也只落一条）
+        messageService.push(saved.getId(), UserMessage.TYPE_SYSTEM, "欢迎加入超市购物系统",
+                "新人专享券已发放到你的账户，下单立减。收藏商品后降价还会第一时间提醒你。",
+                "coupons", null, "WELCOME:" + saved.getId());
+
         CurrentUser currentUser = new CurrentUser(saved);
         return new AuthResponse(jwtService.generateToken(currentUser), UserResponse.from(saved));
     }
@@ -85,9 +94,9 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         SysUser user = userRepository.findByUsernameAndDeleted(request.getUsername().trim(), NOT_DELETED)
-                .orElseThrow(() -> new BusinessException(401, "Username or password is incorrect"));
+                .orElseThrow(() -> new BusinessException(401, "用户名或密码错误"));
         if (!ENABLED_STATUS(user) || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new BusinessException(401, "Username or password is incorrect");
+            throw new BusinessException(401, "用户名或密码错误");
         }
 
         user.setLastLoginAt(LocalDateTime.now());

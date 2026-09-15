@@ -14,6 +14,9 @@ public class AdminUserResponse {
     private String role;
     private Byte status;
     private BigDecimal balance;
+    private Long points;
+    private Integer memberLevel;
+    private BigDecimal totalSpent;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
     private String avatarUrl;
@@ -28,6 +31,9 @@ public class AdminUserResponse {
         response.setRole(user.getRole());
         response.setStatus(user.getStatus());
         response.setBalance(user.getBalance());
+        response.setPoints(user.getPoints());
+        response.setMemberLevel(user.getMemberLevel());
+        response.setTotalSpent(user.getTotalSpent());
         response.setLastLoginAt(user.getLastLoginAt());
         response.setCreatedAt(user.getCreatedAt());
         response.setAvatarUrl(user.getAvatarUrl());
@@ -96,6 +102,30 @@ public class AdminUserResponse {
 
     public void setBalance(BigDecimal balance) {
         this.balance = balance;
+    }
+
+    public Long getPoints() {
+        return points;
+    }
+
+    public void setPoints(Long points) {
+        this.points = points;
+    }
+
+    public Integer getMemberLevel() {
+        return memberLevel;
+    }
+
+    public void setMemberLevel(Integer memberLevel) {
+        this.memberLevel = memberLevel;
+    }
+
+    public BigDecimal getTotalSpent() {
+        return totalSpent;
+    }
+
+    public void setTotalSpent(BigDecimal totalSpent) {
+        this.totalSpent = totalSpent;
     }
 
     public LocalDateTime getLastLoginAt() {

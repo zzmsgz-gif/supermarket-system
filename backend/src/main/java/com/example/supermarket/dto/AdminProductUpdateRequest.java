@@ -36,6 +36,9 @@ public class AdminProductUpdateRequest {
     @DecimalMin(value = "0.0", inclusive = true, message = "Original price must be greater than or equal to 0")
     private BigDecimal originalPrice;
 
+    @DecimalMin(value = "0.0", inclusive = true, message = "Member price must be greater than or equal to 0")
+    private BigDecimal memberPrice;
+
     @NotBlank(message = "Unit is required")
     @Size(max = 20, message = "Unit must be at most 20 characters")
     private String unit;
@@ -124,6 +127,14 @@ public class AdminProductUpdateRequest {
 
     public void setOriginalPrice(BigDecimal originalPrice) {
         this.originalPrice = originalPrice;
+    }
+
+    public BigDecimal getMemberPrice() {
+        return memberPrice;
+    }
+
+    public void setMemberPrice(BigDecimal memberPrice) {
+        this.memberPrice = memberPrice;
     }
 
     public String getUnit() {

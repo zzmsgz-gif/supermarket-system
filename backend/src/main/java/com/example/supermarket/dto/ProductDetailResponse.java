@@ -27,6 +27,7 @@ public class ProductDetailResponse extends ProductSummaryResponse {
         detail.setCoverUrl(summary.getCoverUrl());
         detail.setPrice(summary.getPrice());
         detail.setOriginalPrice(summary.getOriginalPrice());
+        detail.setMemberPrice(summary.getMemberPrice());
         detail.setStock(summary.getStock());
         detail.setSales(summary.getSales());
         detail.setUnit(summary.getUnit());

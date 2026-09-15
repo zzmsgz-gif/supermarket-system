@@ -8,6 +8,7 @@ import com.example.supermarket.entity.OrderItem;
 import com.example.supermarket.entity.PaymentRecord;
 import com.example.supermarket.entity.Product;
 import com.example.supermarket.entity.StockLog;
+import com.example.supermarket.entity.UserMessage;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.OrderItemRepository;
@@ -62,6 +63,8 @@ public class AdminOrderService {
     private final PaymentRecordRepository paymentRecordRepository;
     private final WalletService walletService;
     private final CouponService couponService;
+    private final MessageService messageService;
+    private final FlashSaleService flashSaleService;
 
     public AdminOrderService(
             OrderRepository orderRepository,
@@ -70,7 +73,9 @@ public class AdminOrderService {
             StockLogRepository stockLogRepository,
             PaymentRecordRepository paymentRecordRepository,
             WalletService walletService,
-            CouponService couponService
+            CouponService couponService,
+            MessageService messageService,
+            FlashSaleService flashSaleService
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -79,6 +84,8 @@ public class AdminOrderService {
         this.paymentRecordRepository = paymentRecordRepository;
         this.walletService = walletService;
         this.couponService = couponService;
+        this.messageService = messageService;
+        this.flashSaleService = flashSaleService;
     }
 
     @Transactional(readOnly = true)
@@ -110,6 +117,14 @@ public class AdminOrderService {
         order.setShipNo(shipNo);
         order.setShippedAt(LocalDateTime.now());
         OrderEntity savedOrder = orderRepository.save(order);
+        boolean pickupOrder = OrderEntity.FULFILLMENT_PICKUP.equals(savedOrder.getFulfillmentType());
+        // 自提单没有物流，提醒用户到店取货；配送单推送快递信息
+        messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER,
+                pickupOrder ? "自提订单已备货完成" : "订单已发货",
+                pickupOrder
+                        ? "自提门店：" + savedOrder.getPickupStoreName() + "，自提码 " + savedOrder.getPickupCode() + "，请到店出示取货。"
+                        : "快递 " + shipCompany + " 已揽收，单号 " + shipNo + "，可前往订单详情查看物流。",
+                "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:SHIPPED:" + savedOrder.getId());
         return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
     }
 
@@ -123,6 +138,9 @@ public class AdminOrderService {
         if (!approved) {
             order.setRefundStatus(REFUND_REJECTED);
             OrderEntity savedOrder = orderRepository.save(order);
+            messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "退款申请未通过",
+                    remark == null || remark.isBlank() ? "很抱歉，你的退款申请未通过，如有疑问请联系客服。" : "审核说明：" + remark,
+                    "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:REFUND_REJECT:" + savedOrder.getId());
             return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
         }
         walletService.refundOrder(order.getUserId(), order.getId(), order.getPayAmount(), "Refund approved");
@@ -134,6 +152,9 @@ public class AdminOrderService {
         order.setStatus(CLOSED);
         order.setRefundedAt(LocalDateTime.now());
         OrderEntity savedOrder = orderRepository.save(order);
+        messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "退款已到账",
+                "订单 " + savedOrder.getOrderNo() + " 退款 " + savedOrder.getPayAmount() + " 元已退回钱包余额。",
+                "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:REFUND_OK:" + savedOrder.getId());
         return OrderResponse.from(savedOrder, toItemResponses(items));
     }
 
@@ -182,6 +203,8 @@ public class AdminOrderService {
     }
 
     private void returnStocks(Long orderId, Long operatorId, List<OrderItem> orderItems) {
+        // 与库存回滚绑在一起：订单作废时秒杀名额也要还回去
+        flashSaleService.releaseQuotaForOrder(orderId);
         for (OrderItem item : orderItems) {
             Product product = productRepository.findById(item.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found"));

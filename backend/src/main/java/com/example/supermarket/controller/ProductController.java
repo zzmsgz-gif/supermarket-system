@@ -3,6 +3,7 @@ package com.example.supermarket.controller;
 import com.example.supermarket.common.ApiResponse;
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.ProductDetailResponse;
+import com.example.supermarket.dto.RatingSummaryResponse;
 import com.example.supermarket.dto.ProductSummaryResponse;
 import com.example.supermarket.service.ProductService;
 import jakarta.validation.constraints.Max;
@@ -61,6 +62,11 @@ public class ProductController {
             @RequestParam(defaultValue = "8") @Min(1) @Max(20) int limit
     ) {
         return ApiResponse.ok(productService.listRelated(id, limit));
+    }
+
+    @GetMapping("/rating-summary")
+    public ApiResponse<List<RatingSummaryResponse>> ratingSummary() {
+        return ApiResponse.ok(productService.ratingSummary());
     }
 
     @GetMapping("/{id}")

@@ -1,18 +1,28 @@
 <template>
 <section class="data-panel">
-        <div class="panel-head">
-          <button @click="loadOrders">刷新</button>
-        </div>
-        <div v-if="!orders.items?.length" class="empty">暂无订单</div>
+        <empty-state
+          v-if="!orders.items?.length"
+          icon="receipt"
+          text="暂无订单，下单后可在这里跟踪发货和售后"
+          action-text="去逛逛"
+          @action="navigate('shop')"
+        />
         <div v-for="order in orders.items" :key="order.id" class="list-row tall wrap">
           <div>
             <div class="order-head">
               <strong class="order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</strong>
               <span :class="['tag', shipStatusOf(order).cls]">{{ shipStatusOf(order).label }}</span>
+              <span v-if="order.fulfillmentType === 'PICKUP'" class="tag ok">门店自提</span>
               <span class="order-amount">{{ money(order.payAmount) }}</span>
             </div>
-            <small>{{ formatPaymentStatus(order.paymentStatus) }}<template v-if="Number(order.discountAmount || 0) + Number(order.activityDiscount || 0) > 0"> · 已优惠 -{{ money(Number(order.discountAmount || 0) + Number(order.activityDiscount || 0)) }}<template v-if="order.activityName">（{{ order.activityName }}）</template></template></small>
-            <small v-if="order.status === 'PAID'" class="ship-hint">商家尚未发货，请耐心等待</small>
+            <small>{{ formatPaymentStatus(order.paymentStatus) }}<template v-if="orderSavedTotal(order) > 0"> · 已优惠 -{{ money(orderSavedTotal(order)) }}</template></small>
+            <small v-if="order.status === 'PAID'" class="ship-hint">{{ order.fulfillmentType === 'PICKUP' ? '门店备货中，备好后凭自提码到店取货' : '商家尚未发货，请耐心等待' }}</small>
+            <small v-if="order.fulfillmentType === 'PICKUP'" class="ship-line">
+              <span class="ship-flag">自提码</span>{{ order.pickupCode }} · {{ order.pickupStoreName }}
+            </small>
+            <small v-else-if="order.deliverySlot" class="ship-line">
+              <span class="ship-flag">配送时段</span>{{ order.deliverySlot }}
+            </small>
             <small v-if="order.shipNo" class="ship-line">
               <span class="ship-flag">已发货</span>{{ order.shipCompany }} {{ order.shipNo }}
             </small>
@@ -55,11 +65,12 @@
 
 <script>
 import { inject } from 'vue';
+import { orderSavedTotal } from '../utils/format';
 export default {
   name: 'OrdersPage',
   setup() {
     const appCtx = inject('appCtx');
-    return { ...appCtx };
+    return { ...appCtx, orderSavedTotal };
   }
 };
 </script>

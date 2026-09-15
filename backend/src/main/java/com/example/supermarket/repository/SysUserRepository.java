@@ -2,6 +2,8 @@ package com.example.supermarket.repository;
 
 import com.example.supermarket.entity.SysUser;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -26,4 +28,12 @@ public interface SysUserRepository extends JpaRepository<SysUser, Long>, JpaSpec
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from SysUser u where u.id = :id and u.deleted = :deleted")
     Optional<SysUser> findByIdAndDeletedForUpdate(@Param("id") Long id, @Param("deleted") Byte deleted);
+
+    /* ===== 经营看板 ===== */
+
+    long countByDeletedAndCreatedAtBetween(Byte deleted, LocalDateTime from, LocalDateTime to);
+
+    /** 会员等级分布：返回 [memberLevel(Integer), 用户数(Long)] */
+    @Query("select u.memberLevel, count(u) from SysUser u where u.deleted = :deleted group by u.memberLevel")
+    List<Object[]> countGroupByMemberLevel(@Param("deleted") Byte deleted);
 }
