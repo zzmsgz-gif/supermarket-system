@@ -2049,26 +2049,6 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .detail-origin { color: var(--muted); font-size: 13px; text-decoration: line-through; }
 .detail-unit { color: var(--muted); font-size: 13px; }
 
-.activity-banner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: linear-gradient(120deg, #04523c, #0d7a5f);
-  box-shadow: 0 8px 20px rgba(4, 82, 60, 0.18);
-}
-
-.activity-tag {
-  padding: 3px 11px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .detail-meta {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

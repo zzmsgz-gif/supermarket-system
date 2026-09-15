@@ -53,11 +53,6 @@
                 <span v-if="memberPrice" class="detail-member">会员专享价 {{ money(memberPrice) }}</span>
                 <span class="detail-unit">/ {{ formatUnit(productDetail.data.unit) }}</span>
               </div>
-              <!-- 活动标签统一用共享的 activitySlogan()：折扣型活动必须带上门槛，
-                   别手写成光秃秃的「8.0折」—— 那读起来像全场8折，属过度承诺。 -->
-              <div v-if="activeActivities.length" class="activity-banner">
-                <span class="activity-tag" v-for="act in activeActivities" :key="act.id">{{ activitySlogan(act) }}</span>
-              </div>
 
               <dl class="detail-meta">
                 <div><dt>剩余库存</dt><dd>{{ productDetail.data.stock }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
