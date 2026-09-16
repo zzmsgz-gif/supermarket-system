@@ -18,7 +18,9 @@
 
     <header class="site-header">
       <div class="header-inner">
-        <div class="brand">
+        <!-- 导航条已取消：Logo 承担「回到首页」 -->
+        <div class="brand brand-link" role="button" tabindex="0" title="回到首页" aria-label="回到首页"
+             @click="navigate('shop')" @keydown.enter.prevent="navigate('shop')">
           <span class="brand-mark">S</span>
           <div>
             <strong>超市购物系统</strong>
@@ -49,27 +51,55 @@
             <span v-if="cartBadgeCount" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
           </button>
           <template v-if="session.user">
-            <div class="account-user">
-              <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @error="imgFallback($event, session.user.nickname || session.user.username)" @click="avatarInput?.click()" />
-              <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
-              <div class="account-meta">
-                <span>{{ session.user.nickname || session.user.username }}</span>
-                <small>{{ formatRole(session.user.role) }}</small>
+            <div class="account-menu-wrap">
+              <div
+                class="account-user"
+                role="button"
+                tabindex="0"
+                aria-haspopup="menu"
+                :aria-expanded="accountMenuOpen ? 'true' : 'false'"
+                @click="toggleAccountMenu"
+                @keydown.enter.prevent="toggleAccountMenu"
+                @keydown.space.prevent="toggleAccountMenu"
+              >
+                <span class="account-avatar-wrap">
+                  <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="avatarInput?.click()" />
+                  <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click.stop="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
+                  <!-- 导航条取消后，未读提醒收在头像上：不展开下拉也能看见 -->
+                  <span v-if="!isAdmin && accountDotTitle" class="account-dot" :title="accountDotTitle"></span>
+                </span>
+                <div class="account-meta">
+                  <span>{{ session.user.nickname || session.user.username }}</span>
+                  <small>{{ formatRole(session.user.role) }}</small>
+                </div>
+                <span class="account-caret" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
               </div>
               <input ref="avatarInput" type="file" accept="image/*" hidden @change="onAvatarPick" />
-            </div>
-            <template v-if="!isAdmin">
-              <div class="wallet-box">
-                <span>余额</span>
-                <strong>{{ money(wallet.balance) }}</strong>
+
+              <div v-if="accountMenuOpen" class="account-menu" role="menu">
+                <!-- 导航条取消后，管理员的「后台管理」入口挪进下拉 -->
+                <div v-if="isAdmin" class="account-menu-list account-menu-lead">
+                  <button role="menuitem" @click="navigate('admin')">后台管理</button>
+                </div>
+                <button v-if="!isAdmin" class="account-menu-assets" role="menuitem" @click="navigate('points')" :title="'等级：' + tierNameFor(session.user.memberLevel)">
+                  <span class="ama-balance"><small>余额</small><strong>{{ money(wallet.balance) }}</strong></span>
+                  <span class="ama-tier">{{ tierNameFor(session.user.memberLevel) }} · {{ session.user.points || 0 }} 积分</span>
+                </button>
+                <div v-if="!isAdmin" class="account-menu-list">
+                  <button role="menuitem" @click="navigate('orders')">我的订单</button>
+                  <button role="menuitem" @click="navigate('coupons')">优惠券</button>
+                  <button role="menuitem" @click="navigate('addresses')">收货地址</button>
+                  <button role="menuitem" @click="navigate('points')">我的积分</button>
+                  <button role="menuitem" @click="navigate('favorites')">我的收藏<span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
+                  <button role="menuitem" @click="navigate('messages')">消息<span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
+                  <button role="menuitem" @click="navigate('recharge')">账户充值</button>
+                </div>
+                <div class="account-menu-list account-menu-tail">
+                  <button role="menuitem" @click="openChangePassword">修改密码</button>
+                  <button role="menuitem" class="menu-danger" @click="logout">退出登录</button>
+                </div>
               </div>
-              <button class="member-chip" @click="navigate('points')" :title="'等级：' + tierNameFor(session.user.memberLevel)">
-                <span class="member-lv">{{ tierNameFor(session.user.memberLevel) }}</span>
-                <span class="member-pts">{{ session.user.points || 0 }} 积分</span>
-              </button>
-              <button class="ghost recharge-entry" @click="navigate('recharge')">去充值</button>
-            </template>
-            <button class="ghost" @click="logout">退出</button>
+            </div>
           </template>
           <template v-else>
             <div class="auth-guest">
@@ -80,21 +110,6 @@
         </section>
       </div>
 
-      <div class="header-nav-band">
-        <nav class="header-nav">
-          <div class="nav-links">
-            <button :class="{ active: view === 'shop' }" @click="navigate('shop')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v11h5v-6h4v6h5V10"/></svg><span>首页</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'orders' }" @click="navigate('orders')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12a1 1 0 0 1 1 1v19l-3.5-2.5L12 22l-3.5-2.5L5 22V3a1 1 0 0 1 1-1z"/><path d="M9 8h6M9 12h6"/></svg><span>我的订单</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'coupons' }" @click="navigate('coupons')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z"/><path d="M12 7v10" stroke-dasharray="2.5 3"/></svg><span>优惠券</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'addresses' }" @click="navigate('addresses')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg><span>收货地址</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'points' }" @click="navigate('points')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M8.5 9.5h5a2 2 0 0 1 0 4h-5a2 2 0 0 0 0 4h5"/></svg><span>我的积分</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'favorites' }" @click="navigate('favorites')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg><span>我的收藏</span><span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'messages' }" @click="navigate('messages')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12h5"/></svg><span>消息</span><span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
-            <button v-if="!isAdmin" :class="{ active: view === 'recharge' }" @click="navigate('recharge')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M15.5 15.5h1.5"/></svg><span>账户充值</span></button>
-            <button v-if="isAdmin" :class="{ active: view === 'admin' }" @click="navigate('admin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>后台管理</span></button>
-          </div>
-        </nav>
-      </div>
     </header>
 
     <section class="content" :class="{ 'content-wide': view === 'admin' }">
@@ -205,13 +220,15 @@
     </Transition>
 
     <!-- 登录 / 注册 合一弹窗 -->
-    <div v-if="authOpen" class="modal-mask" @click.self="closeAuth">
+    <div v-if="authOpen" class="modal-mask" @click.self="!forcedChange && closeAuth()">
       <div class="modal auth-modal" role="dialog" aria-modal="true">
-        <button class="modal-close" @click="closeAuth" aria-label="关闭">×</button>
-        <div class="auth-tabs">
+        <button v-if="!forcedChange" class="modal-close" @click="closeAuth" aria-label="关闭">×</button>
+        <div v-if="authTab === 'login' || authTab === 'register'" class="auth-tabs">
           <button :class="{ active: authTab === 'login' }" type="button" @click="switchAuth('login')">登录</button>
           <button :class="{ active: authTab === 'register' }" type="button" @click="switchAuth('register')">注册</button>
         </div>
+        <div v-else-if="authTab === 'change'" class="auth-change-title">修改密码</div>
+        <div v-else class="auth-change-title">找回密码</div>
 
         <div v-if="error && authOpen" class="auth-error-banner" role="alert">⚠ {{ error }}</div>
 
@@ -233,7 +250,7 @@
           <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '登录中…' : '登录' }}</button>
         </form>
 
-        <form v-else class="auth-form" @submit.prevent="submitRegister">
+        <form v-else-if="authTab === 'register'" class="auth-form" @submit.prevent="submitRegister">
           <label class="auth-field">
             <span>用户名 <i class="req">*</i></span>
             <input v-model="registerForm.username" placeholder="3-50 个字符" autocomplete="username" />
@@ -271,6 +288,48 @@
           </label>
           <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '注册中…' : '注册并领取新人券' }}</button>
           <p class="auth-tip">注册即自动发放新人券 🎁</p>
+        </form>
+
+        <form v-else-if="authTab === 'change'" class="auth-form" @submit.prevent="submitChangePassword">
+          <p v-if="forcedChange" class="auth-tip warn-tip">
+            管理员已为你重置密码，请先用临时密码设置新密码，改完即可正常使用。
+          </p>
+          <label class="auth-field">
+            <span>{{ forcedChange ? '临时密码' : '原密码' }}</span>
+            <input v-model="changeForm.currentPassword" type="password" placeholder="请输入当前密码" autocomplete="current-password" />
+            <small v-if="changeErrors.currentPassword" class="field-hint warn">{{ changeErrors.currentPassword }}</small>
+          </label>
+          <label class="auth-field">
+            <span>新密码</span>
+            <input v-model="changeForm.newPassword" type="password" placeholder="6-50 位字符" autocomplete="new-password" />
+            <small v-if="changeErrors.newPassword" class="field-hint warn">{{ changeErrors.newPassword }}</small>
+          </label>
+          <label class="auth-field">
+            <span>确认新密码</span>
+            <input v-model="changeForm.confirmPassword" type="password" placeholder="再次输入新密码" autocomplete="new-password" />
+            <small v-if="changeErrors.confirmPassword" class="field-hint warn">{{ changeErrors.confirmPassword }}</small>
+          </label>
+          <button class="auth-submit" type="submit" :disabled="changeSubmitting">{{ changeSubmitting ? '提交中…' : '确认修改' }}</button>
+        </form>
+
+        <!-- 忘记密码：本项目没有邮件/短信通道，不做自助重置，只受理申请由客服核对身份后发临时密码 -->
+        <form v-else class="auth-form" @submit.prevent="submitPasswordReset">
+          <p class="auth-tip">
+            出于安全考虑，找回密码需要人工核对身份。提交申请后，客服会在 1 个工作日内
+            通过你留下的联系方式告知临时密码，首次登录后需立即修改。
+          </p>
+          <label class="auth-field">
+            <span>账号 <i class="req">*</i></span>
+            <input v-model="resetForm.username" placeholder="请输入用户名" autocomplete="username" />
+            <small v-if="resetErrors.username" class="field-hint warn">{{ resetErrors.username }}</small>
+          </label>
+          <label class="auth-field">
+            <span>联系电话 <i class="req">*</i></span>
+            <input v-model="resetForm.contact" placeholder="便于客服核对身份后联系你" autocomplete="tel" />
+            <small v-if="resetErrors.contact" class="field-hint warn">{{ resetErrors.contact }}</small>
+          </label>
+          <button class="auth-submit" type="submit" :disabled="resetSubmitting">{{ resetSubmitting ? '提交中…' : '提交找回申请' }}</button>
+          <p class="auth-tip"><span class="auth-link" @click="switchAuth('login')">返回登录</span></p>
         </form>
       </div>
     </div>
@@ -316,7 +375,7 @@ import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
 import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
-import { money, initials, formatRole, formatOrderStatus, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
+import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
 import AdminPanel from './components/AdminPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from './stores/cart';
@@ -352,6 +411,7 @@ function footerSubscribe() {
 }
 
 function navigate(name, params) {
+  closeAccountMenu();
   router.push(params ? { name, params } : { name });
 }
 
@@ -388,6 +448,14 @@ watch(notice, (msg) => {
 });
 const error = ref('');
 const avatarInput = ref(null);
+
+// 右上角「我的」下拉：导航收敛后，个人中心的全部入口都收在这里。
+// ⚠️ 宿主 .account-menu-wrap 必须 position:relative，否则 absolute 面板会挂到视口上（同 .nav-badge 的教训）。
+const accountMenuOpen = ref(false);
+function toggleAccountMenu() { accountMenuOpen.value = !accountMenuOpen.value; }
+function closeAccountMenu() { accountMenuOpen.value = false; }
+function onDocumentClick(event) { if (!event.target.closest('.account-menu-wrap')) closeAccountMenu(); }
+function onDocumentKeydown(event) { if (event.key === 'Escape') closeAccountMenu(); }
 const categories = ref([]);
 const products = reactive({ items: [], page: 1, size: 12, total: 0 });
 const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
@@ -764,6 +832,15 @@ const authSubmitting = ref(false);
 const loginForm = reactive({ username: '', password: '', remember: true });
 const registerForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', phone: '', email: '', agree: false });
 const authErrors = reactive({});
+const changeForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
+const changeErrors = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
+const changeSubmitting = ref(false);
+// 强制改密：管理员重置过密码，登录后必须先改密。此时弹窗不可关闭（关闭按钮/遮罩点击都禁掉）。
+const forcedChange = ref(false);
+// 找回密码申请（忘记密码）：只提交申请，由客服核对身份后发临时密码
+const resetForm = reactive({ username: '', contact: '' });
+const resetErrors = reactive({ username: '', contact: '' });
+const resetSubmitting = ref(false);
 const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', brand: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
 const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
@@ -952,8 +1029,11 @@ const memberPreview = computed(() => {
     pointsUsed = Math.max(0, Math.min(userPoints, want, maxRedeemPoints));
   }
   const pointsValue = round2(pointsUsed / 100);
-  const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0);
-  return { amountAfterPromo, memberDiscount, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, finalPay };
+  // 运费不参与任何折扣（券/活动/会员/积分都只作用于商品小计），最后加上去 ——
+  // 与后端 OrderService 同口径，保证「商品小计 + 运费 − 券 − 活动 − 会员 − 积分 = 应付」成立
+  const freight = expressFreight.value;
+  const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0) + freight;
+  return { amountAfterPromo, memberDiscount, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, freight, finalPay };
 });
 
 const balanceSufficient = computed(() => Number(wallet.balance || 0) >= memberPreview.value.finalPay);
@@ -1068,12 +1148,24 @@ async function toggleFavorite(product) {
   }
 }
 
-/* ---------------- 履约：送货上门 / 门店自提 + 配送时段 ---------------- */
+/* ---------------- 履约：同城即时配送 / 快递配送 / 门店自提 ---------------- */
+// 三种互斥的交付形态，与后端 OrderEntity.FULFILLMENT_* 一一对应。
+// 改造前的旧值 DELIVERY 已迁移为 INSTANT，这里不再产生该值。
 const stores = ref([]);
 const deliverySlots = ref([]);
-const fulfillment = reactive({ type: 'DELIVERY', storeId: null, slot: '' });
+const fulfillment = reactive({ type: 'INSTANT', storeId: null, slot: '' });
+
+// ⚠️ 必须与后端 OrderService.EXPRESS_FREE_THRESHOLD / EXPRESS_FREIGHT 保持一致
+const EXPRESS_FREE_THRESHOLD = 99;
+const EXPRESS_FREIGHT = 8;
 
 const isPickup = computed(() => fulfillment.type === 'PICKUP');
+const isExpress = computed(() => fulfillment.type === 'EXPRESS');
+// 快递运费：按**商品小计**判门槛（不含运费本身），即时配送与门店自提恒为 0
+const expressFreight = computed(() => {
+  if (!isExpress.value) return 0;
+  return cartLocalTotal.value >= EXPRESS_FREE_THRESHOLD ? 0 : EXPRESS_FREIGHT;
+});
 // 生效门店：显式选过就用选的，否则回落到第一家营业门店（与 activeStoreId 保持一致）
 const selectedStore = computed(() => {
   const id = Number(fulfillment.storeId) || (stores.value.length ? Number(stores.value[0].id) : 0);
@@ -1211,11 +1303,13 @@ function openLegal(docKey) {
   window.open(docKey === 'PRIVACY' ? '/privacy' : '/terms', '_blank', 'noopener');
 }
 
+// 三种履约互斥：切到自提要清掉时段，切到快递也要清时段（快递的时效由第三方决定，不自选时段）
 function selectFulfillment(type) {
-  fulfillment.type = type === 'PICKUP' ? 'PICKUP' : 'DELIVERY';
-  if (fulfillment.type === 'PICKUP') {
-    fulfillment.slot = '';
-    if (!fulfillment.storeId && stores.value.length) fulfillment.storeId = Number(stores.value[0].id);
+  const next = ['PICKUP', 'EXPRESS'].includes(type) ? type : 'INSTANT';
+  fulfillment.type = next;
+  if (next !== 'INSTANT') fulfillment.slot = '';
+  if (next === 'PICKUP' && !fulfillment.storeId && stores.value.length) {
+    fulfillment.storeId = Number(stores.value[0].id);
   }
 }
 
@@ -1224,7 +1318,7 @@ function selectStore(id) {
 }
 
 function resetFulfillment() {
-  fulfillment.type = 'DELIVERY';
+  fulfillment.type = 'INSTANT';
   fulfillment.slot = '';
 }
 
@@ -1232,6 +1326,15 @@ function resetFulfillment() {
 const messages = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
 const messageUnread = ref(0);
 const messageTypeFilter = ref('');
+
+// 头像上的未读红点：导航条取消后，「消息」与「收藏降价提醒」两个提醒都收在这一颗点上。
+// 返回空串即不显示，所以模板里直接用它当 v-if 条件。
+const accountDotTitle = computed(() => {
+  const parts = [];
+  if (messageUnread.value) parts.push(`${messageUnread.value} 条未读消息`);
+  if (alertUnread.value) parts.push(`${alertUnread.value} 条降价提醒`);
+  return parts.join(' · ');
+});
 
 async function loadMessages(reset = true) {
   if (!session.user || isAdmin.value) { messages.items = []; messages.total = 0; return; }
@@ -1306,7 +1409,7 @@ function rememberUser(user) {
 }
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
-const ADMIN_MENU_KEYS = ['dashboard', 'insights', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users'];
+const ADMIN_MENU_KEYS = ['dashboard', 'insights', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users', 'passwordResets'];
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -1389,17 +1492,19 @@ function fail(message, title) {
 
 
 // 用户订单的「发货进度」状态：让“发没发货”一眼可辨
+// 状态徽标。注意 SHIPPED 对自提单要显示「待取货」——自提单没有物流，
+// 后台走的是「备货完成」，叫「已发货」会让用户以为有快递在路上。
 function shipStatusOf(order) {
+  const pickup = order?.fulfillmentType === 'PICKUP';
   const map = {
     PENDING_PAYMENT: { label: '待付款', cls: 'warn' },
-    PAID: { label: '待发货', cls: 'amber' },
-    SHIPPED: { label: '已发货', cls: 'info' },
+    PAID: { label: pickup ? '备货中' : '待发货', cls: 'amber' },
+    SHIPPED: { label: pickup ? '待取货' : '已发货', cls: 'info' },
     COMPLETED: { label: '已完成', cls: 'ok' },
     CANCELED: { label: '已取消', cls: 'muted' },
     CLOSED: { label: '已关闭', cls: 'muted' },
   };
-  return map[order.status] || { label: formatOrderStatus(order.status), cls: 'muted' };
-
+  return map[order.status] || { label: orderStatusLabel(order), cls: 'muted' };
 }
 
 function categoryName(categoryId) {
@@ -1508,6 +1613,12 @@ function closeAuth() {
   registerForm.phone = '';
   registerForm.email = '';
   registerForm.agree = false;
+  changeForm.currentPassword = '';
+  changeForm.newPassword = '';
+  changeForm.confirmPassword = '';
+  resetForm.username = '';
+  resetForm.contact = '';
+  forcedChange.value = false;
   resetAuthErrors();
 }
 
@@ -1523,6 +1634,11 @@ function resetAuthErrors() {
   authErrors.phone = '';
   authErrors.email = '';
   authErrors.agree = '';
+  changeErrors.currentPassword = '';
+  changeErrors.newPassword = '';
+  changeErrors.confirmPassword = '';
+  resetErrors.username = '';
+  resetErrors.contact = '';
   error.value = '';
 }
 
@@ -1552,7 +1668,12 @@ async function submitLogin() {
     rememberUser(data.user);
     await refreshForSession();
     closeAuth();
-    showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+    if (data.user.mustChangePassword) {
+      // 管理员重置过密码：先强制改密，不出常规欢迎提示（改完 AuthService 会清标记）
+      openChangePassword(true);
+    } else {
+      showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+    }
     if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
     // 未登录时点心形收藏 → 登录成功后自动补做
     if (pendingFavorite.value) {
@@ -1617,8 +1738,82 @@ async function submitRegister() {
   }
 }
 
+// 忘记密码：不走自助重置（没有邮件/短信通道），改为打开「找回申请」表单
 function forgotPassword() {
-  showAlert({ type: 'info', title: '忘记密码', message: '可通过绑定手机号重置密码，或联系客服协助（功能开发中）。' });
+  authTab.value = 'reset';
+  resetForm.username = loginForm.username.trim();
+  resetForm.contact = '';
+  resetAuthErrors();
+  authOpen.value = true;
+}
+
+// forced=true 表示管理员刚重置过密码：弹窗不可关闭，改完才能继续用
+function openChangePassword(forced = false) {
+  closeAccountMenu();
+  authTab.value = 'change';
+  forcedChange.value = !!forced;
+  resetAuthErrors();
+  authOpen.value = true;
+}
+
+async function submitPasswordReset() {
+  resetAuthErrors();
+  if (!resetForm.username.trim()) resetErrors.username = '请输入账号';
+  if (!resetForm.contact.trim()) resetErrors.contact = '请留下联系电话，否则客服无法联系你';
+  else if (resetForm.contact.trim().length < 5) resetErrors.contact = '联系电话至少 5 个字符';
+  if (resetErrors.username || resetErrors.contact) return;
+  resetSubmitting.value = true;
+  try {
+    const data = await api.post('/auth/password-reset-request', {
+      username: resetForm.username.trim(),
+      contact: resetForm.contact.trim(),
+    });
+    closeAuth();
+    // 后端对「账号存在/不存在」返回同一句文案（防账号枚举），前端原样展示
+    showAlert({ type: 'success', title: '申请已提交', message: data?.message || '客服会在 1 个工作日内联系你。' });
+  } catch (err) {
+    fail(err?.message || '提交失败，请稍后重试');
+  } finally {
+    resetSubmitting.value = false;
+  }
+}
+
+function validateChangeForm() {
+  const e = {};
+  if (!changeForm.currentPassword) e.currentPassword = '请输入原密码';
+  if (!changeForm.newPassword) e.newPassword = '请输入新密码';
+  else if (changeForm.newPassword.length < 6) e.newPassword = '新密码至少 6 位';
+  if (changeForm.confirmPassword !== changeForm.newPassword) e.confirmPassword = '两次输入的新密码不一致';
+  if (changeForm.newPassword && changeForm.currentPassword && changeForm.newPassword === changeForm.currentPassword) e.newPassword = '新密码不能与原密码相同';
+  return e;
+}
+
+async function submitChangePassword() {
+  resetAuthErrors();
+  Object.assign(changeErrors, validateChangeForm());
+  if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) return;
+  changeSubmitting.value = true;
+  try {
+    await api.post('/auth/change-password', {
+      currentPassword: changeForm.currentPassword,
+      newPassword: changeForm.newPassword,
+      confirmPassword: changeForm.confirmPassword,
+    });
+    closeAuth();
+    // 后端已清掉 must_change_password，重新拉一次 me 让本地 session 同步（强制改密的用户至此恢复可用）
+    await loadMe();
+    showAlert({ type: 'success', title: '修改成功', message: '密码已更新，下次登录请使用新密码。' });
+  } catch (err) {
+    // 后端业务错误（原密码不正确 / 新密码与原密码相同 / 两次不一致）透传到对应字段
+    const msg = err.message || '修改失败，请稍后重试';
+    if (msg.includes('原密码')) changeErrors.currentPassword = msg;
+    else if (msg.includes('不一致')) changeErrors.confirmPassword = msg;
+    else if (msg.includes('相同')) changeErrors.newPassword = msg;
+    else error.value = msg;
+    fail(msg);
+  } finally {
+    changeSubmitting.value = false;
+  }
 }
 
 function logout() {
@@ -1647,7 +1842,8 @@ async function loadMe() {
   const user = await api.get('/auth/me');
   rememberUser(user);
   userStore.setAuth(localStorage.getItem('token') || '', user);
-
+  // 刷新页面时若仍处于「待强制改密」，重新把不可关闭的改密弹窗拉起来
+  if (user.mustChangePassword && !authOpen.value) openChangePassword(true);
 }
 
 async function onAvatarPick(e) {
@@ -2147,7 +2343,7 @@ async function goCheckout() {
 
 async function createOrder() {
   if (paying.value) return;
-  // 履约方式二选一：自提要选门店，送货要有收货地址
+  // 履约三选一：自提要选门店；即时配送与快递配送都要收货地址
   if (isPickup.value) {
     if (!activeStoreId.value) { fail('请选择自提门店'); return; }
   } else if (!selectedAddressId.value) {
@@ -2166,9 +2362,10 @@ async function createOrder() {
         body.fulfillmentType = 'PICKUP';
         body.pickupStoreId = activeStoreId.value;
       } else {
-        body.fulfillmentType = 'DELIVERY';
+        // 即时配送与快递配送都要地址；只有即时配送带自选时段（快递时效由第三方决定）
+        body.fulfillmentType = isExpress.value ? 'EXPRESS' : 'INSTANT';
         body.addressId = selectedAddressId.value;
-        if (fulfillment.slot) body.deliverySlot = fulfillment.slot;
+        if (!isExpress.value && fulfillment.slot) body.deliverySlot = fulfillment.slot;
       }
       if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
       if (usePoints.value && memberPreview.value.pointsUsed > 0) {
@@ -2833,6 +3030,8 @@ onMounted(async () => {
   startFlashTick();
   window.addEventListener('resize', resizeCharts);
   window.addEventListener('beforeunload', reportDwell);
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeydown);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
   await run(async () => {
     await loadCategories();
@@ -2855,11 +3054,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts);
   window.removeEventListener('beforeunload', reportDwell);
   document.removeEventListener('visibilitychange', reportDwell);
+  document.removeEventListener('click', onDocumentClick);
+  document.removeEventListener('keydown', onDocumentKeydown);
   disposeCharts();
 
 });
 const adminCtx = { adminAnnouncements, adminBanners, adminChartProducts, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, salesChart, salesChartEl, salesTopChartOption, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, trendChart, trendChartEl, trendChartOption, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, trendChart, trendChartEl, trendChartOption, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, trendChart, trendChartEl, trendChartOption, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>

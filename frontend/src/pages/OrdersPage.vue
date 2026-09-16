@@ -12,11 +12,15 @@
             <div class="order-head">
               <strong class="order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</strong>
               <span :class="['tag', shipStatusOf(order).cls]">{{ shipStatusOf(order).label }}</span>
-              <span v-if="order.fulfillmentType === 'PICKUP'" class="tag ok">门店自提</span>
+              <span :class="['tag', order.fulfillmentType === 'PICKUP' ? 'ok' : 'muted']">{{ fulfillmentLabel(order) }}</span>
               <span class="order-amount">{{ money(order.payAmount) }}</span>
             </div>
             <small>{{ formatPaymentStatus(order.paymentStatus) }}<template v-if="orderSavedTotal(order) > 0"> · 已优惠 -{{ money(orderSavedTotal(order)) }}</template></small>
-            <small v-if="order.status === 'PAID'" class="ship-hint">{{ order.fulfillmentType === 'PICKUP' ? '门店备货中，备好后凭自提码到店取货' : '商家尚未发货，请耐心等待' }}</small>
+            <small v-if="order.status === 'PAID'" class="ship-hint">{{ order.fulfillmentType === 'PICKUP'
+              ? '门店备货中，备好后凭自提码到店取货'
+              : order.fulfillmentType === 'EXPRESS'
+                ? '商家尚未发货，交由快递后可在订单详情查看单号'
+                : '商家备货中，即将开始配送' }}</small>
             <small v-if="order.fulfillmentType === 'PICKUP'" class="ship-line">
               <span class="ship-flag">自提码</span>{{ order.pickupCode }} · {{ order.pickupStoreName }}
             </small>

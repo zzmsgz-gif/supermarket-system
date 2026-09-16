@@ -67,6 +67,10 @@ public class OrderService {
     private static final String PAYMENT_SUCCESS = "SUCCESS";
     private static final String PAYMENT_REFUNDED = "REFUNDED";
     private static final String PAYMENT_RECORD_REFUNDED = "REFUNDED";
+
+    /** 快递配送运费：商品小计达到门槛免运费，否则收固定运费（页头「满 ¥99 免运费」公告即此规则） */
+    private static final BigDecimal EXPRESS_FREE_THRESHOLD = new BigDecimal("99");
+    private static final BigDecimal EXPRESS_FREIGHT = new BigDecimal("8");
     private static final String PAYMENT_CHANNEL_BALANCE = "BALANCE";
     private static final String ORDER_DEDUCT = "ORDER_DEDUCT";
     private static final String CANCEL_RETURN = "CANCEL_RETURN";
@@ -129,7 +133,7 @@ public class OrderService {
         String fulfillmentType = resolveFulfillmentType(request.getFulfillmentType());
         boolean pickup = OrderEntity.FULFILLMENT_PICKUP.equals(fulfillmentType);
 
-        // 送货上门必须有收货地址，门店自提必须选一家在营业的自提门店 —— 两者互斥，不再强制 addressId
+        // 即时配送与快递配送都必须有收货地址；门店自提必须选一家营业中的自提门店 —— 两者互斥，不再无条件强制 addressId
         UserAddress address = null;
         Store store = null;
         if (pickup) {
@@ -171,11 +175,14 @@ public class OrderService {
                 .map(OrderItem::getSubtotalAmount)
                 .reduce(ZERO, BigDecimal::add);
 
+        // 运费只由「快递配送」产生，且以商品小计判定免运费门槛
+        BigDecimal freight = freightOf(fulfillmentType, totalAmount);
+
         OrderEntity order = new OrderEntity();
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
         order.setTotalAmount(totalAmount);
-        order.setFreightAmount(ZERO);
+        order.setFreightAmount(freight);
         order.setDiscountAmount(ZERO);
         order.setPayAmount(totalAmount);
         order.setStatus(PENDING_PAYMENT);
@@ -196,7 +203,10 @@ public class OrderService {
             order.setReceiverName(address.getReceiverName());
             order.setReceiverPhone(address.getReceiverPhone());
             order.setReceiverAddress(buildAddressSnapshot(address));
-            order.setDeliverySlot(trimToNull(request.getDeliverySlot()));
+            // 只有「同城即时配送」有自选的两小时时段；快递时效由第三方决定，传了也不存
+            if (OrderEntity.FULFILLMENT_INSTANT.equals(fulfillmentType)) {
+                order.setDeliverySlot(trimToNull(request.getDeliverySlot()));
+            }
         }
         order.setRemark(trimToNull(request.getRemark()));
         OrderEntity savedOrder = orderRepository.save(order);
@@ -243,7 +253,9 @@ public class OrderService {
         savedOrder.setPointsUsed(pointsUsed);
         savedOrder.setPointsEarned(pointsEarned);
         savedOrder.setMemberLevel(buyer.getMemberLevel());
-        savedOrder.setPayAmount(finalPay);
+        // 运费不参与任何折扣（券/活动/会员/积分都只作用于商品小计），最后加上去，
+        // 保证 total + freight − 券 − activity − member − points = pay 恒成立
+        savedOrder.setPayAmount(finalPay.add(freight));
         savedOrder = orderRepository.save(savedOrder);
 
         List<OrderItem> savedItems = saveOrderItems(savedOrder.getId(), orderItems);
@@ -307,12 +319,9 @@ public class OrderService {
         if (paymentRecordRepository.findByOrderId(orderId).isEmpty()) {
             paymentRecordRepository.save(buildPaymentRecord(order, now));
         }
-        // 消息中心：支付成功（含自提码，方便用户直接去订单详情出示）
-        boolean pickupOrder = OrderEntity.FULFILLMENT_PICKUP.equals(savedOrder.getFulfillmentType());
+        // 消息中心：支付成功（自提给自提码、即时配送给时段、快递说明交由快递发出）
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已支付成功",
-                pickupOrder
-                        ? "自提门店：" + savedOrder.getPickupStoreName() + "，自提码 " + savedOrder.getPickupCode() + "，到店出示即可取货。"
-                        : "我们已开始为你备货" + (savedOrder.getDeliverySlot() != null ? "，配送时段 " + savedOrder.getDeliverySlot() : "") + "，请留意物流动态。",
+                paidMessageOf(savedOrder),
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:PAID:" + savedOrder.getId());
         return OrderResponse.from(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
     }
@@ -519,12 +528,48 @@ public class OrderService {
         return address.getProvince() + address.getCity() + address.getDistrict() + address.getDetailAddress();
     }
 
-    /** 履约方式归一化：缺省或未知值一律按「送货上门」处理，保证老客户端兼容 */
+    /**
+     * 履约方式归一化。缺省或未知值按「同城即时配送」处理，保证老客户端兼容；
+     * 改造前的旧值 DELIVERY 同样落到 INSTANT（那时还没有即时/快递之分）。
+     */
     private String resolveFulfillmentType(String raw) {
-        if (raw != null && OrderEntity.FULFILLMENT_PICKUP.equalsIgnoreCase(raw.trim())) {
+        if (raw == null) {
+            return OrderEntity.FULFILLMENT_INSTANT;
+        }
+        String value = raw.trim().toUpperCase();
+        if (OrderEntity.FULFILLMENT_PICKUP.equals(value)) {
             return OrderEntity.FULFILLMENT_PICKUP;
         }
-        return OrderEntity.FULFILLMENT_DELIVERY;
+        if (OrderEntity.FULFILLMENT_EXPRESS.equals(value)) {
+            return OrderEntity.FULFILLMENT_EXPRESS;
+        }
+        return OrderEntity.FULFILLMENT_INSTANT;
+    }
+
+    /** 支付成功后的站内消息：三种履约各自说清楚下一步用户该做什么 */
+    private String paidMessageOf(OrderEntity order) {
+        if (OrderEntity.FULFILLMENT_PICKUP.equals(order.getFulfillmentType())) {
+            return "自提门店：" + order.getPickupStoreName() + "，自提码 " + order.getPickupCode() + "，到店出示即可取货。";
+        }
+        if (OrderEntity.FULFILLMENT_EXPRESS.equals(order.getFulfillmentType())) {
+            boolean charged = order.getFreightAmount() != null && order.getFreightAmount().compareTo(ZERO) > 0;
+            return "我们已开始为你备货，将尽快交由快递发出"
+                    + (charged ? "（已收运费 " + order.getFreightAmount() + " 元）。" : "（本单已免运费）。");
+        }
+        return "我们已开始为你备货"
+                + (order.getDeliverySlot() != null ? "，配送时段 " + order.getDeliverySlot() : "")
+                + "，请留意配送动态。";
+    }
+
+    /**
+     * 快递配送的运费：以**商品小计**判定门槛（不含运费本身，与券/活动的门槛同口径）。
+     * 即时配送（商家自有运力）与门店自提都不收运费。
+     */
+    private BigDecimal freightOf(String fulfillmentType, BigDecimal goodsAmount) {
+        if (!OrderEntity.FULFILLMENT_EXPRESS.equals(fulfillmentType)) {
+            return ZERO;
+        }
+        return goodsAmount.compareTo(EXPRESS_FREE_THRESHOLD) >= 0 ? ZERO : EXPRESS_FREIGHT;
     }
 
     /** 自提码取订单号后 6 位（订单号里的随机段），到店出示核销 */

@@ -65,11 +65,12 @@
 
           <!-- ===== 订单信息 ===== -->
           <div class="order-summary">
-            <div class="order-row"><span>订单状态</span><b>{{ formatOrderStatus(orderDetail.data.status) }}</b></div>
+            <div class="order-row"><span>订单状态</span><b>{{ orderStatusLabel(orderDetail.data) }}</b></div>
             <div class="order-row"><span>支付状态</span><b>{{ formatPaymentStatus(orderDetail.data.paymentStatus) }}</b></div>
-            <div class="order-row"><span>配送方式</span><b>{{ orderDetail.data.fulfillmentType === 'PICKUP'
-              ? '门店自提'
-              : '送货上门' + (orderDetail.data.deliverySlot ? ' · ' + orderDetail.data.deliverySlot : ' · 尽快送达') }}</b></div>
+            <div class="order-row"><span>配送方式</span><b>{{ fulfillmentLabel(orderDetail.data)
+              + (orderDetail.data.fulfillmentType === 'INSTANT'
+                ? (orderDetail.data.deliverySlot ? ' · ' + orderDetail.data.deliverySlot : ' · 尽快送达')
+                : '') }}</b></div>
             <template v-if="orderDetail.data.fulfillmentType === 'PICKUP'">
               <div class="order-row"><span>自提门店</span><b>{{ orderDetail.data.pickupStoreName }}</b></div>
               <div class="order-row"><span>自提联系人</span><b>{{ orderDetail.data.receiverName }} {{ orderDetail.data.receiverPhone }}</b></div>

@@ -56,6 +56,12 @@ public class AdminOrderController {
         return ApiResponse.ok(adminOrderService.shipOrder(id, request.getShipCompany().trim(), request.getShipNo().trim()));
     }
 
+    /** 门店自提「备货完成」：不填物流信息，直接进入待取货（status=SHIPPED） */
+    @PostMapping("/{id}/ready")
+    public ApiResponse<OrderResponse> readyForPickup(@PathVariable Long id) {
+        return ApiResponse.ok(adminOrderService.readyForPickup(id));
+    }
+
     @PostMapping("/{id}/refund-review")
     public ApiResponse<OrderResponse> reviewRefund(
             @AuthenticationPrincipal CurrentUser currentUser,

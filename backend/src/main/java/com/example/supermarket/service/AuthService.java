@@ -1,6 +1,7 @@
 package com.example.supermarket.service;
 
 import com.example.supermarket.dto.AuthResponse;
+import com.example.supermarket.dto.ChangePasswordRequest;
 import com.example.supermarket.dto.LoginRequest;
 import com.example.supermarket.dto.ProfileUpdateRequest;
 import com.example.supermarket.dto.RegisterRequest;
@@ -108,6 +109,24 @@ public class AuthService {
     @Transactional(readOnly = true)
     public UserResponse me(CurrentUser currentUser) {
         return UserResponse.from(currentUser.getUser());
+    }
+
+    @Transactional
+    public void changePassword(CurrentUser currentUser, ChangePasswordRequest request) {
+        SysUser user = currentUser.getUser();
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new BusinessException(400, "原密码不正确");
+        }
+        if (request.getNewPassword().equals(request.getCurrentPassword())) {
+            throw new BusinessException(400, "新密码不能与原密码相同");
+        }
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BusinessException(400, "两次输入的新密码不一致");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        // 改密成功即解除「强制改密」标记：管理员发的临时密码到此失效
+        user.setMustChangePassword((byte) 0);
+        userRepository.save(user);
     }
 
     @Transactional

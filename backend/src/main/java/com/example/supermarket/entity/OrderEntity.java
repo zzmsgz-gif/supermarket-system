@@ -13,9 +13,20 @@ import java.time.LocalDateTime;
 @Table(name = "orders")
 public class OrderEntity {
 
-    /** 履约方式：送货上门 / 门店自提 */
-    public static final String FULFILLMENT_DELIVERY = "DELIVERY";
+    /**
+     * 履约方式。三者是**互斥的三种交付形态**，不是"能不能自提"的开关：
+     * <ul>
+     *   <li>{@link #FULFILLMENT_INSTANT} 同城即时配送 —— 商家自有运力，要地址，可选 2 小时时段，不收运费</li>
+     *   <li>{@link #FULFILLMENT_EXPRESS} 快递配送 —— 第三方物流，要地址，需运单号，商品小计满额免运费否则收固定运费</li>
+     *   <li>{@link #FULFILLMENT_PICKUP} 门店自提 —— 用户到店取货，要门店，生成自提码，无物流</li>
+     * </ul>
+     */
+    public static final String FULFILLMENT_INSTANT = "INSTANT";
+    public static final String FULFILLMENT_EXPRESS = "EXPRESS";
     public static final String FULFILLMENT_PICKUP = "PICKUP";
+
+    /** 改造前的旧值（当时"配送"不分即时/快递）：只在解析入参时兼容，库里已迁移为 INSTANT */
+    public static final String FULFILLMENT_LEGACY_DELIVERY = "DELIVERY";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,9 +65,9 @@ public class OrderEntity {
     @Column(name = "receiver_address", nullable = false, length = 300)
     private String receiverAddress;
 
-    /** DELIVERY 送货上门 / PICKUP 门店自提 */
+    /** INSTANT 同城即时配送 / EXPRESS 快递配送 / PICKUP 门店自提 */
     @Column(name = "fulfillment_type", nullable = false, length = 20)
-    private String fulfillmentType = FULFILLMENT_DELIVERY;
+    private String fulfillmentType = FULFILLMENT_INSTANT;
 
     @Column(name = "pickup_store_id")
     private Long pickupStoreId;

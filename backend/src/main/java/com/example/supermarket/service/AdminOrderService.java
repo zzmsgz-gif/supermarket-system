@@ -106,25 +106,49 @@ public class AdminOrderService {
         return OrderResponse.from(order, toItemResponses(order.getId()));
     }
 
+    /**
+     * 发货（同城即时配送 / 快递配送共用）。两种都是有承运方的配送，所以共用「承运方 + 单号」表单。
+     * ⚠️ 门店自提订单**不允许**走这里：它没有物流，硬填一个快递单号只会让用户看到假物流（用 readyForPickup）。
+     */
     @Transactional
     public OrderResponse shipOrder(Long id, String shipCompany, String shipNo) {
         OrderEntity order = getExistingOrder(id);
         if (!PAID.equals(order.getStatus())) {
             throw new BusinessException(409, "Only paid orders can be shipped");
         }
+        if (OrderEntity.FULFILLMENT_PICKUP.equals(order.getFulfillmentType())) {
+            throw new BusinessException(409, "门店自提订单没有物流，请用「备货完成」");
+        }
         order.setStatus(SHIPPED);
         order.setShipCompany(shipCompany);
         order.setShipNo(shipNo);
         order.setShippedAt(LocalDateTime.now());
         OrderEntity savedOrder = orderRepository.save(order);
-        boolean pickupOrder = OrderEntity.FULFILLMENT_PICKUP.equals(savedOrder.getFulfillmentType());
-        // 自提单没有物流，提醒用户到店取货；配送单推送快递信息
-        messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER,
-                pickupOrder ? "自提订单已备货完成" : "订单已发货",
-                pickupOrder
-                        ? "自提门店：" + savedOrder.getPickupStoreName() + "，自提码 " + savedOrder.getPickupCode() + "，请到店出示取货。"
-                        : "快递 " + shipCompany + " 已揽收，单号 " + shipNo + "，可前往订单详情查看物流。",
+        messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "订单已发出",
+                "承运方 " + shipCompany + "，单号 " + shipNo + "，可前往订单详情查看物流。",
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:SHIPPED:" + savedOrder.getId());
+        return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
+    }
+
+    /**
+     * 门店自提「备货完成」：状态推进到 SHIPPED（语义=待取货），但**不写任何物流字段**。
+     * 这样自提单不必再瞎填快递单号就能走到「已完成」。
+     */
+    @Transactional
+    public OrderResponse readyForPickup(Long id) {
+        OrderEntity order = getExistingOrder(id);
+        if (!PAID.equals(order.getStatus())) {
+            throw new BusinessException(409, "Only paid orders can be marked ready");
+        }
+        if (!OrderEntity.FULFILLMENT_PICKUP.equals(order.getFulfillmentType())) {
+            throw new BusinessException(409, "只有门店自提订单才能标记「备货完成」");
+        }
+        order.setStatus(SHIPPED);
+        order.setShippedAt(LocalDateTime.now());
+        OrderEntity savedOrder = orderRepository.save(order);
+        messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "自提订单已备货完成",
+                "自提门店：" + savedOrder.getPickupStoreName() + "，自提码 " + savedOrder.getPickupCode() + "，请到店出示取货。",
+                "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:READY:" + savedOrder.getId());
         return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
     }
 
