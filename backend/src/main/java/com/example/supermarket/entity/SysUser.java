@@ -56,6 +56,13 @@ public class SysUser {
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 
+    /**
+     * 强制改密标记：1 = 由管理员重置成临时密码，下次登录必须改密。
+     * 前端读 UserResponse.mustChangePassword 后强制弹出改密弹窗；改密成功由 AuthService 清 0。
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private Byte mustChangePassword = 0;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false, columnDefinition = "datetime NOT NULL DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -175,6 +182,14 @@ public class SysUser {
 
     public void setLastLoginAt(LocalDateTime lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public Byte getMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(Byte mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
     public LocalDateTime getCreatedAt() {

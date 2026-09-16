@@ -48,6 +48,24 @@ export function formatOrderStatus(status) {
   return statusMap[status] || status || '-';
 }
 
+// 履约方式的中文名。三者互斥：同城即时配送（商家自有运力）/ 快递配送（第三方物流）/ 门店自提。
+// 兼容改造前的旧值 DELIVERY（那时不分即时与快递），按「同城即时配送」显示。
+export function fulfillmentLabel(order) {
+  const type = typeof order === 'string' ? order : order?.fulfillmentType;
+  if (type === 'PICKUP') return '门店自提';
+  if (type === 'EXPRESS') return '快递配送';
+  return '同城即时配送';
+}
+
+// 订单状态文案：SHIPPED 对自提单是「待取货」，不是「已发货」——
+// 自提单没有物流，后台走的是「备货完成」，说「已发货」会让用户以为有快递在路上。
+export function orderStatusLabel(order) {
+  const status = typeof order === 'string' ? order : order?.status;
+  const fulfillment = typeof order === 'string' ? null : order?.fulfillmentType;
+  if (status === 'SHIPPED' && fulfillment === 'PICKUP') return '待取货';
+  return formatOrderStatus(status);
+}
+
 export function formatPaymentStatus(status) {
   const statusMap = { UNPAID: '未支付', PAID: '已支付', REFUNDED: '已退款' };
   return statusMap[status] || status || '-';

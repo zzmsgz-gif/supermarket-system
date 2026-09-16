@@ -7,16 +7,20 @@
         <div class="checkout-block">
           <h3>配送方式</h3>
           <div class="fulfill-tabs">
-            <button type="button" :class="{ on: !isPickup }" @click="selectFulfillment('DELIVERY')">
-              <b>送货上门</b><small>配送到家，可选时段</small>
+            <button type="button" :class="{ on: fulfillment.type === 'INSTANT' }" @click="selectFulfillment('INSTANT')">
+              <b>同城即时配送</b><small>商家自有配送，可选 2 小时时段</small>
+            </button>
+            <button type="button" :class="{ on: isExpress }" @click="selectFulfillment('EXPRESS')">
+              <b>快递配送</b>
+              <small>{{ cartLocalTotal >= 99 ? '已满 ¥99，免运费' : '运费 ¥8（满 ¥99 免运费）' }}</small>
             </button>
             <button type="button" :class="{ on: isPickup }" @click="selectFulfillment('PICKUP')">
               <b>门店自提</b><small>到店取货，无需收货地址</small>
             </button>
           </div>
 
-          <!-- 送货上门：期望配送时段 -->
-          <div v-if="!isPickup" class="slot-picker">
+          <!-- 同城即时配送：期望配送时段 -->
+          <div v-if="fulfillment.type === 'INSTANT'" class="slot-picker">
             <span class="field-label">期望配送时段（选填）</span>
             <select v-model="fulfillment.slot">
               <option value="">尽快送达</option>
@@ -24,10 +28,17 @@
             </select>
           </div>
 
+          <!-- 快递配送：时效由第三方决定，没有自选时段 -->
+          <div v-else-if="isExpress" class="slot-picker">
+            <span class="field-label">快递配送</span>
+            <p class="pickup-notice">由第三方快递承运，商家发货后可在订单详情查看物流单号；时效以快递公司为准。</p>
+            <p v-if="memberPreview.freight > 0" class="pickup-notice">本单商品小计未满 ¥99，将收取运费 {{ money(memberPreview.freight) }}。</p>
+          </div>
+
           <!-- 门店自提：选门店 -->
           <div v-else class="store-picker">
             <span class="field-label">自提门店</span>
-            <div v-if="!stores.length" class="empty">暂无可自提门店，请改选送货上门</div>
+            <div v-if="!stores.length" class="empty">暂无可自提门店，请改选即时配送或快递配送</div>
             <div v-else class="store-list">
               <button
                 v-for="store in stores"
@@ -105,7 +116,9 @@
         <div class="checkout-summary">
           <div class="row"><span>配送方式</span><strong>{{ isPickup
             ? '门店自提 · ' + (selectedStore ? selectedStore.name : '待选择门店')
-            : '送货上门 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
+            : isExpress
+              ? '快递配送 · 第三方物流'
+              : '同城即时配送 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
           <div class="row"><span>商品合计</span><strong>{{ money(cartLocalTotal) }}</strong></div>
           <div v-if="cartOriginalSave > 0" class="row"><span>划线优惠（已省）</span><strong class="minus">- {{ money(cartOriginalSave) }}</strong></div>
           <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
@@ -128,6 +141,9 @@
               <strong class="minus">- {{ money(memberPreview.pointsValue) }}</strong>
             </div>
           </div>
+
+          <div v-if="memberPreview.freight > 0" class="row"><span>运费（快递配送）</span><strong>+ {{ money(memberPreview.freight) }}</strong></div>
+          <div v-else-if="isExpress" class="row"><span>运费（快递配送）</span><strong class="text-ok">已满 ¥99 免运费</strong></div>
 
           <div class="row pay"><span>应付金额</span><strong>{{ money(memberPreview.finalPay) }}</strong></div>
           <div class="row balance" :class="{ insufficient: !balanceSufficient }">

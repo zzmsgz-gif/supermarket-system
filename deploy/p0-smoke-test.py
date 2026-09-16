@@ -1,4 +1,5 @@
 """P0 feature smoke test for the supermarket system."""
+import atexit
 import json
 import subprocess
 import time
@@ -29,7 +30,8 @@ def call(method, path, body=None, token=None):
 
 def sql(statement):
     proc = subprocess.run(
-        [MYSQL, "-uroot", "-pzzmsgz", "-N", "-B", "-e", statement],
+        [MYSQL, "-uroot", "-pzzmsgz", "-D", "supermarket_system",
+         "--default-character-set=utf8mb4", "-N", "-B", "-e", statement],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if proc.returncode != 0:
@@ -42,18 +44,62 @@ def check(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + (" :: " + str(detail) if detail else ""))
 
 
+# ---------- 自清理 ----------
+# 用 atexit 而不是 try/finally：本脚本是线性的顶层代码，包 finally 需要整体缩进，
+# 改动面太大且极易出错；atexit 在正常结束与未捕获异常时都会执行。
+# 注意注册现在强制要手机号（2026-09-13 起的校验），缺了就 400 —— 本脚本曾因此长期跑不起来。
+MAX_LOG_ID = int(sql("SELECT COALESCE(MAX(id),0) FROM supermarket_system.stock_log") or 0)
+ORIGINAL_STOCK = {}
+uid = None
+admin_uid = None
+
+
+def cleanup():
+    try:
+        ids = [i for i in (uid, admin_uid) if i]
+        idlist = ",".join(str(i) for i in ids) or "NULL"
+        if ids:
+            # ⚠️ orders.user_coupon_id 与 user_coupon.order_id 成环，先断环
+            sql(f"UPDATE supermarket_system.orders SET user_coupon_id=NULL WHERE user_id IN ({idlist})")
+            for t in ("product_review", "wallet_transaction", "user_message", "point_ledger",
+                      "user_favorite", "price_alert", "cart_item", "user_address", "user_coupon"):
+                sql(f"DELETE FROM supermarket_system.{t} WHERE user_id IN ({idlist})")
+            # ⚠️ stock_log 有 FK 指向 orders（fk_stock_log_order），必须在删 orders **之前**删掉；
+            #    下单/取消产生的流水 order_id 非空，按 user 删不掉，所以按脚本开始前的最大 id 截断。
+            sql(f"DELETE FROM supermarket_system.stock_log WHERE id > {MAX_LOG_ID}")
+            sql("DELETE oi FROM supermarket_system.order_item oi "
+                f"JOIN supermarket_system.orders o ON o.id=oi.order_id WHERE o.user_id IN ({idlist})")
+            sql("DELETE pr FROM supermarket_system.payment_record pr "
+                f"JOIN supermarket_system.orders o ON o.id=pr.order_id WHERE o.user_id IN ({idlist})")
+            sql(f"DELETE FROM supermarket_system.orders WHERE user_id IN ({idlist})")
+            sql(f"DELETE FROM supermarket_system.sys_user WHERE id IN ({idlist})")
+        # 本商品库存被脚本改过（设为 4 再补货 50），结束时还原回脚本开始前的值
+        for pid, qty in ORIGINAL_STOCK.items():
+            sql(f"UPDATE supermarket_system.product SET stock = {qty} WHERE id = {pid}")
+        print("CLEANUP_OK")
+    except Exception as exc:  # noqa: BLE001
+        print("CLEANUP_FAIL:", exc)
+
+
+atexit.register(cleanup)
+
 buyer = "p0buyer_" + STAMP
 admin = "p0admin_" + STAMP
 
 # 1. register + recharge
-tok = call("POST", "/auth/register", {"username": buyer, "password": "P0test123", "nickname": "P0买家"})["token"]
+tok = call("POST", "/auth/register", {"username": buyer, "password": "P0test123",
+                                      "nickname": "P0买家", "phone": "139" + STAMP[-8:]})["token"]
+uid = call("GET", "/auth/me", None, tok)["id"]
 check("注册买家账号", bool(tok))
 call("POST", "/wallet/recharges", {"amount": 300}, tok)
 wallet = call("GET", "/wallet", None, tok)
 check("钱包充值 300", float(wallet["balance"]) == 300, wallet["balance"])
 
 # 2. receive a coupon (满30减5, unlimited)
-available = call("GET", "/coupons/available", None, tok)
+# ⚠️ 注册会自动发新人券，而 /coupons/available 把它也算作"可领取"，
+#    不排掉就会 409「Coupon already received」——本脚本曾因此长期跑不起来。
+held = {uc["couponId"] for uc in call("GET", "/coupons/mine", None, tok)}
+available = [c for c in call("GET", "/coupons/available", None, tok) if c["id"] not in held]
 check("查询可领取优惠券", len(available) >= 1, f"{len(available)} 张")
 coupon = min(available, key=lambda item: float(item["thresholdAmount"]))
 mine = call("POST", f"/coupons/{coupon['id']}/receive", None, tok)
@@ -62,6 +108,7 @@ check("领取优惠券", mine["status"] == "UNUSED", mine["couponName"])
 # 3. cart + address
 products = call("GET", "/products?page=1&size=20", None, tok)["items"]
 product = next(p for p in products if p["stock"] > 10)
+ORIGINAL_STOCK[product["id"]] = int(product["stock"])  # 清理时还原（脚本后面会把它改成 4 再补货）
 call("POST", "/cart/items", {"productId": product["id"], "quantity": 10}, tok)
 cart = call("GET", "/cart", None, tok)
 address = call("POST", "/addresses", {
@@ -80,10 +127,21 @@ order = call("POST", "/orders", {
     "userCouponId": user_coupon["id"],
     "remark": "P0 冒烟测试",
 }, tok)
-expected = round(float(cart["selectedAmount"]) - float(user_coupon["discountAmount"]), 2)
-check("下单使用优惠券", abs(float(order["discountAmount"]) - float(user_coupon["discountAmount"])) < 0.01
-      and abs(float(order["payAmount"]) - expected) < 0.01,
-      f"原价 {order['totalAmount']} 优惠 {order['discountAmount']} 应付 {order['payAmount']}")
+# ⚠️ 别把"应付 = 商品小计 − 券"写死：活动与券是**叠加**的（满200减50 等演示活动常驻），
+#    写死会误判成 bug。这里按项目自己的金额口径契约断言（见 memory/FEATURES.md）：
+#    total + freight − 券(discountAmount) − activityDiscount − memberDiscount − pointsDiscount = pay
+#    每种优惠都有**独立**金额列，discountAmount 只放券，不要把活动加进去。
+expected_pay = round(float(order["totalAmount"]) + float(order.get("freightAmount") or 0)
+                     - float(order["discountAmount"])
+                     - float(order.get("activityDiscount") or 0)
+                     - float(order.get("memberDiscount") or 0)
+                     - float(order.get("pointsDiscount") or 0), 2)
+check("下单使用优惠券（与活动叠加）",
+      order.get("couponName") == user_coupon["couponName"]
+      and abs(float(order["discountAmount"]) - float(user_coupon["discountAmount"])) < 0.01
+      and abs(float(order["payAmount"]) - expected_pay) < 0.01,
+      f"商品 {order['totalAmount']} 券 -{order['discountAmount']}"
+      f" 活动 -{order.get('activityDiscount')} 应付 {order['payAmount']}")
 check("优惠券状态变为已使用",
       call("GET", "/coupons/mine", None, tok)[0]["status"] == "USED")
 
@@ -92,9 +150,11 @@ paid = call("POST", f"/orders/{order['id']}/pay", None, tok)
 check("余额支付订单", paid["status"] == "PAID", paid["status"])
 
 # 6. admin: promote a second account then ship
-call("POST", "/auth/register", {"username": admin, "password": "P0test123", "nickname": "P0管理员"})
+call("POST", "/auth/register", {"username": admin, "password": "P0test123",
+                                "nickname": "P0管理员", "phone": "138" + STAMP[-8:]})
 sql(f"UPDATE supermarket_system.sys_user SET role='ADMIN' WHERE username='{admin}'")
 admin_tok = call("POST", "/auth/login", {"username": admin, "password": "P0test123"})["token"]
+admin_uid = call("GET", "/auth/me", None, admin_tok)["id"]
 shipped = call("POST", f"/admin/orders/{order['id']}/ship",
                {"shipCompany": "顺丰速运", "shipNo": "SF" + STAMP}, admin_tok)
 check("管理端带单号发货", shipped["status"] == "SHIPPED" and shipped["shipNo"] == "SF" + STAMP,

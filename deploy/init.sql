@@ -31,6 +31,7 @@ CREATE TABLE sys_user (
     nickname VARCHAR(50) DEFAULT NULL COMMENT 'Display name',
     phone VARCHAR(20) DEFAULT NULL COMMENT 'Phone number',
     email VARCHAR(100) DEFAULT NULL COMMENT 'Email address',
+    avatar_url VARCHAR(500) DEFAULT NULL COMMENT '用户头像URL',
     role VARCHAR(20) NOT NULL DEFAULT 'USER' COMMENT 'USER or ADMIN',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
     balance DECIMAL(10, 2) NOT NULL DEFAULT 0.00 COMMENT 'Wallet balance',
@@ -38,6 +39,7 @@ CREATE TABLE sys_user (
     member_level INT NOT NULL DEFAULT 0 COMMENT '会员等级 0普通/1银卡/2金卡/3钻石',
     total_spent DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '累计消费金额(用于升级)',
     last_login_at DATETIME DEFAULT NULL COMMENT 'Last login time',
+    must_change_password TINYINT NOT NULL DEFAULT 0 COMMENT '1=管理员重置成临时密码后待强制改密',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted TINYINT NOT NULL DEFAULT 0 COMMENT 'Logical delete flag',
@@ -55,6 +57,7 @@ CREATE TABLE product_category (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
     parent_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Parent category, 0 means root',
     name VARCHAR(50) NOT NULL COMMENT 'Category name',
+    icon_url VARCHAR(500) DEFAULT NULL COMMENT '分类图标URL',
     sort_no INT NOT NULL DEFAULT 0 COMMENT 'Display order',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -213,7 +216,7 @@ CREATE TABLE orders (
     points_used BIGINT NOT NULL DEFAULT 0 COMMENT '本单抵扣积分',
     points_earned BIGINT NOT NULL DEFAULT 0 COMMENT '本单获得积分',
     member_level INT NOT NULL DEFAULT 0 COMMENT '下单时会员等级',
-    fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'DELIVERY' COMMENT 'DELIVERY 送货上门 / PICKUP 门店自提',
+    fulfillment_type VARCHAR(20) NOT NULL DEFAULT 'INSTANT' COMMENT 'INSTANT 同城即时配送 / EXPRESS 快递配送 / PICKUP 门店自提',
     pickup_store_id BIGINT UNSIGNED DEFAULT NULL COMMENT '自提门店 id',
     pickup_store_name VARCHAR(80) DEFAULT NULL COMMENT '自提门店名快照',
     pickup_code VARCHAR(16) DEFAULT NULL COMMENT '自提码（订单号后 6 位）',
@@ -416,6 +419,7 @@ CREATE TABLE product_review (
     user_id BIGINT UNSIGNED NOT NULL COMMENT 'Reviewer user id',
     rating TINYINT NOT NULL COMMENT '1 to 5 stars',
     content VARCHAR(1000) DEFAULT NULL COMMENT 'Review text',
+    image_urls VARCHAR(2000) DEFAULT NULL COMMENT '评价晒图URL，逗号分隔',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -666,3 +670,21 @@ CREATE TABLE legal_doc (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_legal_doc_key (doc_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='协议/隐私等法律文本（后台可编辑，正文由应用启动时幂等写入模板）';
+
+-- 找回密码申请（「忘记密码」= 提交申请 → 管理员核对身份 → 发一次性临时密码 → 首次登录强制改密）
+-- 项目没有邮件/短信通道，所以不做自助重置；账号不存在时接口同样返回成功但**不落库**（防账号枚举）。
+-- 临时密码只在重置响应里返回一次，库里只存 BCrypt 哈希，不保存明文。
+CREATE TABLE password_reset_request (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT DEFAULT NULL COMMENT '命中的账号 id；账号不存在时为 NULL',
+    username VARCHAR(50) NOT NULL COMMENT '用户提交的账号',
+    contact VARCHAR(50) DEFAULT NULL COMMENT '用户留下的联系电话（客服核对/回拨用）',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING / DONE / REJECTED',
+    handled_by BIGINT DEFAULT NULL COMMENT '处理人（管理员 id）',
+    handled_at DATETIME DEFAULT NULL,
+    remark VARCHAR(255) DEFAULT NULL COMMENT '处理备注',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_prr_status_created (status, created_at),
+    KEY idx_prr_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='找回密码申请';

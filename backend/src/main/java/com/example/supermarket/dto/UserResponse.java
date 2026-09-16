@@ -16,6 +16,8 @@ public class UserResponse {
     private Integer memberLevel;
     private BigDecimal totalSpent;
     private String avatarUrl;
+    /** 管理员重置过密码 → 前端登录后必须强制改密 */
+    private boolean mustChangePassword;
 
     public UserResponse() {
     }
@@ -33,6 +35,7 @@ public class UserResponse {
         response.setMemberLevel(user.getMemberLevel());
         response.setTotalSpent(user.getTotalSpent());
         response.setAvatarUrl(user.getAvatarUrl());
+        response.setMustChangePassword(Byte.valueOf((byte) 1).equals(user.getMustChangePassword()));
         return response;
     }
 
@@ -122,6 +125,14 @@ public class UserResponse {
 
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
 }

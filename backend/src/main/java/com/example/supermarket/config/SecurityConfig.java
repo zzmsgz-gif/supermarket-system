@@ -59,6 +59,8 @@ public class SecurityConfig {
                                 "/v3/api-docs", "/v3/api-docs/", "/v3/api-docs/**",
                                 "/swagger-resources", "/swagger-resources/**", "/webjars/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+                        // 忘记密码申请：登录不进去的人才用它，必须放行
+                        .requestMatchers(HttpMethod.POST, "/auth/password-reset-request").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )

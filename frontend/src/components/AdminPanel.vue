@@ -151,8 +151,8 @@
                 <tbody>
                   <template v-for="order in adminOrders.items" :key="order.id">
                     <tr>
-                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span><span v-if="order.remark" class="cell-sub">备注：{{ order.remark }}</span></td>
-                      <td><span :class="['tag', orderStatusTag(order.status)]">{{ formatOrderStatus(order.status) }}</span></td>
+                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span><span class="cell-sub">{{ fulfillmentLabel(order) }}</span><span v-if="order.remark" class="cell-sub">备注：{{ order.remark }}</span></td>
+                      <td><span :class="['tag', orderStatusTag(order.status)]">{{ orderStatusLabel(order) }}</span></td>
                       <td>{{ formatPaymentStatus(order.paymentStatus) }}</td>
                       <td>{{ order.receiverName || '-' }}<span class="cell-sub">{{ order.receiverPhone || '' }}</span></td>
                       <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
@@ -163,7 +163,8 @@
                       <td>{{ formatDate(order.createdAt) }}</td>
                       <td class="col-action">
                         <div class="row-actions">
-                          <button v-if="order.status === 'PAID'" @click="openShipForm(order.id)">发货</button>
+                          <button v-if="order.status === 'PAID' && order.fulfillmentType === 'PICKUP'" @click="adminOrderReady(order)">备货完成</button>
+                          <button v-else-if="order.status === 'PAID'" @click="openShipForm(order.id)">发货</button>
                           <button v-if="order.status === 'SHIPPED'" @click="completeAdminOrder(order.id)">完成</button>
                           <button v-if="['PENDING_PAYMENT', 'PAID'].includes(order.status)" class="ghost" @click="cancelAdminOrder(order.id)">取消</button>
                           <span v-if="!['PENDING_PAYMENT', 'PAID', 'SHIPPED'].includes(order.status)">-</span>
@@ -173,9 +174,9 @@
                     <tr v-if="shipForm.orderId === order.id" class="row-extra-tr">
                       <td colspan="8">
                         <div class="row-extra">
-                          <span class="extra-label">填写物流信息</span>
-                          <input v-model="shipForm.shipCompany" placeholder="快递公司" />
-                          <input v-model="shipForm.shipNo" placeholder="快递单号" />
+                          <span class="extra-label">{{ order.fulfillmentType === 'EXPRESS' ? '填写快递信息' : '填写配送信息' }}</span>
+                          <input v-model="shipForm.shipCompany" :placeholder="order.fulfillmentType === 'EXPRESS' ? '快递公司' : '配送方（如 美团配送）'" />
+                          <input v-model="shipForm.shipNo" :placeholder="order.fulfillmentType === 'EXPRESS' ? '快递单号' : '运单号'" />
                           <button @click="submitShip(order.id)">确认发货</button>
                           <button class="ghost" @click="shipForm.orderId = null">取消</button>
                         </div>
@@ -1408,14 +1409,103 @@
               </div>
             </div>
           </div>
+
+          <div v-if="adminMenu === 'passwordResets'" class="data-panel">
+            <!-- 临时密码：只在这一份响应里存在，关掉就再也拿不到（库里只有 BCrypt 哈希） -->
+            <div v-if="passwordResetResult" class="form-card admin-form-card temp-pw-card">
+              <div class="form-title">
+                <span>临时密码已生成</span>
+                <small>{{ passwordResetResult.message }}</small>
+              </div>
+              <div class="temp-pw-meta">
+                <span>账号</span><strong>{{ passwordResetResult.username }}</strong>
+                <span>昵称</span><strong>{{ passwordResetResult.nickname || '-' }}</strong>
+                <span>手机号</span><strong>{{ passwordResetResult.phone || '未填写' }}</strong>
+              </div>
+              <div class="temp-pw-value">{{ passwordResetResult.tempPassword }}</div>
+              <div class="row-actions">
+                <button class="ghost" @click="copyTempPassword">复制临时密码</button>
+                <button @click="passwordResetResult = null">我已记下，关闭</button>
+              </div>
+            </div>
+
+            <div class="toolbar">
+              <select v-model="passwordResetStatus" class="filter-select" @change="searchPasswordResets">
+                <option value="PENDING">待处理</option>
+                <option value="">全部状态</option>
+                <option value="DONE">已重置</option>
+                <option value="REJECTED">已驳回</option>
+              </select>
+              <select v-model="passwordResets.size" class="filter-select" @change="changePasswordResetPageSize">
+                <option :value="10">10 条/页</option>
+                <option :value="20">20 条/页</option>
+                <option :value="50">50 条/页</option>
+              </select>
+              <button class="ghost" @click="refreshCurrentAdminMenu">刷新</button>
+              <span class="result-count">共 {{ passwordResets.total }} 条申请</span>
+            </div>
+
+            <p class="admin-hint">
+              系统没有开通邮件 / 短信，所以「忘记密码」不做自助重置——任何人都能填别人的用户名，那样等于把账号送出去。
+              流程是：<strong>先电话核对身份</strong> → 点「重置密码」 → 把生成的一次性临时密码当场告知用户 →
+              用户首次登录会被强制改密。
+            </p>
+
+            <div v-if="!passwordResets.items?.length" class="empty">没有匹配的找回密码申请</div>
+            <div v-else class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>提交账号</th>
+                    <th>昵称</th>
+                    <th>账号预留手机号</th>
+                    <th>申请人联系方式</th>
+                    <th>提交时间</th>
+                    <th>状态</th>
+                    <th class="col-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in passwordResets.items" :key="item.id">
+                    <td><span class="cell-strong">{{ item.username }}</span></td>
+                    <td>{{ item.nickname || '-' }}</td>
+                    <td>{{ item.phone || '-' }}</td>
+                    <td>{{ item.contact || '-' }}</td>
+                    <td>{{ formatDate(item.createdAt) }}</td>
+                    <td>
+                      <span :class="['tag', passwordResetStatusClass(item.status)]">{{ passwordResetStatusLabel(item.status) }}</span>
+                      <small v-if="item.remark" class="admin-hint">{{ item.remark }}</small>
+                    </td>
+                    <td class="col-action">
+                      <div v-if="item.status === 'PENDING'" class="row-actions">
+                        <button @click="confirmResetPassword(item)">重置密码</button>
+                        <button class="ghost" @click="confirmRejectPasswordReset(item)">驳回</button>
+                      </div>
+                      <span v-else class="admin-hint">已处理</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div v-if="passwordResets.total > passwordResets.size" class="pagination">
+                <button class="ghost" :disabled="passwordResets.page <= 1" @click="changePasswordResetPage(-1)">上一页</button>
+                <span class="page-info">第 {{ passwordResets.page }} / {{ passwordResetTotalPages }} 页</span>
+                <button class="ghost" :disabled="passwordResets.page >= passwordResetTotalPages" @click="changePasswordResetPage(1)">下一页</button>
+                <span class="page-jump-wrap">跳至
+                  <input type="number" min="1" :max="passwordResetTotalPages" v-model.number="passwordResetJumpPage" class="page-jump" @keyup.enter="goPasswordResetPage" />
+                  页
+                  <button class="ghost" @click="goPasswordResetPage">跳转</button>
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 </template>
 
 <script setup>
-import { ref, reactive, computed, toRef, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, toRef, nextTick } from 'vue';
 import { api } from '../api/client';
-import { discountRate, discountSave, formatCouponStatus, formatDate, formatOrderStatus, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
+import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
 
 const props = defineProps({
@@ -1879,6 +1969,7 @@ const adminIcons = {
   stores: adminIcon('<path d="M4 9.5 5.2 4.5h13.6L20 9.5"/><path d="M4 9.5h16v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-10z"/><path d="M9.5 20.5v-5h5v5"/>'),
   insights: adminIcon('<path d="M4 19.5h16"/><path d="M7 16.5V10M12 16.5V5.5M17 16.5v-4.5"/>'),
   flashSales: adminIcon('<path d="M13.5 2.5 5 13.5h5.5l-1 8 9-11h-5.5l.5-8z"/>'),
+  passwordResets: adminIcon('<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 19.5 3.5"/><path d="M16.5 3.5H20V7"/>'),
 };
 
 const adminMenuItems = computed(() => [
@@ -1896,6 +1987,7 @@ const adminMenuItems = computed(() => [
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
+  { key: 'passwordResets', label: '找回密码', desc: '核对身份后重置为一次性临时密码，用户首次登录强制改密', group: '管理', badge: passwordResets.pending || '', warn: true },
 ]);
 
 const adminMenuGroups = computed(() => {
@@ -2167,6 +2259,26 @@ function openShipForm(orderId) {
   shipForm.orderId = orderId;
   shipForm.shipCompany = '';
   shipForm.shipNo = '';
+
+}
+
+// 门店自提「备货完成」：自提单没有物流，所以不弹快递单号表单，确认后直接推进到「待取货」。
+// 这也是修掉「自提单被迫瞎填一个快递单号」的关键一步。
+async function adminOrderReady(order) {
+  const confirmed = await askConfirm({
+    title: '标记备货完成',
+    message: `「${order.orderNo}」是门店自提订单，标记后会给用户推送「凭自提码到店取货」的提醒，用户即可到店取货并在订单页确认。`,
+    details: [
+      { label: '自提门店', value: order.pickupStoreName || '-' },
+      { label: '自提码', value: order.pickupCode || '-' },
+    ],
+    confirmText: '确认备货完成',
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.post(`/admin/orders/${order.id}/ready`, {});
+    await Promise.all([loadAdminOrders(), loadRefundOrders()]);
+  }, '已标记备货完成，等待用户到店取货');
 
 }
 
@@ -2692,6 +2804,131 @@ async function toggleUser(user) {
 
 }
 
+/* ===== 找回密码申请（忘记密码的人工处理入口） =====
+   状态全部本地化在 AdminPanel 内，不去动 App.vue 里那行超长的 adminCtx。 */
+const passwordResets = reactive({ items: [], page: 1, size: 10, total: 0, pending: 0 });
+const passwordResetStatus = ref('PENDING');
+const passwordResetJumpPage = ref(1);
+// 重置成功后拿到的临时密码：只存在于这一次响应里，关闭即销毁（库里只有 BCrypt 哈希）
+const passwordResetResult = ref(null);
+
+const passwordResetTotalPages = computed(() => Math.max(1, Math.ceil((passwordResets.total || 0) / (passwordResets.size || 10))));
+
+const PASSWORD_RESET_STATUS_LABELS = { PENDING: '待处理', DONE: '已重置', REJECTED: '已驳回' };
+
+function passwordResetStatusLabel(status) {
+  return PASSWORD_RESET_STATUS_LABELS[status] || status || '-';
+}
+
+function passwordResetStatusClass(status) {
+  if (status === 'PENDING') return 'warn';
+  if (status === 'DONE') return 'ok';
+  return 'muted';
+}
+
+async function loadPasswordResets() {
+  const query = [`page=${passwordResets.page}`, `size=${passwordResets.size}`];
+  if (passwordResetStatus.value) query.push(`status=${passwordResetStatus.value}`);
+  const data = await api.get(`/admin/password-reset-requests?${query.join('&')}`);
+  passwordResets.items = data?.items || [];
+  passwordResets.total = Number(data?.total || 0);
+  await loadPasswordResetPendingCount();
+}
+
+// 侧边菜单角标：待处理数量（拉失败不影响列表本身）
+async function loadPasswordResetPendingCount() {
+  try {
+    const count = await api.get('/admin/password-reset-requests/pending-count');
+    passwordResets.pending = Number(count || 0);
+  } catch (err) {
+    passwordResets.pending = 0;
+  }
+}
+
+// 进后台就拉一次待处理数：否则菜单角标要等点进「找回密码」才显示，等于没提醒
+onMounted(() => { loadPasswordResetPendingCount(); });
+
+async function searchPasswordResets() {
+  passwordResets.page = 1;
+  passwordResetJumpPage.value = 1;
+  await run(() => loadPasswordResets());
+}
+
+async function changePasswordResetPage(delta) {
+  const next = passwordResets.page + delta;
+  if (next < 1 || next > passwordResetTotalPages.value) return;
+  passwordResets.page = next;
+  await run(() => loadPasswordResets());
+}
+
+async function changePasswordResetPageSize() {
+  passwordResets.page = 1;
+  await run(() => loadPasswordResets());
+}
+
+async function goPasswordResetPage() {
+  const p = Number(passwordResetJumpPage.value);
+  if (!Number.isInteger(p) || p < 1 || p > passwordResetTotalPages.value) {
+    passwordResetJumpPage.value = passwordResets.page;
+    return;
+  }
+  passwordResets.page = p;
+  await run(() => loadPasswordResets());
+}
+
+async function confirmResetPassword(item) {
+  const confirmed = await askConfirm({
+    title: '重置该账号密码',
+    message: `将为「${item.username}」生成一次性临时密码，并把该账号标记为「首次登录必须改密」。`
+      + '临时密码只显示这一次，请当场电话告知用户，不要截图外发。',
+    details: [
+      { label: '账号', value: item.username },
+      { label: '昵称', value: item.nickname || '-' },
+      { label: '账号预留手机号', value: item.phone || '未填写' },
+      { label: '申请人联系方式', value: item.contact || '未填写' },
+    ],
+    confirmText: '确认重置',
+  });
+  if (!confirmed) return;
+  try {
+    await run(async () => {
+      passwordResetResult.value = await api.post(`/admin/password-reset-requests/${item.id}/reset`, {});
+      await loadPasswordResets();
+    }, '临时密码已生成，请立即转告用户');
+  } catch (err) {
+    fail(err?.message || '重置失败，请稍后重试');
+  }
+}
+
+async function confirmRejectPasswordReset(item) {
+  const confirmed = await askConfirm({
+    title: '驳回找回申请',
+    message: `确定驳回「${item.username}」的找回密码申请吗？驳回后用户可重新提交。`,
+    confirmText: '确认驳回',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await run(async () => {
+      await api.post(`/admin/password-reset-requests/${item.id}/reject`, { remark: '身份核对未通过' });
+      await loadPasswordResets();
+    }, '申请已驳回');
+  } catch (err) {
+    fail(err?.message || '驳回失败，请稍后重试');
+  }
+}
+
+async function copyTempPassword() {
+  const text = passwordResetResult.value?.tempPassword;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    notice.value = '临时密码已复制到剪贴板';
+  } catch (err) {
+    fail('复制失败，请手动选中复制');
+  }
+}
+
 const adminMenuLoaders = {
   dashboard: () => refreshAdminData(),
   insights: () => loadInsights(),
@@ -2707,6 +2944,7 @@ const adminMenuLoaders = {
   stores: () => loadAdminStores(),
   banners: () => loadAdminBanners(),
   users: () => loadAdminUsers(),
+  passwordResets: () => loadPasswordResets(),
 };
 
 async function selectAdminMenu(key) {
