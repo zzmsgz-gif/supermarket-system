@@ -8,6 +8,10 @@ import java.time.LocalDateTime;
 
 public class CartItemResponse {
 
+    /** 与 CartService / OrderService 同口径：仅「在售且未软删」的商品可下单 */
+    private static final String ON_SALE = "ON_SALE";
+    private static final byte NOT_DELETED = 0;
+
     private Long id;
     private Long productId;
     private String productName;
@@ -25,6 +29,11 @@ public class CartItemResponse {
     private Long flashSaleId;
     private BigDecimal flashPrice;
     private LocalDateTime flashEndTime;
+    /**
+     * 商品是否仍在售（未下架、未软删）。购物车/结算页必须能提前看出「这行已经买不了」——
+     * 否则用户要等到提交订单才被后端拦下，而且只能拿到一句笼统的错误。
+     */
+    private Boolean onSale;
 
     public CartItemResponse() {
     }
@@ -62,6 +71,8 @@ public class CartItemResponse {
         response.setProductOriginalPrice(response.getFlashSaleId() != null
                 ? product.getPrice() : product.getOriginalPrice());
         response.setStock(product.getStock());
+        response.setOnSale(ON_SALE.equals(product.getStatus())
+                && product.getDeleted() != null && product.getDeleted() == NOT_DELETED);
         response.setUnit(product.getUnit());
         response.setQuantity(item.getQuantity());
         response.setSelected(Byte.valueOf((byte) 1).equals(item.getSelected()));
@@ -147,6 +158,14 @@ public class CartItemResponse {
 
     public void setUnit(String unit) {
         this.unit = unit;
+    }
+
+    public Boolean getOnSale() {
+        return onSale;
+    }
+
+    public void setOnSale(Boolean onSale) {
+        this.onSale = onSale;
     }
 
     public Integer getQuantity() {

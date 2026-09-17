@@ -26,6 +26,10 @@ public class StoreRequest {
     @Size(max = 40, message = "区县最多 40 字")
     private String district;
 
+    /** 即时配送服务区域，逗号分隔的「城市/区县」；留空表示仅本店 city+district */
+    @Size(max = 255, message = "服务区域最多 255 字")
+    private String serviceAreas;
+
     @Size(max = 255, message = "自提须知最多 255 字")
     private String pickupNotice;
 
@@ -80,6 +84,14 @@ public class StoreRequest {
 
     public void setDistrict(String district) {
         this.district = district;
+    }
+
+    public String getServiceAreas() {
+        return serviceAreas;
+    }
+
+    public void setServiceAreas(String serviceAreas) {
+        this.serviceAreas = serviceAreas;
     }
 
     public String getPickupNotice() {

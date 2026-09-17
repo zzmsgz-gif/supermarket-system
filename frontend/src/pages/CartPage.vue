@@ -14,6 +14,37 @@
             <button class="ghost" @click="navigate('shop')">去凑单</button>
           </div>
           <div class="cp-track"><i :style="{ width: cartActivityProgress.percent + '%' }"></i></div>
+          <!-- 凑单推荐：既然已经算出「还差 ¥X」，就直接给出买得起的现货，
+               别只丢一个「去凑单」把用户扔回首页乱逛。 -->
+          <div v-if="!cartActivityProgress.reachedTop && upsell.length" class="cart-upsell">
+            <span class="cu-label">买这些能凑上：</span>
+            <button
+              v-for="p in upsell"
+              :key="p.id"
+              type="button"
+              class="cu-item"
+              :title="'加入购物车：' + p.name"
+              @click="addToCart(p)"
+            >
+              <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)" />
+              <span class="cu-name">{{ p.name }}</span>
+              <b class="cu-price">{{ money(p.price) }}</b>
+              <span class="cu-add">+</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="cartIssues.length" class="blocker-bar" role="alert">
+          <div class="bb-head">
+            <b>{{ cartIssues.length }} 件商品现在买不了</b>
+            <button class="ghost danger sm" type="button" @click="removeAllInvalid">全部移除</button>
+          </div>
+          <ul class="bb-list">
+            <li v-for="it in cartIssues" :key="it.id">
+              <span class="bb-name">{{ it.productName }}</span>
+              <span class="bb-reason">{{ cartItemIssue(it) }}</span>
+            </li>
+          </ul>
         </div>
 
         <empty-state
@@ -36,6 +67,7 @@
             <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
             <span v-if="item.flashSaleId" class="flash-chip">限时秒杀</span>
             <span v-if="cartQtyCapped(item)" class="flash-chip capped">已达限购</span>
+            <span v-if="cartItemIssue(item)" class="flash-chip invalid">{{ cartItemIssue(item) }}</span>
             <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
             <small v-if="unpaidHolds[item.productId]" class="flash-hold">
               其中 <b>{{ unpaidHolds[item.productId].myUnpaidQuantity }} 件</b>被未付款订单
@@ -112,14 +144,22 @@
           <div class="submit-meta">
             <span class="total">应付 <b>{{ money(orderPayPreview) }}</b></span>
             <span v-if="cartTotalSaved > 0" class="total-save">已省 {{ money(cartTotalSaved) }}</span>
+            <!-- 有失效行就地把结算口堵住：不让用户填完一遍配送信息才被打回 -->
+            <span v-if="blockedCount > 0" class="total-warn">有 {{ blockedCount }} 件已勾选商品买不了，请先移除</span>
           </div>
-          <button class="primary" @click="goCheckout">提交订单</button>
+          <button
+            class="primary"
+            :disabled="blockedCount > 0"
+            :title="blockedCount > 0 ? '请先移除已下架/库存不足的商品' : ''"
+            @click="goCheckout"
+          >提交订单</button>
         </div>
       </section>
 </template>
 
 <script>
-import { inject, computed } from 'vue';
+import { inject, computed, ref, watch } from 'vue';
+import { cartItemIssue, cartIssueItems } from '../utils/format';
 export default {
   name: 'CartPage',
   setup() {
@@ -133,7 +173,54 @@ export default {
       });
       return map;
     });
-    return { ...appCtx, unpaidHolds };
+    // 「已下架 / 已售罄 / 库存不够」的行。后端只在提交订单时才拦，前端必须提前暴露 ——
+    // 用户明确要求过「应该提前禁用+提示，而不是等结算才提示」。
+    const cartIssues = computed(() => cartIssueItems(appCtx.cart.items));
+    // 只有「已勾选」的失效行才真的挡住结算（未勾选的不参与下单）
+    const blockedCount = computed(
+      () => cartIssues.value.filter((it) => it.selected).length
+    );
+    function removeAllInvalid() {
+      // 逐条调用既有的删除动作即可——它会顺带刷新购物车与角标
+      [...cartIssues.value].forEach((it) => appCtx.removeCartItem(it.id));
+    }
+
+    // 凑单推荐：只推「现货 + 没在车里 + 单价不超过差额」的畅销品，
+    // 买一件就有机会刚好补上门槛。差额极小时一件都挑不出来，退化成最便宜的现货。
+    const upsell = ref([]);
+    const pickUpsell = (list, inCart) => (list || [])
+      .filter((p) => Number(p.stock) > 0 && !inCart.has(p.id))
+      .slice(0, 3);
+    async function loadUpsell() {
+      const prog = appCtx.cartActivityProgress.value;
+      const items = appCtx.cart.items || [];
+      if (!prog || prog.reachedTop || !items.length || Number(prog.gap || 0) <= 0) {
+        upsell.value = [];
+        return;
+      }
+      const inCart = new Set(items.map((i) => i.productId));
+      try {
+        const fit = await appCtx.api.get(
+          `/products?page=1&size=8&sort=sales_desc&maxPrice=${Number(prog.gap)}`
+        );
+        upsell.value = pickUpsell(fit.items, inCart);
+        if (!upsell.value.length) {
+          const cheap = await appCtx.api.get('/products?page=1&size=6&sort=price_asc');
+          upsell.value = pickUpsell(cheap.items, inCart);
+        }
+      } catch {
+        // 推荐只是锦上添花，拉不到就当没有，不要惊动用户
+        upsell.value = [];
+      }
+    }
+    watch(
+      () => [appCtx.cartActivityProgress.value?.gap, (appCtx.cart.items || []).length],
+      () => { loadUpsell(); }
+    );
+
+    return {
+      ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell,
+    };
   }
 };
 </script>

@@ -4,6 +4,8 @@ import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
 import com.example.supermarket.dto.OrderItemResponse;
 import com.example.supermarket.dto.OrderResponse;
+import com.example.supermarket.dto.ReorderResultResponse;
+import com.example.supermarket.dto.ReorderSkippedResponse;
 import com.example.supermarket.entity.CartItem;
 import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.OrderEntity;
@@ -93,6 +95,10 @@ public class OrderService {
     private final StoreRepository storeRepository;
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
+    /** 「再来一单」要逐条走 CartService 的加购校验，避免在这里重写一套库存/限购规则 */
+    private final CartService cartService;
+    /** 即时配送范围校验：可送达范围 = 所有营业中门店服务区域的并集 */
+    private final DeliveryRangeService deliveryRangeService;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -109,7 +115,9 @@ public class OrderService {
             MemberService memberService,
             StoreRepository storeRepository,
             MessageService messageService,
-            FlashSaleService flashSaleService
+            FlashSaleService flashSaleService,
+            CartService cartService,
+            DeliveryRangeService deliveryRangeService
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -126,6 +134,34 @@ public class OrderService {
         this.storeRepository = storeRepository;
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
+        this.cartService = cartService;
+        this.deliveryRangeService = deliveryRangeService;
+    }
+
+    /**
+     * 「再来一单」：把历史订单里的商品批量回填购物车。
+     *
+     * <p>逐条复用 {@link CartService#addItemInternal} 的加购校验 —— 库存、限购、是否在售
+     * 全部与正常加购同口径，不在这里另写一套（否则规则迟早会分叉）。
+     * 单件失败只记录原因、不影响其余商品，因为历史订单里出现下架/售罄是常态。
+     *
+     * <p>秒杀价不保留：购物车与下单永远按"此刻进行中"的场次定价，回填历史价没有意义。
+     */
+    @Transactional
+    public ReorderResultResponse reorder(Long userId, Long orderId) {
+        orderRepository.findByIdAndUserId(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+        int added = 0;
+        List<ReorderSkippedResponse> skipped = new ArrayList<>();
+        for (OrderItem item : orderItemRepository.findByOrderIdOrderByIdAsc(orderId)) {
+            try {
+                cartService.addItemInternal(userId, item.getProductId(), item.getSkuSpec(), item.getQuantity());
+                added++;
+            } catch (BusinessException | ResourceNotFoundException e) {
+                skipped.add(new ReorderSkippedResponse(item.getProductName(), e.getMessage()));
+            }
+        }
+        return new ReorderResultResponse(added, skipped);
     }
 
     @Transactional
@@ -149,6 +185,11 @@ public class OrderService {
             }
             address = userAddressRepository.findByIdAndUserId(request.getAddressId(), userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
+            // 即时配送是商家自有运力，只能覆盖门店所在区域；快递配送全国可达，不校验。
+            // 放在这里（早于购物车任何扣减）是为了让拒绝尽量靠前，别等扣完库存再回滚。
+            if (OrderEntity.FULFILLMENT_INSTANT.equals(fulfillmentType)) {
+                deliveryRangeService.assertDeliverable(address.getCity(), address.getDistrict());
+            }
         }
 
         List<Long> cartItemIds = request.getCartItemIds().stream().distinct().toList();
@@ -396,7 +437,9 @@ public class OrderService {
             int stockAfter = stockBefore - item.getQuantity();
             int updated = productRepository.deductStock(product.getId(), item.getQuantity(), ON_SALE, NOT_DELETED);
             if (updated == 0) {
-                throw new BusinessException(409, "Insufficient stock");
+                // 条件 UPDATE 落空有两种可能：库存不足，或期间被后台下架。文案要能覆盖两者并给出商品名。
+                throw new BusinessException(409, "商品「" + product.getName() + "」库存不足或已下架（当前仅剩 "
+                        + stockBefore + " 件），请回到购物车调整数量后重试");
             }
             stockLogRepository.save(buildStockLog(orderId, userId, product.getId(), item.getQuantity(), stockBefore, stockAfter));
         }
@@ -404,7 +447,10 @@ public class OrderService {
 
     private OrderItem buildOrderItem(CartItem cartItem, Product product, FlashSale flashSale) {
         if (product.getStock() < cartItem.getQuantity()) {
-            throw new BusinessException(409, "Insufficient stock");
+            // 这条会在扣库存之前命中，是最常被用户看到的一条库存错误 —— 必须点明商品与两个数量，
+            // 否则用户只知道"库存不足"，却不知道该改哪一件、改成几件。
+            throw new BusinessException(409, "商品「" + product.getName() + "」库存不足（仅剩 "
+                    + product.getStock() + " 件，购物车中有 " + cartItem.getQuantity() + " 件），请调整数量后重试");
         }
         OrderItem item = new OrderItem();
         item.setProductId(product.getId());
@@ -434,9 +480,14 @@ public class OrderService {
 
     private Product requireAvailableProduct(Map<Long, Product> productMap, Long productId) {
         Product product = productMap.get(productId);
-        if (product == null || !ON_SALE.equals(product.getStatus()) || product.getDeleted() == null
+        if (product == null) {
+            // 文案必须点出是"哪个商品"出了什么问题 —— 笼统的 "Product not found" 让用户
+            // 在结算页无从下手（正常路径下前端已提前标出失效行，这里是并发下的兜底）。
+            throw new BusinessException(409, "订单中有商品已不存在，请回到购物车移除后重试");
+        }
+        if (!ON_SALE.equals(product.getStatus()) || product.getDeleted() == null
                 || product.getDeleted().byteValue() != NOT_DELETED) {
-            throw new ResourceNotFoundException("Product not found");
+            throw new BusinessException(409, "商品「" + product.getName() + "」已下架，请回到购物车移除后重试");
         }
         return product;
     }

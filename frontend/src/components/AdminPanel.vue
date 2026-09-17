@@ -1276,6 +1276,17 @@
                 <span class="field-label">区县</span>
                 <input v-model="storeForm.district" maxlength="40" placeholder="选填" />
               </label>
+              <label class="field field-wide">
+                <span class="field-label">即时配送服务区域</span>
+                <input
+                  v-model="storeForm.serviceAreas"
+                  maxlength="255"
+                  placeholder="如 深圳市/南山区,深圳市/福田区（留空 = 仅本店所在城市/区）"
+                />
+                <small class="field-hint">
+                  逗号分隔的「城市/区县」；只写城市表示全城可达。即时配送可送达范围 = <b>所有营业中门店</b>的并集，因此门店停业会收缩配送范围；快递配送不受此限制。
+                </small>
+              </label>
               <label class="field">
                 <span class="field-label">排序（越小越靠前）</span>
                 <input v-model.number="storeForm.sortNo" type="number" min="0" />
@@ -1666,7 +1677,7 @@ const adminStores = ref([]);
 const storeFormOpen = ref(false);
 const storeEditingId = ref(null);
 const storeForm = reactive({
-  name: '', address: '', phone: '', businessHours: '', city: '', district: '',
+  name: '', address: '', phone: '', businessHours: '', city: '', district: '', serviceAreas: '',
   pickupNotice: '', status: 1, sortNo: 0,
 });
 
@@ -1682,7 +1693,7 @@ async function loadAdminStores() {
 function resetStoreForm() {
   storeEditingId.value = null;
   Object.assign(storeForm, {
-    name: '', address: '', phone: '', businessHours: '', city: '', district: '',
+    name: '', address: '', phone: '', businessHours: '', city: '', district: '', serviceAreas: '',
     pickupNotice: '', status: 1, sortNo: 0,
   });
 }
@@ -1697,6 +1708,7 @@ function openStoreForm(store) {
       businessHours: store.businessHours || '',
       city: store.city || '',
       district: store.district || '',
+      serviceAreas: store.serviceAreas || '',
       pickupNotice: store.pickupNotice || '',
       status: Number(store.status) === 0 ? 0 : 1,
       sortNo: Number(store.sortNo || 0),
@@ -1720,6 +1732,7 @@ function storePayload() {
     businessHours: storeForm.businessHours.trim(),
     city: storeForm.city.trim(),
     district: storeForm.district.trim(),
+    serviceAreas: storeForm.serviceAreas.trim(),
     pickupNotice: storeForm.pickupNotice.trim(),
     status: Number(storeForm.status) === 0 ? 0 : 1,
     sortNo: Number(storeForm.sortNo) || 0,

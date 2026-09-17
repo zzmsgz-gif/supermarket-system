@@ -159,3 +159,24 @@ export function orderOriginalSave(order) {
     return save > 0 ? sum + save * Number(it.quantity || 1) : sum;
   }, 0);
 }
+
+// 购物车行的「为什么现在买不了」。返回空串代表这行正常。
+// ⚠️ 存在的意义：这些情况后端只在「提交订单」时才拦（且只丢一句笼统的错误），
+// 而用户明确要求过「应该提前禁用+提示，而不是等结算才提示」（秒杀限购那次的原话）。
+// 所以购物车与结算页都用它提前标出问题行，别让用户白填一遍结算信息。
+export function cartItemIssue(item) {
+  if (!item) return '';
+  if (item.onSale === false) return '已下架';
+  const stock = Number(item.stock);
+  if (Number.isFinite(stock)) {
+    if (stock <= 0) return '已售罄';
+    if (Number(item.quantity || 0) > stock) return `库存仅剩 ${stock} 件`;
+  }
+  return '';
+}
+
+// 购物车里所有「买不了」的行。含未勾选的行 —— 它们虽不阻塞结算，
+// 但同样该被看见，否则会一直躺在车里没人管。
+export function cartIssueItems(items) {
+  return (items || []).filter((it) => cartItemIssue(it) !== '');
+}

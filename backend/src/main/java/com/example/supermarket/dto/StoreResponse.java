@@ -12,6 +12,8 @@ public class StoreResponse {
     private String businessHours;
     private String city;
     private String district;
+    /** 即时配送服务区域（逗号分隔），供前台展示与后台编辑；留空表示仅本店 city+district */
+    private String serviceAreas;
     private String pickupNotice;
     private Byte status;
     private Integer sortNo;
@@ -26,6 +28,7 @@ public class StoreResponse {
         response.setBusinessHours(store.getBusinessHours());
         response.setCity(store.getCity());
         response.setDistrict(store.getDistrict());
+        response.setServiceAreas(store.getServiceAreas());
         response.setPickupNotice(store.getPickupNotice());
         response.setStatus(store.getStatus());
         response.setSortNo(store.getSortNo());
@@ -87,6 +90,14 @@ public class StoreResponse {
 
     public void setDistrict(String district) {
         this.district = district;
+    }
+
+    public String getServiceAreas() {
+        return serviceAreas;
+    }
+
+    public void setServiceAreas(String serviceAreas) {
+        this.serviceAreas = serviceAreas;
     }
 
     public String getPickupNotice() {

@@ -152,20 +152,50 @@
           </div>
         </div>
 
+        <div v-if="outOfRange" class="blocker-bar" role="alert">
+          <div class="bb-head">
+            <b>该地址超出同城即时配送范围</b>
+            <button class="ghost sm" type="button" @click="selectFulfillment('EXPRESS')">改用快递配送</button>
+          </div>
+          <ul class="bb-list">
+            <li>
+              <span class="bb-name">{{ selectedAddress ? ((selectedAddress.city || '') + ' ' + (selectedAddress.district || '')).trim() : '' }}</span>
+              <span class="bb-reason">不在配送范围内</span>
+            </li>
+            <li v-if="rangeCheck && rangeCheck.coverage">当前覆盖：{{ rangeCheck.coverage }}</li>
+          </ul>
+        </div>
+
+        <div v-if="cartIssues.length" class="blocker-bar" role="alert">
+          <div class="bb-head">
+            <b>{{ cartIssues.length }} 件商品现在买不了</b>
+            <button class="ghost danger sm" type="button" @click="view = 'cart'">回购物车处理</button>
+          </div>
+          <ul class="bb-list">
+            <li v-for="it in cartIssues" :key="it.id">
+              <span class="bb-name">{{ it.productName }}</span>
+              <span class="bb-reason">{{ cartItemIssue(it) }}</span>
+            </li>
+          </ul>
+        </div>
+
         <div class="checkout-actions">
           <button class="ghost" @click="view = 'cart'">返回</button>
-          <button v-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
+          <button v-if="blockedCount > 0" class="primary" disabled title="请先移除买不了的商品">有商品买不了，无法提交</button>
+          <button v-else-if="outOfRange" class="primary" disabled title="该地址超出同城即时配送范围">超出配送范围，无法提交</button>
+          <button v-else-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
             <span v-if="paying" class="spinner"></span>
             <span>{{ paying ? '支付处理中…' : '确认付款 ' + money(memberPreview.finalPay) }}</span>
           </button>
           <button v-else class="primary" disabled>余额不足，无法支付</button>
-          <a v-if="!balanceSufficient" class="link" @click="view = 'recharge'">去充值 ›</a>
+          <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="view = 'recharge'">去充值 ›</a>
         </div>
       </section>
 </template>
 
 <script>
-import { inject } from 'vue';
+import { inject, computed, ref, watch } from 'vue';
+import { cartItemIssue, cartIssueItems } from '../utils/format';
 export default {
   name: 'CheckoutPage',
   setup() {
@@ -177,7 +207,43 @@ export default {
       else if (v > max) appCtx.pointsToUse.value = max;
     };
     const useMaxPoints = () => { appCtx.pointsToUse.value = appCtx.memberPreview.value.maxRedeemPoints; };
-    return { ...appCtx, clampPoints, useMaxPoints };
+    // 结算页同样要堵住失效行：从购物车过来时可能还是好的，商品在这期间被下架/售罄
+    // （或用户在别处改了下架状态）。否则用户填完配送方式＋地址才被打回，白折腾一遍。
+    const cartIssues = computed(() => cartIssueItems(appCtx.cart.items));
+    const blockedCount = computed(() => cartIssues.value.filter((it) => it.selected).length);
+
+    // 即时配送范围：选定地址后就地问后端能否送达。判定口径以后端为准（唯一真源），
+    // 前端只负责**提前提示** —— 与失效行体检同一条原则，真正的强制仍在下单侧。
+    const rangeCheck = ref(null);
+    let rangeSeq = 0;
+    async function loadRangeCheck() {
+      const addr = appCtx.selectedAddress.value;
+      if (!addr || appCtx.fulfillment.type !== 'INSTANT') { rangeCheck.value = null; return; }
+      const seq = ++rangeSeq;
+      try {
+        const qs = new URLSearchParams({ city: addr.city || '', district: addr.district || '' });
+        const data = await appCtx.api.get(`/delivery-range?${qs}`);
+        // 快速切换地址时会有多个请求在飞，只认最后一次，避免旧响应覆盖新结果
+        if (seq === rangeSeq) rangeCheck.value = data;
+      } catch {
+        // 查询失败就不提示，交给下单时后端兜底 —— 别因为一个提示接口抖动就挡住用户下单
+        if (seq === rangeSeq) rangeCheck.value = null;
+      }
+    }
+    const outOfRange = computed(
+      () => appCtx.fulfillment.type === 'INSTANT'
+        && !!rangeCheck.value && !rangeCheck.value.deliverable
+    );
+    watch(
+      () => [appCtx.fulfillment.type, appCtx.selectedAddress.value && appCtx.selectedAddress.value.id],
+      () => { loadRangeCheck(); },
+      { immediate: true }
+    );
+
+    return {
+      ...appCtx, clampPoints, useMaxPoints, cartIssues, blockedCount, cartItemIssue,
+      rangeCheck, outOfRange,
+    };
   }
 };
 </script>
