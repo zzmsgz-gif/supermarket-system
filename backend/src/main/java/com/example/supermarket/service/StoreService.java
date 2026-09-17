@@ -86,6 +86,7 @@ public class StoreService {
         store.setBusinessHours(trimToNull(request.getBusinessHours()));
         store.setCity(trimToNull(request.getCity()));
         store.setDistrict(trimToNull(request.getDistrict()));
+        store.setServiceAreas(trimToNull(request.getServiceAreas()));
         store.setPickupNotice(trimToNull(request.getPickupNotice()));
         store.setStatus(request.getStatus() != null && request.getStatus() == Store.CLOSED ? Store.CLOSED : Store.OPEN);
         store.setSortNo(request.getSortNo() == null ? 0 : request.getSortNo());

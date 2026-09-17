@@ -45,3 +45,7 @@ backend/test.png
 backend/**/*.err
 *.err
 .shots/
+
+# Python 字节码缓存（部署脚本跑语法检查时会生成）
+__pycache__/
+*.pyc

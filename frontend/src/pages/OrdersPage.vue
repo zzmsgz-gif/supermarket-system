@@ -44,6 +44,8 @@
             >申请退款</button>
             <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
             <button v-if="order.status === 'COMPLETED' && !reviewedMap[order.id]" class="ghost" @click="openReviewForm(order.id)">评价</button>
+            <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->
+            <button v-if="order.status !== 'PENDING_PAYMENT'" class="ghost" @click="reorder(order)">再来一单</button>
           </div>
           <div v-if="refundForm.orderId === order.id" class="row-extra">
             <input v-model="refundForm.reason" placeholder="请填写退款原因" />

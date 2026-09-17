@@ -40,6 +40,15 @@ public class Store {
     @Column(length = 40)
     private String district;
 
+    /**
+     * 即时配送服务区域：逗号分隔的「城市/区县」，区县可省略表示全城（如 {@code 深圳市/南山区,深圳市/福田区}）。
+     *
+     * <p>留空时回退为「仅本店 {@code city + district}」。**即时配送可送达范围 = 所有营业中门店的并集**，
+     * 因此门店停业/下线会自动收缩配送范围；快递配送不受此限制。
+     */
+    @Column(name = "service_areas", length = 255)
+    private String serviceAreas;
+
     /** 自提须知，展示在结算页门店下方 */
     @Column(name = "pickup_notice", length = 255)
     private String pickupNotice;
@@ -114,6 +123,14 @@ public class Store {
 
     public void setDistrict(String district) {
         this.district = district;
+    }
+
+    public String getServiceAreas() {
+        return serviceAreas;
+    }
+
+    public void setServiceAreas(String serviceAreas) {
+        this.serviceAreas = serviceAreas;
     }
 
     public String getPickupNotice() {

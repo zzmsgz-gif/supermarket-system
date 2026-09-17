@@ -69,7 +69,8 @@ def main():
     cart_id = cart_items[0]["id"]
     code, resp = req("POST", "/addresses", token=tok, body={
         "receiverName": "测", "receiverPhone": gen_phone(),
-        "province": "省", "city": "市", "district": "区", "detailAddress": "路1号", "isDefault": True})
+        # ⚠️ 必须落在即时配送范围内（门店服务区域），否则下单会被范围校验挡在业务断言之前
+        "province": "广东省", "city": "深圳市", "district": "南山区", "detailAddress": "路1号", "isDefault": True})
     addr_id = resp["data"]["id"]
     code, resp = req("POST", "/orders", token=tok, body={"cartItemIds": [cart_id], "addressId": addr_id, "remark": "bugfix"})
     assert resp.get("code") == 0, f"createOrder {resp}"

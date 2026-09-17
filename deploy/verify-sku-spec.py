@@ -14,10 +14,9 @@ MYSQL = r"C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"
 DB = "supermarket_system"
 DB_USER = "root"
 DB_PASS = "zzmsgz"
-ADMIN = ("admin", "123456")
 
-SPEC = "color:red"  # 商品 35 (ceshi) 的 SKU 为 {"color":"red","size":"M"}
-PRODUCT_ID = 35
+SPEC = "color:red"  # 自由文本规格串，用于验证规格随购物车行/订单行落库
+PRODUCT_ID = None  # 运行时动态选取（见 main() 里 setup 段）；曾经写死成 35，那个商品早已不存在
 
 
 def req(method, path, token=None, body=None):
@@ -36,16 +35,14 @@ def req(method, path, token=None, body=None):
             return e.code, {}
 
 
-def auth_login(username, password):
-    st, body = req("POST", "/auth/login", body={"username": username, "password": password})
-    if st != 200 or body.get("code") != 0:
-        raise SystemExit(f"login failed: {st} {body}")
-    return body["data"]["token"]
-
 
 def mysql_run(sql):
-    cmd = [MYSQL, "-u", DB_USER, f"-p{DB_PASS}", DB, "-e", sql]
-    subprocess.run(cmd, capture_output=True, text=True, check=False)
+    # -N -B：去掉表头与表格边框，让 SELECT 的输出可以直接当标量读（mysql_scalar 依赖这点）
+    cmd = [MYSQL, "-u", DB_USER, f"-p{DB_PASS}", DB, "-N", "-B",
+           "--default-character-set=utf8mb4", "-e", sql]
+    p = subprocess.run(cmd, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", check=False)
+    return p.stdout.strip()
 
 
 def main():
@@ -62,6 +59,14 @@ def main():
         raise SystemExit(f"register failed: {st} {body}")
     token = body["data"]["token"]
     print("[setup] registered + logged in")
+
+    # 商品 id 改为运行时选取：原来写死的 PRODUCT_ID=35 那个商品早已不存在，会让脚本永远跑不过。
+    # skuSpec 是自由文本（落 cart_item.sku_spec），任何在售且有余量的商品都能验证「规格随行落库」。
+    global PRODUCT_ID
+    st, body = req("GET", "/products?page=1&size=50", token=token)
+    assert st == 200 and body.get("code") == 0, f"list products failed: {st} {body}"
+    PRODUCT_ID = next(p["id"] for p in body["data"]["items"] if p["stock"] > 3)
+    print(f"[setup] using product {PRODUCT_ID}")
 
     # 1) 带 skuSpec 加购
     st, body = req("POST", "/cart/items",
@@ -84,7 +89,8 @@ def main():
     # 3) 建收货地址
     st, body = req("POST", "/addresses", token=token,
                    body={"receiverName": "测试", "receiverPhone": phone,
-                         "province": "北京", "city": "北京", "district": "海淀",
+                         # ⚠️ 必须落在即时配送范围内（门店服务区域），否则下单会被范围校验挡在业务断言之前
+                         "province": "广东省", "city": "深圳市", "district": "南山区",
                          "detailAddress": "测试路1号", "isDefault": True})
     assert st == 200 and body.get("code") == 0, f"create address failed: {st} {body}"
     address_id = body["data"]["id"]
@@ -116,20 +122,28 @@ def main():
     mysql_run(f"DELETE FROM order_item WHERE order_id = {order_id};")
     mysql_run(f"DELETE FROM orders WHERE id = {order_id};")
 
-    # 软删除测试用户（需管理员令牌）
-    admin_token = auth_login(*ADMIN)
-    uid = find_user_id(username, admin_token)
-    assert uid, f"test user {username} not found for cleanup"
-    st, body = req("DELETE", f"/admin/users/{uid}", token=admin_token)
+    # 删除测试用户
+    # ⚠️ 这里原来是「管理员登录 + 软删用户」，但 ADMIN 口令写错（123456），登录必然 401 ——
+    #    于是每跑一次都残留一个测试账号。改为按项目统一约定直接 SQL 硬删：
+    #    先清 user 级流水（注册会自动发新人券与积分，删用户前必须先删 user_coupon），
+    #    再删 sys_user；顺带核对删干净了。
+    uid = mysql_scalar(f"SELECT id FROM sys_user WHERE username = '{username}' LIMIT 1")
+    if uid:
+        for table in ("product_review", "wallet_transaction", "user_message", "point_ledger",
+                      "user_favorite", "price_alert", "cart_item", "user_address", "user_coupon"):
+            mysql_run(f"DELETE FROM {table} WHERE user_id = {uid};")
+        mysql_run(f"DELETE FROM sys_user WHERE id = {uid};")
+        left = mysql_scalar(f"SELECT COUNT(*) FROM sys_user WHERE id = {uid}")
+        assert left == "0", f"cleanup failed: user {uid} still present"
     print("[cleanup] done")
-
     print("\n✅ ALL CHECKS PASSED: sku_spec 已正确落库到 cart_item 与 order_item")
 
 
-def find_user_id(username, admin_token):
-    st, body = req("GET", "/admin/users?keyword=" + username + "&page=1&size=10", token=admin_token)
-    users = (body.get("data") or {}).get("items") or []
-    return next((u["id"] for u in users if u.get("username") == username), None)
+def mysql_scalar(sql):
+    out = mysql_run(sql)
+    return out.splitlines()[0].strip() if out else ""
+
+
 
 
 if __name__ == "__main__":

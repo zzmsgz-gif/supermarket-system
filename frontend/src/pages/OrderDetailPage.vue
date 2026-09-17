@@ -3,6 +3,12 @@
         <div class="panel-head">
           <button class="ghost" @click="closeOrderDetail">← 返回</button>
           <span v-if="orderDetail.data" class="order-no-display">订单号：{{ orderDetail.data.orderNo }}</span>
+          <!-- 复购入口：生鲜的核心就是周期性买同样的东西 -->
+          <button
+            v-if="orderDetail.data && orderDetail.data.status !== 'PENDING_PAYMENT'"
+            class="ghost"
+            @click="reorder(orderDetail.data)"
+          >再来一单</button>
         </div>
         <div v-if="orderDetail.loading" class="empty">加载中…</div>
         <div v-else-if="orderDetail.error" class="empty error">{{ orderDetail.error }}</div>

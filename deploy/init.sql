@@ -602,6 +602,7 @@ CREATE TABLE store (
     business_hours VARCHAR(60) DEFAULT NULL COMMENT '营业/自提时间',
     city VARCHAR(40) DEFAULT NULL,
     district VARCHAR(40) DEFAULT NULL,
+    service_areas VARCHAR(255) DEFAULT NULL COMMENT '即时配送服务区域，逗号分隔；留空=仅本店city+district',
     pickup_notice VARCHAR(255) DEFAULT NULL COMMENT '自提须知',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1 营业 0 停业',
     sort_no INT NOT NULL DEFAULT 0,
@@ -632,10 +633,10 @@ CREATE TABLE user_message (
     INDEX idx_user_message_type (user_id, type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='站内消息';
 
-INSERT INTO store (name, address, phone, business_hours, city, district, pickup_notice, status, sort_no, deleted) VALUES
-    ('南山科技园店', '深圳市南山区科技园南区 8 栋 1 层', '0755-8600 1001', '08:00-22:00', '深圳市', '南山区', '下单后约 1 小时可自提，凭自提码到服务台取货。', 1, 10, 0),
-    ('福田购物公园店', '深圳市福田区购物公园 B1 层 B103', '0755-8600 1002', '07:30-22:30', '深圳市', '福田区', '地下一层生鲜区旁，冷链商品由店员协助打包。', 1, 20, 0),
-    ('宝安中心店', '深圳市宝安区中心路 66 号 1 层', '0755-8600 1003', '08:00-21:30', '深圳市', '宝安区', '自提请出示自提码，可代取（需报手机号后四位）。', 1, 30, 0);
+INSERT INTO store (name, address, phone, business_hours, city, district, service_areas, pickup_notice, status, sort_no, deleted) VALUES
+    ('南山科技园店', '深圳市南山区科技园南区 8 栋 1 层', '0755-8600 1001', '08:00-22:00', '深圳市', '南山区', '深圳市/南山区', '下单后约 1 小时可自提，凭自提码到服务台取货。', 1, 10, 0),
+    ('福田购物公园店', '深圳市福田区购物公园 B1 层 B103', '0755-8600 1002', '07:30-22:30', '深圳市', '福田区', '深圳市/福田区', '地下一层生鲜区旁，冷链商品由店员协助打包。', 1, 20, 0),
+    ('宝安中心店', '深圳市宝安区中心路 66 号 1 层', '0755-8600 1003', '08:00-21:30', '深圳市', '宝安区', '深圳市/宝安区', '自提请出示自提码，可代取（需报手机号后四位）。', 1, 30, 0);
 
 SET FOREIGN_KEY_CHECKS = 1;
 

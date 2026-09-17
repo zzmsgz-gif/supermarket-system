@@ -52,21 +52,34 @@ public class CartService {
 
     @Transactional
     public CartResponse addItem(Long userId, AddCartItemRequest request) {
-        Product product = getAvailableProduct(request.getProductId());
-        String spec = normalizeSpec(request.getSkuSpec());
+        addItemInternal(userId, request.getProductId(), request.getSkuSpec(), request.getQuantity());
+        return getCart(userId);
+    }
+
+    /**
+     * 加购的核心逻辑，走与正常加购**完全相同**的库存 / 限购 / 在售校验。
+     *
+     * <p>⚠️ 刻意**不加 {@code @Transactional}**：它要给「再来一单」逐条调用，而那条路径需要
+     * 捕获单个商品的失败（已下架 / 售罄 / 超限购）后继续处理其余商品。若这里带事务注解，
+     * Spring 会在异常穿出事务边界时把整个事务标记成 rollback-only，外层即便 catch 住也救不回来
+     * （提交时会抛 UnexpectedRollbackException，等于整单都失败）。
+     * 包内可见即可 —— 只有同包的 OrderService 需要它。
+     */
+    void addItemInternal(Long userId, Long productId, String skuSpec, int quantity) {
+        Product product = getAvailableProduct(productId);
+        String spec = normalizeSpec(skuSpec);
         // 关键修复：按 (userId, productId, skuSpec) 定位，不同规格是独立购物车行，
         // 同规格才累加数量，避免「换规格被覆盖 / 数量被偷偷累加」的问题。
         CartItem cartItem = cartItemRepository
-                .findByUserIdAndProductIdAndSkuSpec(userId, request.getProductId(), spec)
-                .orElseGet(() -> newCartItem(userId, request.getProductId()));
-        int newQuantity = cartItem.getQuantity() + request.getQuantity();
+                .findByUserIdAndProductIdAndSkuSpec(userId, productId, spec)
+                .orElseGet(() -> newCartItem(userId, productId));
+        int newQuantity = cartItem.getQuantity() + quantity;
         validateStock(product, newQuantity);
         validateFlashLimit(userId, product, newQuantity);
         cartItem.setQuantity(newQuantity);
         cartItem.setSelected(SELECTED);
         cartItem.setSkuSpec(spec);
         cartItemRepository.save(cartItem);
-        return getCart(userId);
     }
 
     @Transactional
@@ -76,11 +89,12 @@ public class CartService {
         }
         CartItem cartItem = getOwnedCartItem(userId, itemId);
         if (request.getQuantity() != null) {
-            Product product = getAvailableProduct(cartItem.getProductId());
-            validateStock(product, request.getQuantity());
-            // 只在「增加」时校验限购：减少数量（或删除）永远不该被拒 —— 名额被别人抢走、
-            // 后台把限购调小时，若连改小都拦，用户就被锁在一个自己收拾不了的购物车里了。
+            // 只在「增加」时才要求商品在售 + 校验库存/限购。理由与下面那条限购注释同源：
+            // 商品一旦下架，若连减少数量都拦，用户就被锁在一个自己收拾不了的购物车里
+            // （删不掉也改不小），只能看着它卡住结算。而减少数量在任何情况下都不会造成超卖。
             if (request.getQuantity() > cartItem.getQuantity()) {
+                Product product = getAvailableProduct(cartItem.getProductId());
+                validateStock(product, request.getQuantity());
                 validateFlashLimit(userId, product, request.getQuantity());
             }
             cartItem.setQuantity(request.getQuantity());
@@ -146,8 +160,15 @@ public class CartService {
     }
 
     private Product getAvailableProduct(Long productId) {
-        return productRepository.findByIdAndStatusAndDeleted(productId, ON_SALE, NOT_DELETED)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new BusinessException(409, "该商品已不存在，请刷新页面后重试"));
+        // 「不存在」与「已下架」必须分开报：混成一句会让用户对着一个还在列表里的商品
+        // 反复怀疑自己看错了（旧商品 id 失效时最容易踩）。
+        if (!ON_SALE.equals(product.getStatus())
+                || product.getDeleted() == null || product.getDeleted() != NOT_DELETED) {
+            throw new BusinessException(409, "该商品已下架，无法加入购物车或增加数量");
+        }
+        return product;
     }
 
     private CartItem getOwnedCartItem(Long userId, Long itemId) {
@@ -174,7 +195,9 @@ public class CartService {
 
     private void validateStock(Product product, int quantity) {
         if (product.getStock() < quantity) {
-            throw new BusinessException(409, "Insufficient stock");
+            // ⚠️ 刻意不带商品名：这条消息会被「再来一单」原样当成"跳过原因"回传，
+            // 而前端已经在前面拼了商品名，带上会变成「面包（商品「面包」库存不足…）」。
+            throw new BusinessException(409, "库存不足（仅剩 " + product.getStock() + " 件），请调整数量");
         }
     }
 

@@ -5,6 +5,7 @@ import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
 import com.example.supermarket.dto.OrderResponse;
 import com.example.supermarket.dto.RefundApplyRequest;
+import com.example.supermarket.dto.ReorderResultResponse;
 import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.service.IdempotencyService;
 import com.example.supermarket.service.OrderService;
@@ -62,6 +63,18 @@ public class OrderController {
             @PathVariable Long id
     ) {
         return ApiResponse.ok(orderService.getOrder(currentUser.getId(), id));
+    }
+
+    /**
+     * 「再来一单」：把该历史订单的商品回填购物车。
+     * 逐件处理并回报失败原因 —— 老订单里常有已下架/售罄的商品，不能因此整单拒绝。
+     */
+    @PostMapping("/{id}/reorder")
+    public ApiResponse<ReorderResultResponse> reorder(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @PathVariable Long id
+    ) {
+        return ApiResponse.ok(orderService.reorder(currentUser.getId(), id));
     }
 
     @PostMapping("/{id}/pay")
