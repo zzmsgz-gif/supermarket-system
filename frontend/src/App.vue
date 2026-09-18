@@ -373,7 +373,6 @@
 
 
 <script setup>
-import * as echarts from 'echarts';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, provide } from 'vue';
 import { api, setToken } from './api/client';
 import ImageUpload from './components/ImageUpload.vue';
@@ -747,7 +746,7 @@ const reviewedMap = reactive({});
 const refundOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const stockAlerts = ref([]);
 const adminCoupons = reactive({ items: [], page: 1, size: 10, total: 0 });
-const adminMenu = ref('dashboard');
+const adminMenu = ref('insights');
 const refundForm = reactive({ orderId: null, reason: '' });
 const reviewForm = reactive({ orderId: null, rating: 5, content: '', images: [] });
 const confirmDialog = reactive({
@@ -822,11 +821,6 @@ const recharge = reactive({
   paying: false,
 });
 const rechargePresets = [50, 100, 200, 500];
-const trendChartEl = ref(null);
-const salesChartEl = ref(null);
-let trendChart = null;
-let salesChart = null;
-
 
 const session = reactive({
   user: JSON.parse(localStorage.getItem('supermarket_user') || 'null'),
@@ -868,7 +862,6 @@ const selectedSpec = reactive({});
 // 管理后台商品列表：查询条件与分页状态
 const adminProductKeyword = ref('');
 const adminProductStatus = ref('');
-const adminChartProducts = ref([]);
 const adminJumpPage = ref(1);
 
 // 管理后台订单列表：查询条件与分页状态
@@ -1415,7 +1408,7 @@ function rememberUser(user) {
 }
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
-const ADMIN_MENU_KEYS = ['dashboard', 'insights', 'orders', 'refunds', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users', 'passwordResets'];
+const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users', 'passwordResets'];
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -1527,79 +1520,6 @@ function categoryName(categoryId) {
 // 单个购物车项的「原价→现价」省了多少（已乘数量）；不足优惠时返回 0
 
 // 近 7 天成交趋势：管理员判断生意涨跌的第一张图
-function trendChartOption() {
-  const trend = (adminStatsOverview.value && adminStatsOverview.value.salesTrend) || [];
-  const days = trend.map((p) => `${String(p.date).slice(8)}日`);
-  const sales = trend.map((p) => Number(p.salesAmount || 0));
-  const counts = trend.map((p) => Number(p.orderCount || 0));
-  return {
-    title: { text: '近 7 天成交趋势', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
-    tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, left: 'center' },
-    grid: { left: 24, right: 18, top: 48, bottom: 72, containLabel: true },
-    xAxis: { type: 'category', data: days, boundaryGap: false },
-    yAxis: [
-      { type: 'value', name: '成交额(¥)' },
-      { type: 'value', name: '订单数', splitLine: { show: false } },
-    ],
-    series: [
-      { name: '成交额', type: 'bar', data: sales, barMaxWidth: 26, itemStyle: { color: '#0aa870', borderRadius: [5, 5, 0, 0] } },
-      { name: '订单数', type: 'line', smooth: true, data: counts, itemStyle: { color: '#ffa042' }, yAxisIndex: 1 },
-    ],
-  };
-
-}
-
-// 热销商品 TOP8：按销量排序，直接支撑备货与运营决策（取代无行动价值的"库存最多排行"）
-function salesTopChartOption() {
-  const items = [...(adminChartProducts.value || [])]
-    .sort((a, b) => Number(b.sales || 0) - Number(a.sales || 0))
-    .slice(0, 8);
-  return {
-    title: { text: '热销商品 TOP8（按销量）', left: 8, top: 4, textStyle: { fontSize: 15, color: '#1f2933' } },
-    tooltip: { trigger: 'axis' },
-    grid: { left: 24, right: 18, top: 48, bottom: 72, containLabel: true },
-    xAxis: { type: 'category', data: items.map((item) => item.name), axisLabel: { rotate: 28 } },
-    yAxis: { type: 'value', name: '销量' },
-    series: [{ name: '销量', type: 'bar', data: items.map((item) => Number(item.sales || 0)), itemStyle: { color: '#12c48b', borderRadius: [4, 4, 0, 0] } }],
-  };
-
-}
-
-async function renderAdminCharts() {
-  if (!isAdmin.value || view.value !== 'admin' || adminMenu.value !== 'dashboard') {
-    disposeCharts();
-    return;
-  }
-  await nextTick();
-  const trendHasData = ((adminStatsOverview.value && adminStatsOverview.value.salesTrend) || [])
-    .some((p) => Number(p.orderCount || 0) > 0 || Number(p.salesAmount || 0) > 0);
-  if (trendChartEl.value && trendHasData) {
-    if (trendChart) trendChart.dispose();
-    trendChart = echarts.init(trendChartEl.value);
-    trendChart.setOption(trendChartOption(), true);
-  }
-  if (salesChartEl.value) {
-    if (salesChart) salesChart.dispose();
-    salesChart = echarts.init(salesChartEl.value);
-    salesChart.setOption(salesTopChartOption(), true);
-  }
-
-}
-
-function resizeCharts() {
-  trendChart?.resize();
-  salesChart?.resize();
-
-}
-
-function disposeCharts() {
-  trendChart?.dispose();
-  salesChart?.dispose();
-  trendChart = null;
-  salesChart = null;
-
-}
 
 function openAuth(tab) {
   authTab.value = tab === 'register' ? 'register' : 'login';
@@ -1827,7 +1747,6 @@ function logout() {
   rememberUser(null);
   navigate('shop');
   notice.value = '已退出登录';
-  disposeCharts();
   loadCart(); // 游客态：清掉服务端 cart 视图，回到本地车状态
 }
 
@@ -2710,8 +2629,6 @@ async function loadAdminProducts() {
     return;
   }
   adminJumpPage.value = adminProducts.page;
-  await loadAdminChartProducts();
-  await renderAdminCharts();
 }
 
 // 仪表盘「商品库存排行」需要全量商品，与分页后的表格数据解耦，避免只统计当前页
@@ -2840,15 +2757,6 @@ async function loadRatingSummary() {
     ratingSummaryMap.value = map;
   } catch (e) {
     ratingSummaryMap.value = {};
-  }
-}
-
-async function loadAdminChartProducts() {
-  try {
-    const data = await api.get('/admin/products?page=1&size=100');
-    adminChartProducts.value = data.items || [];
-  } catch (e) {
-    adminChartProducts.value = [];
   }
 }
 
@@ -3016,8 +2924,6 @@ async function refreshAdminData() {
     loadStockAlerts(),
     loadAdminCoupons(),
   ]);
-  await renderAdminCharts();
-
 }
 
 
@@ -3058,16 +2964,10 @@ watch(() => session.user?.role, () => {
 
 });
 
-watch(() => [view.value, adminMenu.value, adminProducts.items, adminOrders.items], () => {
-  renderAdminCharts();
-
-}, { deep: true });
-
 
 onMounted(async () => {
   noticeTimer = setInterval(() => { if (noticeList.value.length > 1) noticeIndex.value += 1; }, 4000);
   startFlashTick();
-  window.addEventListener('resize', resizeCharts);
   window.addEventListener('beforeunload', reportDwell);
   document.addEventListener('click', onDocumentClick);
   document.addEventListener('keydown', onDocumentKeydown);
@@ -3090,16 +2990,14 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearInterval(noticeTimer);
   if (flashTickTimer) { clearInterval(flashTickTimer); flashTickTimer = null; }
-  window.removeEventListener('resize', resizeCharts);
   window.removeEventListener('beforeunload', reportDwell);
   document.removeEventListener('visibilitychange', reportDwell);
   document.removeEventListener('click', onDocumentClick);
   document.removeEventListener('keydown', onDocumentKeydown);
-  disposeCharts();
 
 });
-const adminCtx = { adminAnnouncements, adminBanners, adminChartProducts, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, salesChart, salesChartEl, salesTopChartOption, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, trendChart, trendChartEl, trendChartOption, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
+const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, disposeCharts, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, echarts, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminChartProducts, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, renderAdminCharts, trendChart, trendChartEl, trendChartOption, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resizeCharts, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>

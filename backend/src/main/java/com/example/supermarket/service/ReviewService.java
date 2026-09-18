@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 public class ReviewService {
 
     private static final String COMPLETED = "COMPLETED";
+    private static final byte NOT_HIDDEN = 0;
     private static final int MAX_PAGE_SIZE = 100;
 
     private final OrderRepository orderRepository;
@@ -101,7 +102,9 @@ public class ReviewService {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<ProductReview> reviews = reviewRepository.findByProductIdOrderByCreatedAtDesc(productId, pageable);
+        // 只展示未隐藏的评价（违规评价由后台隐藏，但订单仍算已评价）
+        Page<ProductReview> reviews =
+                reviewRepository.findByProductIdAndHiddenOrderByCreatedAtDesc(productId, NOT_HIDDEN, pageable);
         if (reviews.isEmpty()) {
             return PageResponse.of(List.of(), safePage, safeSize, reviews.getTotalElements());
         }
@@ -125,6 +128,7 @@ public class ReviewService {
         review.setRating(rating.byteValue());
         review.setContent(content);
         review.setImageUrls(imageUrls == null ? null : String.join(",", imageUrls));
+        review.setHidden(NOT_HIDDEN);
         return review;
     }
 

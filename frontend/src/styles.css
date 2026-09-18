@@ -2499,6 +2499,28 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .review-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .review-imgs img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
 
+/* 商家回复（商品详情页）：后台「评价管理」回完之后必须在这里露出来，
+   否则商家的回复动作等于白做 —— 这是评价闭环的最后一环。 */
+.review-reply {
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--brand);
+  border-radius: 6px;
+  background: #f3f8f6;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.review-reply-tag {
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11.5px;
+}
+.review-reply-text { color: var(--ink); }
+.review-reply-date { margin-left: 6px; color: var(--muted); font-size: 11.5px; }
+
 /* ===== 提交栏 ===== */
 .submit-bar { display: flex; align-items: center; justify-content: flex-end; gap: 16px; margin-top: 18px; padding-top: 14px; border-top: 1px dashed #e8ecea; }
 .submit-bar .total { color: var(--muted); }
@@ -4110,3 +4132,38 @@ button.mini.danger:hover {
 .cu-name { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cu-price { color: var(--danger); font-weight: 700; }
 .cu-add { color: var(--brand-deep); font-weight: 800; }
+
+/* ===== 后台「评价管理」（看 / 回 / 藏）===== */
+.review-admin-list { display: flex; flex-direction: column; gap: 10px; }
+.review-admin-row {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.rar-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rar-stars { color: #f5a623; letter-spacing: 1px; }
+.rar-product { color: var(--ink); }
+.rar-user { color: var(--muted); font-size: 12.5px; }
+.rar-head small { color: var(--muted); font-size: 12px; }
+/* 状态胶囊：未回复用红（待办信号），已回复绿，已隐藏中性灰 */
+.rar-status { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 12px; line-height: 18px; color: #fff; }
+.rar-status.is-todo { background: var(--danger); }
+.rar-status.is-replied { background: #12a06a; }
+.rar-status.is-hidden { background: #6b7280; }
+.rar-content { margin: 8px 0 0; color: var(--ink); font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; }
+.rar-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.rar-imgs img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.rar-reply {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--brand);
+  border-radius: 6px;
+  background: #f3f8f6;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.rar-reply b { color: var(--brand-deep); margin-right: 4px; }
+.rar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.rar-actions input { flex: 1 1 260px; min-width: 200px; }

@@ -1,39 +1,50 @@
 package com.example.supermarket.dto;
 
 import com.example.supermarket.entity.ProductReview;
-import com.example.supermarket.entity.SysUser;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
-public class ReviewResponse {
+/**
+ * 后台「评价管理」列表项。
+ *
+ * <p>与前台 {@link ReviewResponse} 的关键差别：**这里用真实昵称/账号，不做打码** ——
+ * 商家要能定位到具体是哪位顾客（联系、补偿、判断是否刷评），打码会让这个页面失去意义。
+ */
+public class AdminReviewResponse {
 
     private Long id;
     private Long orderId;
     private Long productId;
     private String productName;
+    private Long userId;
+    private String username;
     private String nickname;
     private Integer rating;
     private String content;
     private List<String> imageUrls;
     private LocalDateTime createdAt;
-    /** 商家回复：前台商品详情页要展示出来，否则商家回了也白回（后台的回复动作必须有人看得到） */
     private String replyContent;
     private LocalDateTime replyAt;
+    /** 是否已隐藏（前台不展示，但订单仍算已评价） */
+    private Boolean hidden;
 
-    public static ReviewResponse from(ProductReview review, SysUser user, String productName) {
-        ReviewResponse response = new ReviewResponse();
+    public static AdminReviewResponse from(ProductReview review, String productName, String username, String nickname) {
+        AdminReviewResponse response = new AdminReviewResponse();
         response.setId(review.getId());
         response.setOrderId(review.getOrderId());
         response.setProductId(review.getProductId());
         response.setProductName(productName);
-        response.setNickname(maskNickname(user));
+        response.setUserId(review.getUserId());
+        response.setUsername(username);
+        response.setNickname(nickname);
         response.setRating(review.getRating() == null ? null : review.getRating().intValue());
         response.setContent(review.getContent());
         response.setImageUrls(parseImageUrls(review.getImageUrls()));
         response.setCreatedAt(review.getCreatedAt());
         response.setReplyContent(review.getReplyContent());
         response.setReplyAt(review.getReplyAt());
+        response.setHidden(review.getHidden() != null && review.getHidden() != 0);
         return response;
     }
 
@@ -45,20 +56,6 @@ public class ReviewResponse {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
-    }
-
-    private static String maskNickname(SysUser user) {
-        if (user == null) {
-            return "匿名用户";
-        }
-        String name = user.getNickname();
-        if (name == null || name.isBlank()) {
-            name = user.getUsername();
-        }
-        if (name == null || name.length() <= 1) {
-            return name == null ? "匿名用户" : name + "**";
-        }
-        return name.charAt(0) + "**";
     }
 
     public Long getId() {
@@ -91,6 +88,22 @@ public class ReviewResponse {
 
     public void setProductName(String productName) {
         this.productName = productName;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getNickname() {
@@ -147,5 +160,13 @@ public class ReviewResponse {
 
     public void setReplyAt(LocalDateTime replyAt) {
         this.replyAt = replyAt;
+    }
+
+    public Boolean getHidden() {
+        return hidden;
+    }
+
+    public void setHidden(Boolean hidden) {
+        this.hidden = hidden;
     }
 }

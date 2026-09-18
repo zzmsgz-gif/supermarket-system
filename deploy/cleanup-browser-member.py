@@ -66,8 +66,11 @@ for line in [l for l in rows.splitlines() if l.strip()]:
 sql(f"UPDATE {DB}.orders SET user_coupon_id=NULL WHERE user_id={uid}")
 
 # 3. user 级流水 —— wallet_transaction 的 FK 指向 orders，必须排在最前
-for t in ("wallet_transaction", "user_message", "point_ledger", "user_favorite",
-          "price_alert", "cart_item", "user_address", "user_coupon"):
+# ⚠️ product_review 必须在这里删 —— 它有两条外键（order_id→orders、order_item_id→order_item），
+# 漏掉它会让下面删 order_item 时直接 ERROR 1451，整个清理中途失败并留下脏数据。
+# page_dwell（商品停留埋点）也指向 sys_user —— 只有浏览器会话会产生它，所以只有本脚本会踩到。
+for t in ("product_review", "page_dwell", "wallet_transaction", "user_message", "point_ledger",
+          "user_favorite", "price_alert", "cart_item", "user_address", "user_coupon"):
     sql(f"DELETE FROM {DB}.{t} WHERE user_id={uid}")
 
 # 4~5. 订单子表 → orders

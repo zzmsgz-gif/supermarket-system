@@ -34,81 +34,6 @@
             <button @click="refreshCurrentAdminMenu">刷新</button>
           </header>
 
-          <div v-if="adminMenu === 'dashboard'" class="data-panel">
-            <div class="stat-grid">
-              <div class="stat-card">
-                <small>上架商品</small>
-                <strong>{{ dashboardStats.productCount }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>库存总量</small>
-                <strong>{{ dashboardStats.totalStock }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>注册用户</small>
-                <strong>{{ dashboardStats.userCount }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>订单总数</small>
-                <strong>{{ dashboardStats.orderCount }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>累计成交</small>
-                <strong>{{ money(dashboardStats.salesAmount) }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>今日成交</small>
-                <strong>{{ money(dashboardStats.todaySalesAmount) }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>待发货</small>
-                <strong>{{ dashboardStats.pendingShipCount }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>待付款</small>
-                <strong>{{ dashboardStats.pendingPayCount }}</strong>
-              </div>
-            </div>
-            <div class="chart-grid">
-              <div class="chart-box chart-box--trend">
-                <div v-show="trendHasData" ref="trendChartEl" class="trend-canvas"></div>
-                <div v-show="!trendHasData" class="trend-empty">
-                  <empty-state icon="ticket" text="近 7 天暂无成交，出单后这里会生长出趋势曲线" />
-                </div>
-              </div>
-              <div ref="salesChartEl" class="chart-box"></div>
-            </div>
-            <div class="dash-grid">
-              <div class="dash-card">
-                <div class="panel-head"><h3>待办速览</h3></div>
-                <div class="todo-list">
-                  <button class="todo-item" @click="selectAdminMenu('orders')">
-                    <span>待发货订单</span><b>{{ dashboardStats.pendingShipCount }}</b><span class="todo-go">去处理 ›</span>
-                  </button>
-                  <button class="todo-item" @click="selectAdminMenu('orders')">
-                    <span>待付款订单</span><b>{{ dashboardStats.pendingPayCount }}</b><span class="todo-go">去处理 ›</span>
-                  </button>
-                  <button class="todo-item" @click="selectAdminMenu('refunds')">
-                    <span>售后待审核</span><b>{{ dashboardStats.refundApplyingCount }}</b><span class="todo-go">去处理 ›</span>
-                  </button>
-                </div>
-              </div>
-              <div class="dash-card">
-                <div class="panel-head">
-                  <h3>低库存预警</h3>
-                  <button class="ghost" @click="selectAdminMenu('stock')">全部 ›</button>
-                </div>
-                <empty-state v-if="!stockAlerts.length" icon="cart" text="暂无低库存商品，备货充足" />
-                <ul v-else class="stock-list">
-                  <li v-for="p in stockAlerts.slice(0, 5)" :key="p.id">
-                    <span>{{ p.name }}</span>
-                    <b class="danger">剩 {{ p.stock }} / 阈值 {{ p.lowStockThreshold }}</b>
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
           <div v-if="adminMenu === 'orders'" class="data-panel">
             <div class="toolbar">
               <div class="search-box admin-search">
@@ -730,6 +655,69 @@
 
           <!-- ===== 经营看板：时间维度 + 环比 + 结构分析 ===== -->
           <div v-if="adminMenu === 'insights'" class="data-panel">
+            <!-- ===== 全量概览（原「数据统计」页，已并入本页）=====
+                 刻意**不随下方区间变化**：这些是"家底"（累计/当前值），而下方是"这段时间的经营表现"。
+                 两者的待发货/待付款只保留一份（在下方区间卡片里），避免同一屏出现两个同名数字。 -->
+            <div class="stat-grid">
+              <div class="stat-card">
+                <small>上架商品</small>
+                <strong>{{ dashboardStats.productCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>库存总量</small>
+                <strong>{{ dashboardStats.totalStock }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>注册用户</small>
+                <strong>{{ dashboardStats.userCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>订单总数</small>
+                <strong>{{ dashboardStats.orderCount }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>累计成交</small>
+                <strong>{{ money(dashboardStats.salesAmount) }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>今日成交</small>
+                <strong>{{ money(dashboardStats.todaySalesAmount) }}</strong>
+              </div>
+            </div>
+
+            <div class="dash-grid">
+              <div class="dash-card">
+                <div class="panel-head"><h3>待办速览</h3></div>
+                <div class="todo-list">
+                  <button class="todo-item" @click="selectAdminMenu('orders')">
+                    <span>待发货订单</span><b>{{ dashboardStats.pendingShipCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                  <button class="todo-item" @click="selectAdminMenu('orders')">
+                    <span>待付款订单</span><b>{{ dashboardStats.pendingPayCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                  <button class="todo-item" @click="selectAdminMenu('refunds')">
+                    <span>售后待审核</span><b>{{ dashboardStats.refundApplyingCount }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                  <button class="todo-item" @click="selectAdminMenu('reviews')">
+                    <span>评价待回复</span><b>{{ adminReviewSummary?.unrepliedCount || 0 }}</b><span class="todo-go">去处理 ›</span>
+                  </button>
+                </div>
+              </div>
+              <div class="dash-card">
+                <div class="panel-head">
+                  <h3>低库存预警</h3>
+                  <button class="ghost" @click="selectAdminMenu('stock')">全部 ›</button>
+                </div>
+                <empty-state v-if="!stockAlerts.length" icon="cart" text="暂无低库存商品，备货充足" />
+                <ul v-else class="stock-list">
+                  <li v-for="p in stockAlerts.slice(0, 5)" :key="p.id">
+                    <span>{{ p.name }}</span>
+                    <b class="danger">剩 {{ p.stock }} / 阈值 {{ p.lowStockThreshold }}</b>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
             <div class="insights-bar">
               <div class="range-tabs">
                 <button
@@ -749,8 +737,8 @@
             <template v-else>
               <p class="insights-note">
                 {{ insightsRangeLabel }}（{{ insights.fromDate }} ~ {{ insights.toDate }}）·
-                成交额与订单数按<b>订单创建时间</b>落在区间内、订单状态为已支付统计，与「数据统计」口径一致；
-                环比对照紧邻的等长上一区间。
+                成交额与订单数按<b>订单创建时间</b>落在区间内、且订单状态为已支付来统计（不按 paid_at，
+                否则历史缺 paid_at 的订单会让上下两块数字对不上）；环比对照紧邻的等长上一区间。
               </p>
 
               <!-- 核心指标 -->
@@ -1421,6 +1409,86 @@
             </div>
           </div>
 
+          <!-- ===== 评价管理：看 / 回 / 藏 ===== -->
+          <div v-if="adminMenu === 'reviews'" class="data-panel">
+            <div v-if="adminReviewSummary" class="stat-grid">
+              <div class="stat-card">
+                <small>总评价</small>
+                <strong>{{ adminReviewSummary.total }}</strong>
+              </div>
+              <div class="stat-card">
+                <small>未回复</small>
+                <strong :class="{ danger: adminReviewSummary.unrepliedCount > 0 }">{{ adminReviewSummary.unrepliedCount }}</strong>
+                <span class="growth flat">待你回话</span>
+              </div>
+              <div class="stat-card">
+                <small>平均分</small>
+                <strong>{{ adminReviewSummary.avgRating == null ? '—' : adminReviewSummary.avgRating }}</strong>
+                <span class="growth flat">含已隐藏</span>
+              </div>
+              <div class="stat-card">
+                <small>已隐藏</small>
+                <strong>{{ adminReviewSummary.hiddenCount }}</strong>
+                <span class="growth flat">前台不展示</span>
+              </div>
+            </div>
+
+            <div class="toolbar">
+              <select v-model="adminReviewRating" @change="searchAdminReviews">
+                <option value="">全部星级</option>
+                <option v-for="n in [5, 4, 3, 2, 1]" :key="n" :value="String(n)">{{ n }} 星</option>
+              </select>
+              <select v-model="adminReviewReplied" @change="searchAdminReviews">
+                <option value="">全部状态</option>
+                <option value="no">未回复</option>
+                <option value="yes">已回复</option>
+              </select>
+              <input v-model="adminReviewKeyword" placeholder="搜索评价内容" @keyup.enter="searchAdminReviews" />
+              <button class="ghost" @click="searchAdminReviews">搜索</button>
+              <button class="ghost" @click="adminReviewRating = ''; adminReviewReplied = ''; adminReviewKeyword = ''; searchAdminReviews()">重置</button>
+              <span class="result-count">共 {{ adminReviews.total }} 条</span>
+            </div>
+
+            <empty-state v-if="!adminReviews.items.length" icon="ticket" text="没有符合条件的评价" />
+            <div v-else class="review-admin-list">
+              <div v-for="r in adminReviews.items" :key="r.id" class="review-admin-row">
+                <div class="rar-head">
+                  <span class="rar-stars">{{ '★'.repeat(r.rating || 0) }}{{ '☆'.repeat(5 - (r.rating || 0)) }}</span>
+                  <b class="rar-product">{{ r.productName }}</b>
+                  <span class="rar-user">{{ r.nickname || r.username || '匿名用户' }}</span>
+                  <small>{{ formatDate(r.createdAt) }}</small>
+                  <span class="rar-status" :class="r.hidden ? 'is-hidden' : (r.replyContent ? 'is-replied' : 'is-todo')">
+                    {{ r.hidden ? '已隐藏' : (r.replyContent ? '已回复' : '未回复') }}
+                  </span>
+                </div>
+                <p class="rar-content">{{ r.content || '（无文字评价，仅评分）' }}</p>
+                <div v-if="r.imageUrls && r.imageUrls.length" class="rar-imgs">
+                  <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图" />
+                </div>
+                <div v-if="r.replyContent" class="rar-reply">
+                  <b>商家回复</b><small v-if="r.replyAt">（{{ formatDate(r.replyAt) }}）</small>：{{ r.replyContent }}
+                </div>
+                <div class="rar-actions">
+                  <input
+                    v-model="reviewReplyDraft[r.id]"
+                    maxlength="500"
+                    :placeholder="r.replyContent ? '修改回复内容…' : '回复这条评价（会显示在商品详情页）…'"
+                    @keyup.enter="saveReviewReply(r)"
+                  />
+                  <button @click="saveReviewReply(r)">{{ r.replyContent ? '更新回复' : '回复' }}</button>
+                  <button v-if="r.replyContent" class="ghost" @click="reviewReplyDraft[r.id] = ''; saveReviewReply(r)">撤回</button>
+                  <button class="ghost" @click="toggleReviewHidden(r)">{{ r.hidden ? '恢复展示' : '隐藏' }}</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="adminReviews.total > adminReviews.size" class="pagination">
+              <button class="ghost" :disabled="adminReviews.page <= 1" @click="changeAdminReviewPage(-1)">上一页</button>
+              <span class="page-info">第 {{ adminReviews.page }} / {{ adminReviewTotalPages }} 页</span>
+              <button class="ghost" :disabled="adminReviews.page >= adminReviewTotalPages" @click="changeAdminReviewPage(1)">下一页</button>
+            </div>
+          </div>
+
           <div v-if="adminMenu === 'passwordResets'" class="data-panel">
             <!-- 临时密码：只在这一份响应里存在，关掉就再也拿不到（库里只有 BCrypt 哈希） -->
             <div v-if="passwordResetResult" class="form-card admin-form-card temp-pw-card">
@@ -1531,7 +1599,7 @@ const props = defineProps({
 const isAdmin = { value: true };
 const view = toRef(props, 'view');
 const categories = toRef(props, 'categories');
-const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, disposeCharts, error, fail, filters, loadAdminChartProducts, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, salesChart, salesChartEl, salesTopChartOption, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, renderAdminCharts, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, trendChart, trendChartEl, trendChartOption } = props.adminCtx;
+const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, } = props.adminCtx;
 
 // 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
 const MEMBER_LEVEL_NAMES = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
@@ -1986,11 +2054,11 @@ const adminIcons = {
 };
 
 const adminMenuItems = computed(() => [
-  { key: 'dashboard', label: '数据统计', desc: '平台经营概览：商品、库存、订单与成交额', group: '经营' },
-  { key: 'insights', label: '经营看板', desc: '按时间维度看成交、客单价、复购与品类结构，含环比', group: '经营' },
+  { key: 'insights', label: '经营看板', desc: '全量概览 + 按时间维度看成交、客单价、复购与品类结构（含环比）', group: '经营' },
   { key: 'orders', label: '订单管理', desc: '查询订单、录入快递单号发货、完成或取消订单', group: '经营', badge: (adminOrders.total || 0) || '' },
   { key: 'refunds', label: '售后管理', desc: '审核用户的退款申请，同意后款项退回用户钱包', group: '经营', badge: (refundOrders.total || 0) || '', warn: true },
   { key: 'stock', label: '库存预警', desc: '低于预警阈值的商品列表，支持一键补货', group: '经营', badge: stockAlerts.value.length || '', warn: true },
+  { key: 'reviews', label: '评价管理', desc: '查看、回复与隐藏用户评价；角标是未回复数（有人等你回话）', group: '经营', badge: (adminReviewSummary.value?.unrepliedCount || 0) || '', warn: true },
   { key: 'products', label: '商品管理', desc: '新增商品、查看上架状态、手动入库', group: '管理', badge: (adminProducts.total || 0) || '' },
   { key: 'categories', label: '分类管理', desc: '维护商品分类与排序', group: '管理', badge: categories.value.length || '' },
   { key: 'coupons', label: '优惠券管理', desc: '创建满减券、发放与停用', group: '管理', badge: (adminCoupons.total || 0) || '' },
@@ -2859,7 +2927,16 @@ async function loadPasswordResetPendingCount() {
 }
 
 // 进后台就拉一次待处理数：否则菜单角标要等点进「找回密码」才显示，等于没提醒
-onMounted(() => { loadPasswordResetPendingCount(); });
+// 侧边菜单角标：未回复评价数（"有人等你回话"）。拉失败就不显示角标，不打扰页面。
+async function loadAdminReviewUnreplied() {
+  try {
+    adminReviewSummary.value = await api.get('/admin/reviews/summary');
+  } catch (err) {
+    adminReviewSummary.value = null;
+  }
+}
+
+onMounted(() => { loadPasswordResetPendingCount(); loadAdminReviewUnreplied(); });
 
 async function searchPasswordResets() {
   passwordResets.page = 1;
@@ -2942,11 +3019,88 @@ async function copyTempPassword() {
   }
 }
 
+// ===== 评价管理 =====
+// 补的是一条断掉的闭环：此前评价只能写（前台晒图评价），后台没有任何入口、也没有查询接口，
+// 评价只在商品详情页出现 —— 商家看不到、回不了差评，等于用户说了话没人接。
+// 只做三件商家真会做的事：看（含按星级/未回复筛选）、回（公开回复）、藏（违规隐藏）。
+const adminReviews = reactive({ items: [], total: 0, page: 1, size: 10 });
+const adminReviewSummary = ref(null);
+const adminReviewRating = ref('');
+const adminReviewReplied = ref('');
+const adminReviewKeyword = ref('');
+const reviewReplyDraft = reactive({});
+
+const adminReviewTotalPages = computed(
+  () => Math.max(1, Math.ceil(Number(adminReviews.total || 0) / Number(adminReviews.size || 10)))
+);
+
+async function loadAdminReviews() {
+  const query = [`page=${adminReviews.page}`, `size=${adminReviews.size}`];
+  if (adminReviewRating.value) query.push(`rating=${adminReviewRating.value}`);
+  // 只有"未回复"才是待办，所以筛选值直接映射成后端的 replied 布尔
+  if (adminReviewReplied.value) query.push(`replied=${adminReviewReplied.value === 'yes'}`);
+  if (adminReviewKeyword.value.trim()) {
+    query.push(`keyword=${encodeURIComponent(adminReviewKeyword.value.trim())}`);
+  }
+  const [data, summary] = await Promise.all([
+    api.get(`/admin/reviews?${query.join('&')}`),
+    api.get('/admin/reviews/summary'),
+  ]);
+  adminReviews.items = data?.items || [];
+  adminReviews.total = Number(data?.total || 0);
+  adminReviewSummary.value = summary || null;
+  // 草稿用服务端已存的回复回填，便于"看现状再改"，而不是每次都从空开始
+  adminReviews.items.forEach((row) => { reviewReplyDraft[row.id] = row.replyContent || ''; });
+}
+
+function searchAdminReviews() {
+  adminReviews.page = 1;
+  run(loadAdminReviews);
+}
+
+function changeAdminReviewPage(delta) {
+  const next = Number(adminReviews.page) + delta;
+  if (next < 1 || next > adminReviewTotalPages.value) return;
+  adminReviews.page = next;
+  run(loadAdminReviews);
+}
+
+async function saveReviewReply(review) {
+  const content = (reviewReplyDraft[review.id] || '').trim();
+  await run(async () => {
+    await api.post(`/admin/reviews/${review.id}/reply`, { replyContent: content });
+    await loadAdminReviews();
+    showAlert({
+      type: 'success',
+      title: content ? '回复已发布' : '已撤回回复',
+      message: content ? '该回复会立刻显示在商品详情页。' : '前台不再展示这条回复。',
+    });
+  });
+}
+
+async function toggleReviewHidden(review) {
+  const hide = !review.hidden;
+  const ok = await askConfirm({
+    title: hide ? '隐藏这条评价？' : '恢复展示这条评价？',
+    message: hide
+      ? '隐藏后前台不再展示，但该订单仍算已评价（不会让用户重复评价）。'
+      : '恢复后该评价会重新出现在商品详情页。',
+    confirmText: hide ? '隐藏' : '恢复展示',
+    danger: hide,
+    details: [{ label: '商品', value: review.productName }, { label: '评价', value: review.content || '（无文字）' }],
+  });
+  if (!ok) return;
+  await run(async () => {
+    await api.post(`/admin/reviews/${review.id}/hidden`, { hidden: hide });
+    await loadAdminReviews();
+  });
+}
+
 const adminMenuLoaders = {
-  dashboard: () => refreshAdminData(),
   insights: () => loadInsights(),
   orders: () => loadAdminOrders(),
   refunds: () => loadRefundOrders(),
+  reviews: () => loadAdminReviews(),
   stock: () => loadStockAlerts(),
   products: () => loadAdminProducts(),
   categories: () => loadCategories(),
@@ -2973,7 +3127,6 @@ async function selectAdminMenu(key) {
 async function refreshCurrentAdminMenu() {
   const loader = adminMenuLoaders[adminMenu.value];
   if (loader) await loader();
-  if (adminMenu.value === 'dashboard') await renderAdminCharts();
 
 }
 </script>

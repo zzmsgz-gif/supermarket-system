@@ -394,7 +394,8 @@ finally:
                 f"GROUP BY oi.product_id) t ON t.pid=p.id "
                 f"SET p.stock=p.stock+t.q, p.sales=GREATEST(p.sales-t.q,0)")
             sql(f"UPDATE {DB}.orders SET user_coupon_id=NULL WHERE id IN ({olist})")
-        for t in ("user_message", "wallet_transaction", "point_ledger", "user_favorite",
+        # product_review 有 order_id / order_item_id 两条外键，必须在删 order_item 之前清掉
+        for t in ("product_review", "user_message", "wallet_transaction", "point_ledger", "user_favorite",
                   "price_alert", "cart_item", "user_address", "user_coupon"):
             sql(f"DELETE FROM {DB}.{t} WHERE user_id IN ({idlist})")
         if created_orders:
