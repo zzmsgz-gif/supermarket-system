@@ -141,6 +141,12 @@
                 <div v-if="review.imageUrls && review.imageUrls.length" class="review-imgs">
                   <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片" />
                 </div>
+                <!-- 商家回复：后台回完必须在这里露出来，否则"回复"这个动作等于白做 -->
+                <div v-if="review.replyContent" class="review-reply">
+                  <span class="review-reply-tag">商家回复</span>
+                  <span class="review-reply-text">{{ review.replyContent }}</span>
+                  <small v-if="review.replyAt" class="review-reply-date">{{ formatDate(review.replyAt) }}</small>
+                </div>
               </div>
             </div>
           </div>

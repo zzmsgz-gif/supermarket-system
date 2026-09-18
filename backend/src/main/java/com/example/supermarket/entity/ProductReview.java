@@ -37,6 +37,20 @@ public class ProductReview {
     @Column(name = "image_urls", length = 2000)
     private String imageUrls;
 
+    /** 商家回复正文，空 = 未回复。前台商品详情页要展示（否则商家回了也白回）。 */
+    @Column(name = "reply_content", length = 500)
+    private String replyContent;
+
+    @Column(name = "reply_at")
+    private LocalDateTime replyAt;
+
+    /**
+     * 违规隐藏：**刻意不物理删除** —— 删掉会连带让 {@code existsByOrderId} 判定失效，
+     * 用户就能对同一张订单重复评价。隐藏保留"已评价"状态，仅前台不再展示。
+     */
+    @Column(nullable = false)
+    private Byte hidden;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false, columnDefinition = "datetime NOT NULL DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -105,6 +119,30 @@ public class ProductReview {
 
     public void setImageUrls(String imageUrls) {
         this.imageUrls = imageUrls;
+    }
+
+    public String getReplyContent() {
+        return replyContent;
+    }
+
+    public void setReplyContent(String replyContent) {
+        this.replyContent = replyContent;
+    }
+
+    public LocalDateTime getReplyAt() {
+        return replyAt;
+    }
+
+    public void setReplyAt(LocalDateTime replyAt) {
+        this.replyAt = replyAt;
+    }
+
+    public Byte getHidden() {
+        return hidden;
+    }
+
+    public void setHidden(Byte hidden) {
+        this.hidden = hidden;
     }
 
     public LocalDateTime getCreatedAt() {
