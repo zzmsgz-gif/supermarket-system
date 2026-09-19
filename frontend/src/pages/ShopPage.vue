@@ -110,8 +110,7 @@
             <s v-if="Number(sale.price) > Number(sale.flashPrice)">{{ money(sale.price) }}</s>
           </div>
           <div class="flash-meta">
-            <span v-if="sale.state === 'RUNNING'">距结束 {{ formatDuration(flashRemaining(sale)) }}</span>
-            <span v-else>距开始 {{ formatDuration(flashRemaining(sale)) }}</span>
+            <span>{{ flashDeadlineText(sale) }}</span>
             <span v-if="sale.perUserLimit > 0">限购 {{ sale.perUserLimit }} 件</span>
             <!-- 登录后后端会带回「我还能买几件」，提前把额度说清楚，别等结算才拦 -->
             <span v-if="sale.myRemainingQuota !== null && sale.myRemainingQuota !== undefined"

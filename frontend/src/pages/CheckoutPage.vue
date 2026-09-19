@@ -97,13 +97,17 @@
             <div>
               <strong>{{ item.productName }}</strong>
               <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
-              <small>
+              <small v-if="Number(item.flashQty || 0) > 0 && Number(item.flashQty) < Number(item.quantity)">
+                <span class="seg flash">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
+                <span class="seg">原价 {{ money(item.regularPrice) }} ×{{ item.quantity - item.flashQty }}</span>
+              </small>
+              <small v-else>
                 <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
                 {{ money(item.productPrice) }} × {{ item.quantity }}
                 <span v-if="itemOriginalSave(item) > 0" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
               </small>
             </div>
-            <strong class="line-total">{{ money(item.productPrice * item.quantity) }}</strong>
+            <strong class="line-total">{{ money(item.subtotalAmount) }}</strong>
           </div>
         </div>
 

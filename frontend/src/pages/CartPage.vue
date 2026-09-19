@@ -66,7 +66,7 @@
           <div>
             <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
             <span v-if="item.flashSaleId" class="flash-chip">限时秒杀</span>
-            <span v-if="cartQtyCapped(item)" class="flash-chip capped">已达限购</span>
+            <span v-if="flashSplitNote(item)" class="flash-chip capped">{{ flashSplitNote(item) }}</span>
             <span v-if="cartItemIssue(item)" class="flash-chip invalid">{{ cartItemIssue(item) }}</span>
             <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
             <small v-if="unpaidHolds[item.productId]" class="flash-hold">
@@ -75,7 +75,13 @@
               <button type="button" class="link-btn" @click="navigate('orders')">去支付</button>
               <button type="button" class="link-btn" @click="cancelOrder(unpaidHolds[item.productId].myUnpaidOrderId)">取消订单释放</button>
             </small>
-            <small>
+            <small v-if="isFlashSplit(item)">
+              <span class="seg flash">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
+              <span class="seg">原价 {{ money(item.regularPrice) }} ×{{ item.quantity - item.flashQty }}</span>
+              = <b>{{ money(item.subtotalAmount) }}</b>
+              <span class="save-chip">省 {{ money(Number(item.productOriginalPrice) * Number(item.quantity) - Number(item.subtotalAmount)) }}</span>
+            </small>
+            <small v-else>
               <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
               {{ money(item.productPrice) }} × {{ item.quantity }}
               <template v-if="itemOriginalSave(item) > 0"> = <b>{{ money(item.productPrice * item.quantity) }}</b></template>
@@ -89,8 +95,7 @@
               <button
                 class="stepper"
                 type="button"
-                :disabled="cartQtyCapped(item)"
-                :title="cartQtyCapped(item) ? flashLimitMessage(item.productId, flashLimitOfProduct(item.productId)) : '增加数量'"
+                title="增加数量（超出秒杀限购的部分将按原价结算）"
                 @click="stepQty(item, 1)"
               >+</button>
             </div>

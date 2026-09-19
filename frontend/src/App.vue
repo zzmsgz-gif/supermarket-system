@@ -1194,12 +1194,19 @@ let flashTickTimer = null;
 async function loadFlashSales() {
   try {
     const list = (await api.get('/flash-sales')) || [];
-    const now = Date.now();
-    flashSales.value = list.map((f) => ({
-      ...f,
-      // RUNNING 时 targetAt 是结束时刻，UPCOMING 时是开始时刻
-      targetAt: now + Number(f.countdownSeconds || 0) * 1000
-    }));
+    flashSales.value = list.map((f) => {
+      // RUNNING 时 targetAt 是结束时刻，UPCOMING 时是开始时刻。
+      // ⚠️ 必须用服务端下发的**绝对时刻**（endTime/startTime），别用 `Date.now() + countdownSeconds` 反推：
+      // 后者会把「浏览器时钟 vs 服务端时钟的偏差」带进来 —— 本机实测浏览器慢约 60s，
+      // 于是 10-15 00:00 的档期被显示成「10月14日 23:59 结束」（2026-09-19 发现）。
+      // countdownSeconds 只作为绝对时刻缺失时的兜底。
+      const raw = f.state === 'RUNNING' ? f.endTime : f.startTime;
+      const at = raw ? new Date(raw).getTime() : NaN;
+      return {
+        ...f,
+        targetAt: Number.isFinite(at) ? at : Date.now() + Number(f.countdownSeconds || 0) * 1000
+      };
+    });
   } catch (e) { /* 秒杀是营销位，拉不到就不展示，不打扰用户 */ }
 }
 
@@ -1208,6 +1215,24 @@ const runningFlashSales = computed(() => flashSales.value.filter((f) => f.state 
 function flashRemaining(sale) {
   if (!sale || !sale.targetAt) return 0;
   return Math.max(0, Math.floor((sale.targetAt - nowTick.value) / 1000));
+}
+
+/* 秒杀档期文案：**只有真的快结束才逐秒倒计时**（唯一实现，首页卡片与商品详情页共用）。
+   此前无论档期多长都挂「距结束 25天 03:27:28」—— 既没有紧迫感、也不像有效信息，
+   还让这排卡片每秒重渲染一次。超过 24h 就退回静态的结束/开抢时刻，
+   把倒计时留给真正快结束的场次（如今晚 24:00 到期的那种）。 */
+const FLASH_TICK_WINDOW_SECONDS = 24 * 3600;
+function flashDeadlineText(sale) {
+  if (!sale || !sale.targetAt) return '';
+  const running = sale.state === 'RUNNING';
+  const left = flashRemaining(sale);
+  if (left > FLASH_TICK_WINDOW_SECONDS) {
+    const d = new Date(sale.targetAt);
+    const pad = (n) => String(n).padStart(2, '0');
+    const when = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return running ? `${when} 结束` : `${when} 开抢`;
+  }
+  return running ? `距结束 ${formatDuration(left)}` : `距开始 ${formatDuration(left)}`;
 }
 
 // 秒杀档期可能跨天，MM:SS 不够用，这里给到「天/时/分/秒」
@@ -1245,23 +1270,50 @@ function flashLimitOfProduct(productId) {
 }
 
 /**
- * 购物车里某行最多能加到几件 = min(库存, 秒杀还能买几件)。
+ * 购物车里某行最多能加到几件 = 库存上限。
  *
- * 注意 myRemainingQuota 约束的已经是「购物车件数 + 已购件数」的总和，所以直接当上限用即可，
- * 不要再减一次购物车里已有的数量，否则会少给一件，用户会觉得"明明说还能买却加不上"。
+ * 秒杀改为「自动拆分」后，超出每人限购的部分按原价成交，不再拒绝加购，
+ * 所以这里不再用秒杀剩余名额夹数量（否则用户想多买却被卡住）。
  * 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
  */
 function cartQtyMax(item) {
   const stock = Number(item?.stock || 0);
-  const byStock = stock > 0 ? stock : 1;
-  const byFlash = flashLimitOfProduct(item?.productId);
-  return byFlash === null ? byStock : Math.max(Math.min(byStock, byFlash), 1);
+  return stock > 0 ? stock : 1;
 }
 
-/** 该行是否因秒杀限购到顶 —— 用于把 + 置灰并在原地说明原因 */
+/**
+ * 该行是否达到秒杀限购上限（仅用于提示，不再禁用 + 号）：达到后继续加只按原价。
+ */
 function cartQtyCapped(item) {
   const limit = flashLimitOfProduct(item?.productId);
   return limit !== null && Number(item?.quantity || 0) >= limit;
+}
+
+/**
+ * 秒杀自动拆分提示文案：
+ * - 部分秒杀：前 N 件秒杀价，超出 M 件按原价
+ * - 名额已用完（仍在进行中的限购场次）：本件按原价
+ * 其余情况（纯原价 / 整行都秒杀）返回空串。
+ */
+function flashSplitNote(item) {
+  if (!item) return '';
+  const sale = flashSaleOfProduct(item.productId);
+  if (!sale) return '';
+  const flashQty = Number(item.flashQty || 0);
+  const qty = Number(item.quantity || 0);
+  if (flashQty > 0 && flashQty < qty) {
+    return `前 ${flashQty} 件限时秒杀价，超出 ${qty - flashQty} 件按原价`;
+  }
+  if (flashQty === 0
+      && sale.myRemainingQuota !== null && sale.myRemainingQuota !== undefined) {
+    return `秒杀名额已用完（每人限购 ${sale.perUserLimit} 件），本件按原价`;
+  }
+  return '';
+}
+
+/** 该行是否需要拆成「秒杀段 + 原价段」两段展示 */
+function isFlashSplit(item) {
+  return Number(item?.flashQty || 0) > 0 && Number(item.flashQty) < Number(item.quantity || 0);
 }
 
 /**
@@ -2058,11 +2110,11 @@ async function addToCart(product) {
     fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
     return;
   }
-  // 秒杀每人限购：在这里就把原因说清楚，别让用户点完「加入购物车」才等后端 409 回来
+  // 秒杀「自动拆分」后，超出每人限购的部分按原价成交，不再拒绝加购。
+  // 仅做提示，不影响加入购物车（用户多买的部分会自动按原价）。
   const flashLeft = flashLimitOfProduct(product.id);
   if (flashLeft !== null && currentQty + 1 > flashLeft) {
-    fail(flashLimitMessage(product.id, flashLeft), '超出限购');
-    return;
+    notice.value = `「${flashSaleOfProduct(product.id)?.name || '该秒杀商品'}」每人限购 ${flashLeft} 件，超出部分将按原价结算`;
   }
   await run(async () => {
     await api.post('/cart/items', { productId: product.id, quantity: 1 });
@@ -2156,17 +2208,9 @@ function stepQty(item, delta) {
 
 function onQtyChange(item) {
   const max = cartQtyMax(item);
-  const flashLimit = flashLimitOfProduct(item.productId);
   let q = Number(item.quantity) || 1;
   if (q < 1) q = 1;
-  if (q > max) {
-    q = max;
-    // 因限购被夹下来时说一句，否则用户会以为「我输入的数字被吞了」
-    if (flashLimit !== null && Number(item.quantity) > flashLimit) {
-      const sale = flashSaleOfProduct(item.productId);
-      notice.value = `「${sale?.name || '该秒杀商品'}」每人限购 ${flashLimit} 件，已为你调整为 ${max} 件`;
-    }
-  }
+  if (q > max) q = max;   // 仅按库存夹，秒杀超出部分按原价，不再夹限购
   item.quantity = q;
   onQtyInput(item);
 }
@@ -2998,6 +3042,6 @@ onBeforeUnmount(() => {
 });
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>

@@ -714,6 +714,8 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   gap: 10px;
   min-width: 0;
   padding: 11px;
+  /* 与站内新模块（秒杀卡 12px、面板 14px）统一：原 8px 显得偏方偏旧 */
+  border-radius: 12px;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -728,7 +730,7 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   display: grid;
   place-items: center;
   overflow: hidden;
-  border-radius: 7px;
+  border-radius: 10px;
   background: linear-gradient(180deg, #fff3e5, #ffe0bd);
   color: var(--brand);
   font-size: 30px;
@@ -754,7 +756,7 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 }
 
 .price-block { display: grid; gap: 3px; }
-.meta-line { display: flex; align-items: center; min-height: 16px; }
+.meta-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 16px; }
 .meta-line small { color: var(--muted); font-size: 12px; }
 .product-card .meta-line small.low-stock { color: var(--warn); font-weight: 800; }
 .price-line, .panel-head, .submit-bar {
@@ -773,6 +775,47 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 .price-line small { color: var(--muted); font-size: 12px; }
 
 .product-card > button { width: 100%; }
+
+/* 商品卡右下角圆形「＋」加购按钮（替代旧的双通栏按钮，卡片更轻盈）。
+   ⚠️ 全局 button 规则（styles.css L46 起）会往自定义小按钮上漏样式：
+   min-height 会顶到 38px、绿渐变/padding/圆角/加粗/hover 光晕都会漏进来，
+   必须全部显式覆盖（含 :hover / :active），项目内已有多次教训。 */
+.add-fab {
+  width: 38px;
+  height: 38px;
+  min-height: 0;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #00b476, #009a64);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.add-fab:hover {
+  background: linear-gradient(180deg, #00b476, #009a64);
+  color: #fff;
+  transform: scale(1.08);
+  box-shadow: 0 4px 14px rgba(0, 168, 112, 0.4);
+}
+.add-fab:active { transform: scale(0.9); box-shadow: none; }
+.add-fab:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+/* 加购按钮位置上的两种替代文案：限购说明 / 管理员提示（行内小字，不再占一整块） */
+.flash-cap-note {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  line-height: 1.4;
+}
+.admin-inline-note { color: var(--muted); font-size: 12px; text-align: right; }
 
 .admin-note {
   display: block;
@@ -2140,6 +2183,9 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .detail-gallery { display: grid; gap: 10px; }
 
 .detail-image {
+  /* ⚠️ 必须 position:relative：里面的 .corner-badge 是 absolute，宿主不定位就会挂到视口，
+     跑到浏览器左上角去（2026-09-19 用户看到「详情页左上角一个大字"热"」就是这个）。 */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2152,7 +2198,10 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 
 .detail-image img { width: 100%; height: 100%; object-fit: cover; }
 
-.detail-image span {
+/* 无图时的占位首字母。**必须用类名，别写 `.detail-image span`** ——
+   后者会连 `.corner-badge` 一起命中，而且权重 (0,1,1) 压过 `.corner-badge` 的 (0,1,0)，
+   会把 12px 的角标撑成 54px（同日一起踩到；改成类名后两者互不干扰）。 */
+.detail-image .detail-fallback {
   color: var(--brand-deep);
   font-size: 54px;
   font-weight: 700;
@@ -2445,6 +2494,9 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 }
 /* 限购到顶用中性灰底，别跟「限时秒杀」的橙红标签撞色 —— 否则看起来像又一种优惠 */
 .flash-chip.capped { background: #6b7280; }
+/* 购物车/结算页「前 N 件秒杀价 + 超出 M 件原价」的两段价格 */
+.seg { margin-right: 6px; white-space: nowrap; }
+.seg.flash { color: var(--danger, #e34d59); font-weight: 600; }
 /* 已下架 / 已售罄 / 库存不够：用中性深灰而不是红橙，把"报警"交给上方的提示条，
    行内这颗只负责说明原因，否则一屏红点反而看不清重点。 */
 .flash-chip.invalid { background: #4b5563; }
@@ -2643,6 +2695,15 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   border-radius: 10px; font-size: 12px; font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
+/* 商品卡左上角标容器：省X/热/新/会员 原先各自 absolute 在 top:8/left:8 同一坐标，
+   同现时互相叠盖只露出最后一张。包进 flex 横排后依次错开；
+   内部角标改回 static 由容器定位。角标本身不拦截点击（穿透给图片/整卡）。 */
+.badge-row {
+  position: absolute; top: 8px; left: 8px; right: 8px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  pointer-events: none;
+}
+.badge-row .corner-badge { position: static; }
 /* 商品卡活动角标（只在活动限定了分类/单品时出现，全场活动不显示 —— 见 App.vue productActivityTag）。
    ⚠️ 此前这个类**一直没有样式**，元素就是一段无定位的裸文字，被 overflow:hidden 的图片压在下面、
    从来没显示出来过（DOM 里能查到 textContent，所以只看 DOM 的验证会误判为"已渲染"）。
@@ -2995,6 +3056,9 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .flash-zone {
   margin-top: 20px;
   padding: 16px 18px;
+  /* 满宽色带：卡片用 flex-grow 真正铺满整行（不拉伸也换行），不再留左右空白。 */
+  width: 100%;
+  box-sizing: border-box;
   background: linear-gradient(180deg, #fff7f5 0%, var(--surface, #fff) 100%);
   border: 1px solid #f6ddd6;
   border-radius: 14px;
@@ -3016,15 +3080,18 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 }
 .flash-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 4px;
 }
 .flash-card {
-  flex: none;
-  width: 208px;
+  /* 真正铺满整行（flex-grow 填满），不再留左右空白；
+     卡片少（1~2 个）时各自均分整行宽度，多到放不下就换行成网格。
+     图左文右的横版布局，宽卡片也顺眼，不会像竖版那样被拉成一长条。 */
+  flex: 1 1 0;
+  min-width: 300px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   background: var(--surface, #fff);
   border: 1px solid var(--line, #e8ecea);
   border-radius: 12px;
@@ -3039,7 +3106,10 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .flash-card.upcoming { opacity: .82; }
 .flash-img {
   position: relative;
-  height: 118px;
+  width: 170px;            /* 横版：图片固定占左侧一列 */
+  flex: none;
+  height: auto;
+  min-height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3058,6 +3128,11 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   color: #fff;
   font-size: 11px;
   font-weight: 600;
+}
+/* 窄屏：横版改成竖版，避免图片被压太窄 */
+@media (max-width: 600px) {
+  .flash-card { flex-direction: column; }
+  .flash-img { width: 100%; height: 150px; }
 }
 .flash-card.upcoming .flash-tag { background: #b07a2b; }
 .flash-body { padding: 10px 12px 12px; }
@@ -3107,7 +3182,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .flash-mine { color: var(--brand-deep); font-weight: 500; }
 .flash-mine.capped { color: var(--danger); }
 /* 商品卡上「已达限购」的提示：沿用 admin-note 的块状样式，换成警示色 */
-.flash-cap-note { color: var(--danger); background: #fdeceb; }
+/* .flash-cap-note 已迁到商品卡价格行做行内小字（见 .add-fab 附近的定义），此处旧块样式移除 */
 
 /* ===== 后台经营看板 ===== */
 .insights-bar {
