@@ -12,7 +12,7 @@
             <div class="detail-gallery">
               <div class="detail-image">
                 <img v-if="currentGalleryImage" :src="currentGalleryImage" :alt="productDetail.data.name" @error="imgFallback($event, productDetail.data.name)" />
-                <span v-else>{{ initials(productDetail.data.name) }}</span>
+                <span v-else class="detail-fallback">{{ initials(productDetail.data.name) }}</span>
                 <span v-if="productDetail.data.isHot" class="corner-badge hot">热</span>
                 <span v-if="productDetail.data.isNew" class="corner-badge new">新</span>
               </div>
@@ -44,7 +44,7 @@
                 <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || productDetail.data.price) }}</strong>
                 <template v-if="flashPrice">
                   <span class="detail-origin">原价 {{ money(productDetail.data.price) }}</span>
-                  <span class="detail-flash">限时秒杀 · 距结束 {{ formatDuration(flashRemaining(flashSale)) }}<template v-if="Number(flashSale.perUserLimit) > 0"> · 每人限购 {{ flashSale.perUserLimit }} 件</template><template v-if="flashSale.remainingQuota <= 10"> · 仅剩 {{ flashSale.remainingQuota }} 件</template></span>
+                  <span class="detail-flash">限时秒杀 · {{ flashDeadlineText(flashSale) }}<template v-if="Number(flashSale.perUserLimit) > 0"> · 每人限购 {{ flashSale.perUserLimit }} 件</template><template v-if="flashSale.remainingQuota <= 10"> · 仅剩 {{ flashSale.remainingQuota }} 件</template></span>
                 </template>
                 <template v-else>
                   <span v-if="Number(productDetail.data.originalPrice) > Number(productDetail.data.price)" class="detail-origin">原价 {{ money(productDetail.data.originalPrice) }}</span>

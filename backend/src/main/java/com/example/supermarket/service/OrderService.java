@@ -203,15 +203,44 @@ public class OrderService {
                 )
                 .stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity(), (left, right) -> left, HashMap::new));
-        // 限时秒杀：命中「此刻进行中」的场次就按秒杀价结算，名额在下单成功后原子占用
+        // 限时秒杀：命中「此刻进行中」的场次就参与结算，但按「自动拆分」规则 ——
+        // 只有前 min(本行数量, 用户剩余秒杀名额) 件走秒杀价并占名额，超出部分按原价（不占名额）。
         Map<Long, FlashSale> flashSales = flashSaleService.runningByProductIds(
                 cartItems.stream().map(CartItem::getProductId).distinct().toList());
-        List<OrderItem> orderItems = cartItems.stream()
-                .map(item -> buildOrderItem(
-                        item,
-                        requireAvailableProduct(productMap, item.getProductId()),
-                        flashSales.get(item.getProductId())))
-                .toList();
+        // 每个限购场次在本订单内「还能分给秒杀价的件数」（随逐行拆解递减，跨同商品多规格行共享）
+        Map<Long, Integer> flashRemain = new HashMap<>();
+        List<OrderItem> orderItems = new ArrayList<>();
+        for (CartItem ci : cartItems) {
+            Product product = requireAvailableProduct(productMap, ci.getProductId());
+            FlashSale fs = flashSales.get(ci.getProductId());
+            BigDecimal regular = product.getPrice();
+            if (product.getMemberPrice() != null && product.getMemberPrice().compareTo(regular) < 0) {
+                regular = product.getMemberPrice();
+            }
+            int qty = ci.getQuantity();
+            // 整行库存校验必须在拆分之前：拆成「秒杀段 + 原价段」后各自 ≤ 数量，但两段合计不能超过库存
+            if (product.getStock() < qty) {
+                throw new BusinessException(409, "商品「" + product.getName() + "」库存不足（仅剩 "
+                        + product.getStock() + " 件，购物车中有 " + qty + " 件），请调整数量后重试");
+            }
+            if (fs != null && fs.getFlashPrice().compareTo(regular) < 0) {
+                Integer rem = flashRemain.computeIfAbsent(fs.getId(),
+                        k -> flashSaleService.remainingForUser(userId, fs));
+                int flashQty = (rem == null) ? qty : Math.min(qty, Math.max(rem, 0));
+                if (rem != null) {
+                    flashRemain.put(fs.getId(), Math.max(rem - flashQty, 0));
+                }
+                if (flashQty > 0) {
+                    orderItems.add(buildOrderItem(ci, product, fs, flashQty));
+                }
+                int overflow = qty - flashQty;
+                if (overflow > 0) {
+                    orderItems.add(buildOrderItem(ci, product, null, overflow));
+                }
+            } else {
+                orderItems.add(buildOrderItem(ci, product, null, qty));
+            }
+        }
         BigDecimal totalAmount = orderItems.stream()
                 .map(OrderItem::getSubtotalAmount)
                 .reduce(ZERO, BigDecimal::add);
@@ -445,13 +474,13 @@ public class OrderService {
         }
     }
 
-    private OrderItem buildOrderItem(CartItem cartItem, Product product, FlashSale flashSale) {
-        if (product.getStock() < cartItem.getQuantity()) {
-            // 这条会在扣库存之前命中，是最常被用户看到的一条库存错误 —— 必须点明商品与两个数量，
-            // 否则用户只知道"库存不足"，却不知道该改哪一件、改成几件。
-            throw new BusinessException(409, "商品「" + product.getName() + "」库存不足（仅剩 "
-                    + product.getStock() + " 件，购物车中有 " + cartItem.getQuantity() + " 件），请调整数量后重试");
-        }
+    /**
+     * 构造一个订单行。
+     *
+     * @param quantity 本行件数（秒杀自动拆分时，可能是「秒杀段」或「原价段」的件数，不再等于购物车行数量）
+     * @param flashSale 不为 null 且秒杀价更低时，本行按秒杀价并占名额；为 null 则按常规价（不占名额）
+     */
+    private OrderItem buildOrderItem(CartItem cartItem, Product product, FlashSale flashSale, int quantity) {
         OrderItem item = new OrderItem();
         item.setProductId(product.getId());
         item.setProductName(product.getName());
@@ -473,8 +502,8 @@ public class OrderService {
         // 划线价的对照价：命中秒杀时用商品正常售价（秒杀前的价），否则用商品自带的划线价。
         // 仅用于订单详情展示「划线优惠（已省）」，不参与实付扣减。
         item.setOriginalPrice(item.getFlashSaleId() != null ? product.getPrice() : product.getOriginalPrice());
-        item.setQuantity(cartItem.getQuantity());
-        item.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(cartItem.getQuantity())));
+        item.setQuantity(quantity);
+        item.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(quantity)));
         return item;
     }
 

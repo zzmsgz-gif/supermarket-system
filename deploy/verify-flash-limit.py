@@ -1,11 +1,16 @@
-"""秒杀「每人限购」三道防线验证：接口透出额度 → 加购/改数量即拦 → 下单原子扣减兜底。
+"""秒杀「每人限购」三道防线验证：接口透出额度 → 加购不拦（自动拆分）→ 下单原子扣减兜底。
 
 起因：原先限购只在「下单」那一步校验，用户能在购物车里把数量加到远超上限，
 一路填完地址点下结算才被打回 —— 白费操作，而且不知道错在哪。
 
+⭐ 后来改为「自动拆分」（`option A`，对用户最友好）：购物车**不再因限购而 409**，
+超出每人限购的件数只是从秒杀价降级为原价（flashQty 被夹在剩余名额内，其余走原价），
+真正兜底只在「下单时只对秒杀段原子占名额」这一步——既防超卖，又不再把用户锁在购物车里。
+
 覆盖：
   A. 额度透出：游客不返回、登录后返回「我的已购 / 未付款占用 / 还能买几件」、不限购场次为 null
-  B. 加购即拦：达到上限前放行、超出即 409；被拒后购物车数量不被改动
+  B. 加购不拦（改为自动拆分）：超出每人限购的件数从秒杀价降级为原价，不再 409；
+     被拒场景只剩「库存不足」，购物车数量始终被正常写入
   C. 改数量即拦：等于上限放行 / 超出 409 / **减少数量必须放行**（关键回归，否则用户被锁死）
   D. 用户隔离：每人限购按用户各算各的
   E. 未付款订单占名额：计数正确 + 给出订单号 + 取消后额度与名额同时恢复
@@ -197,14 +202,14 @@ try:
 
     st, payload = request("POST", "/cart/items", {"productId": PID, "quantity": 1}, tok1)
     msg = err_message(payload)
-    check("B3 ⭐ 再加 1 件（超出上限）→ 409，且文案说清上限卡在哪",
-          st == 409 and "限购" in msg and "最多放" in msg, f"HTTP {st} | {msg}")
-
-    check("B3b 文案不自相矛盾：不说「你还能买 N 件」（此时购物车里就已经放着 2 件）",
-          "还能买" not in msg, msg)
-
     line = cart_line(tok1, PID)
-    check("B4 被拒后购物车数量未被改动（仍是 2，没留半截状态）", line["quantity"] == 2,
+    check("B3 ⭐ 再加 1 件（超出上限）→ 不再 409，允许加购（超出部分按原价）",
+          st < 400 and line and line["quantity"] == 3, f"HTTP {st} qty={line['quantity'] if line else '-'}")
+
+    check("B3b ⭐ 超出限购后购物车行标出 flashQty 被夹在 2（仅 2 件享秒杀价）",
+          line and line.get("flashQty") == 2, f"flashQty={line.get('flashQty') if line else '-'}")
+
+    check("B4 加购放行后购物车数量为 3（改了数量，没有半截状态）", line["quantity"] == 3,
           f"qty={line['quantity']}")
 
     st = status_of("POST", "/cart/items", {"productId": CTRL_PID, "quantity": 5}, tok1)
@@ -220,8 +225,9 @@ try:
 
     st, p = request("PUT", f"/cart/items/{item_id}", {"quantity": 3}, tok1)
     msg = err_message(p)
-    check("C2 改数量为 3（超上限）→ 409 且文案说清上限卡在哪",
-          st == 409 and "限购" in msg and "最多放" in msg, f"HTTP {st} | {msg}")
+    line = cart_line(tok1, PID)
+    check("C2 ⭐ 改数量为 3（超上限）→ 不再 409，放行且 flashQty 夹在 2",
+          st < 400 and line and line.get("flashQty") == 2, f"HTTP {st} flashQty={line.get('flashQty') if line else '-'}")
 
     st, p = request("PUT", f"/cart/items/{item_id}", {"quantity": 1}, tok1)
     check("C3 ⭐ 改数量为 1（减少）→ 必须放行", st < 400, f"HTTP {st} | {err_message(p)}")
@@ -267,9 +273,11 @@ try:
           f"orderNo={mine.get('myUnpaidOrderNo')} id={mine.get('myUnpaidOrderId')}")
 
     st, p = request("POST", "/cart/items", {"productId": PID, "quantity": 1}, tok1)
-    msg = err_message(p)
-    check("E4 已买满时再加购 → 409 且文案含「买满」", st == 409 and "买满" in msg,
-          f"HTTP {st} | {msg}")
+    line = cart_line(tok1, PID)
+    check("E4 ⭐ 已买满（名额 0）再加购 → 不再 409：放开本件，全按原价（flashQty=0）",
+          st < 400 and line and line.get("quantity") == 1 and line.get("flashQty") == 0,
+          f"HTTP {st} qty={line['quantity'] if line else '-'} flashQty={line.get('flashQty') if line else '-'}")
+    clear_cart(tok1)  # 清掉这行，保持 E5/E7「购物车为空」的口径不变
 
     sold_before = int(sql(f"SELECT sold_quota FROM {DB}.flash_sale WHERE id={sale1['id']}"))
     call("POST", f"/orders/{order1['id']}/cancel", None, tok1)
@@ -304,8 +312,11 @@ try:
           mine.get("myUnpaidQuantity") == 0 and mine.get("myUnpaidOrderNo") is None,
           f"unpaid={mine.get('myUnpaidQuantity')} orderNo={mine.get('myUnpaidOrderNo')}")
 
-    st = status_of("POST", "/cart/items", {"productId": PID, "quantity": 1}, tok1)
-    check("F4 已支付满额后继续加购 → 409", st == 409, f"HTTP {st}")
+    st, p = request("POST", "/cart/items", {"productId": PID, "quantity": 1}, tok1)
+    line = cart_line(tok1, PID)
+    check("F4 ⭐ 已支付满额（名额 0）再加购 → 不再 409：放开本件，全按原价（flashQty=0）",
+          st < 400 and line and line.get("quantity") == 1 and line.get("flashQty") == 0,
+          f"HTTP {st} qty={line['quantity'] if line else '-'} flashQty={line.get('flashQty') if line else '-'}")
 
     # ============ G. 边界与设计决定 ============
     call("PATCH", f"/admin/flash-sales/{sale1['id']}/status", {"status": 0}, admin_tok)
@@ -347,9 +358,11 @@ try:
           f"bought={mine2.get('myBoughtQuantity')} left={mine2.get('myRemainingQuota')}")
 
     st, p = request("PUT", f"/cart/items/{line2['id']}", {"quantity": 3}, tok2)
-    msg = err_message(p)
-    check("I2 ⭐ 部分占用时的文案点明「已下单占用 N 件」，而不是只报一个对不上的数字",
-          st == 409 and "最多放 1 件" in msg and "已下单占用 1 件" in msg, f"HTTP {st} | {msg}")
+    line2now = cart_line(tok2, PID)
+    check("I2 ⭐ 部分占用时再加购不再 409：放开，仅 1 件享秒杀价（flashQty=1），超出按原价",
+          st < 400 and line2now and line2now.get("quantity") == 3 and line2now.get("flashQty") == 1,
+          f"HTTP {st} qty={line2now['quantity'] if line2now else '-'} "
+          f"flashQty={line2now.get('flashQty') if line2now else '-'}")
 
     three = call("GET", f"/orders/{order3['id']}", None, tok2)
     check("I3 该未付款订单也被正确计入「未付款占用」",

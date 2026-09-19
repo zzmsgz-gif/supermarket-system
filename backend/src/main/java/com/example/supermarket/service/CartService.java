@@ -15,6 +15,7 @@ import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.CartItemRepository;
 import com.example.supermarket.repository.ProductRepository;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +48,7 @@ public class CartService {
     @Transactional(readOnly = true)
     public CartResponse getCart(Long userId) {
         List<CartItem> cartItems = cartItemRepository.findByUserIdOrderByUpdatedAtDesc(userId);
-        return buildCartResponse(cartItems);
+        return buildCartResponse(userId, cartItems);
     }
 
     @Transactional
@@ -75,7 +76,6 @@ public class CartService {
                 .orElseGet(() -> newCartItem(userId, productId));
         int newQuantity = cartItem.getQuantity() + quantity;
         validateStock(product, newQuantity);
-        validateFlashLimit(userId, product, newQuantity);
         cartItem.setQuantity(newQuantity);
         cartItem.setSelected(SELECTED);
         cartItem.setSkuSpec(spec);
@@ -95,7 +95,6 @@ public class CartService {
             if (request.getQuantity() > cartItem.getQuantity()) {
                 Product product = getAvailableProduct(cartItem.getProductId());
                 validateStock(product, request.getQuantity());
-                validateFlashLimit(userId, product, request.getQuantity());
             }
             cartItem.setQuantity(request.getQuantity());
         }
@@ -125,7 +124,7 @@ public class CartService {
         return getCart(userId);
     }
 
-    private CartResponse buildCartResponse(List<CartItem> cartItems) {
+    private CartResponse buildCartResponse(Long userId, List<CartItem> cartItems) {
         if (cartItems.isEmpty()) {
             return new CartResponse(List.of(), 0, BigDecimal.ZERO, BigDecimal.ZERO, null);
         }
@@ -135,12 +134,27 @@ public class CartService {
                 .collect(Collectors.toMap(Product::getId, Function.identity(), (left, right) -> left, HashMap::new));
         // 限时秒杀：按「此刻进行中」的场次定价，与 OrderService.buildOrderItem 用同一套 min() 规则
         Map<Long, FlashSale> flashSales = flashSaleService.runningByProductIds(productIds);
-        List<CartItemResponse> items = cartItems.stream()
-                .map(item -> CartItemResponse.from(
-                        item,
-                        requireProduct(productMap, item.getProductId()),
-                        flashSales.get(item.getProductId())))
-                .toList();
+        // 每个限购场次：用户剩余秒杀名额（= 每人限购 − 历史已购，不含本购物车），不限购为 null。
+        // 用于把「超出限购」的件数从秒杀价降级为原价，而不是拒绝加购。
+        Map<Long, Integer> flashRemain = new HashMap<>();
+        for (FlashSale sale : flashSales.values()) {
+            Integer rem = flashSaleService.remainingForUser(userId, sale);
+            if (rem != null) {
+                flashRemain.put(sale.getProductId(), rem);
+            }
+        }
+        List<CartItemResponse> items = new ArrayList<>();
+        for (CartItem item : cartItems) {
+            Product product = requireProduct(productMap, item.getProductId());
+            FlashSale sale = flashSales.get(item.getProductId());
+            Integer flashQty = null;
+            if (sale != null && flashRemain.containsKey(item.getProductId())) {
+                int rem = flashRemain.get(item.getProductId());
+                flashQty = Math.min(item.getQuantity(), Math.max(rem, 0));
+                flashRemain.put(item.getProductId(), Math.max(rem - flashQty, 0));
+            }
+            items.add(CartItemResponse.from(item, product, sale, flashQty));
+        }
         int selectedCount = items.stream()
                 .filter(CartItemResponse::getSelected)
                 .mapToInt(CartItemResponse::getQuantity)
@@ -199,43 +213,6 @@ public class CartService {
             // 而前端已经在前面拼了商品名，带上会变成「面包（商品「面包」库存不足…）」。
             throw new BusinessException(409, "库存不足（仅剩 " + product.getStock() + " 件），请调整数量");
         }
-    }
-
-    /**
-     * 秒杀每人限购校验（加购 / 改数量时）。
-     *
-     * <p><b>为什么要在购物车层就拦</b>：限购是稳定且因人而异的硬约束。若只在结算时校验，用户会在
-     * 购物车里把数量加到远超上限、一路填完地址、点下结算才被打回 —— 白费操作且不知道错在哪。
-     * 服务端这一层同时覆盖前端管不住的几条路径：多开标签页、直调接口，以及游客登录后合并购物车
-     * （{@code mergeGuestCartToServer} 走的也是本接口）。
-     *
-     * <p><b>只拦每人限购，不拦全站剩余名额</b>：剩余名额是所有用户共享且随时在变的，拿它做硬拦会出现
-     * 「名额被别人抢走一件，连把自己购物车里的数量改小都被拒」。剩余名额仍由下单时的原子扣减兜底。
-     *
-     * @param targetQuantity 本次操作后、该商品在本用户购物车里的总件数
-     */
-    private void validateFlashLimit(Long userId, Product product, int targetQuantity) {
-        FlashSale sale = flashSaleService.runningByProductIds(List.of(product.getId()))
-                .get(product.getId());
-        if (sale == null) {
-            return;   // 该商品此刻没有进行中的秒杀，不受限购约束
-        }
-        Integer remaining = flashSaleService.remainingForUser(userId, sale);
-        if (remaining == null) {
-            return;   // 该场次不限购
-        }
-        if (targetQuantity <= remaining) {
-            return;
-        }
-        // 文案必须说清「上限卡在哪」：remaining 只扣了订单占用，没扣购物车。
-        // 若只说「你还能买 N 件」，而用户购物车里本来就放着 N 件，就是自相矛盾 ——
-        // 所以这里给出「购物车里最多放几件」，并在有订单占用时说明占用了多少。
-        long bought = flashSaleService.quotaFor(userId, sale).bought();
-        String cap = "「" + sale.getName() + "」每人限购 " + sale.getPerUserLimit() + " 件";
-        throw new BusinessException(409, remaining == 0
-                ? cap + "，你已经买满了"
-                : cap + "，购物车里最多放 " + remaining + " 件"
-                        + (bought > 0 ? "（已下单占用 " + bought + " 件）" : ""));
     }
 
     private String normalizeSpec(String spec) {

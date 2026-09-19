@@ -3,10 +3,14 @@
     <div class="product-image" @click.stop="$emit('open', product)">
       <img v-if="product.coverUrl" :src="product.coverUrl" :alt="product.name" @error="imgFallback($event, product.name)" />
       <span v-else>{{ initials(product.name) }}</span>
-      <span v-if="badges && discountSave(product.originalPrice, product.price) > 0" class="corner-badge">省{{ money(discountSave(product.originalPrice, product.price)) }}</span>
-      <span v-if="badges && product.isHot" class="corner-badge hot">热</span>
-      <span v-if="badges && product.isNew" class="corner-badge new">新</span>
-      <span v-if="badges && memberPrice" class="corner-badge vip">会员</span>
+      <!-- 左上角标横排：原先 省X/热/新/会员 四个都 absolute 在 top:8/left:8 同一坐标，
+           同现时互相叠盖只露出最后一张；包进 badge-row 用 flex 横排错开。 -->
+      <div v-if="badges" class="badge-row">
+        <span v-if="discountSave(product.originalPrice, product.price) > 0" class="corner-badge">省{{ money(discountSave(product.originalPrice, product.price)) }}</span>
+        <span v-if="product.isHot" class="corner-badge hot">热</span>
+        <span v-if="product.isNew" class="corner-badge new">新</span>
+        <span v-if="memberPrice" class="corner-badge vip">会员</span>
+      </div>
       <span v-if="flashPrice" class="corner-badge flash">秒杀</span>
       <span v-if="activityTag" class="activity-chip">{{ activityTag }}</span>
       <button
@@ -22,8 +26,8 @@
       </button>
     </div>
     <h3 @click.stop="$emit('open', product)">{{ product.name }}</h3>
-    <p class="brand-line" v-if="product.brand">{{ product.brand }}</p>
-    <p>{{ product.subtitle || formatUnit(product.unit) }}</p>
+    <!-- 品牌 + 副标题合并为一行：原先两行同灰度小字糊成一片，合一行更清爽 -->
+    <p>{{ [product.brand, product.subtitle || formatUnit(product.unit)].filter(Boolean).join(' · ') }}</p>
     <p v-if="extra" class="brand-line">{{ extra }}</p>
     <div class="price-block" v-if="mode === 'full'">
       <div class="price-line">
@@ -32,9 +36,12 @@
           <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
           <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
           <span v-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
-          <span v-if="flashPrice" class="member-price-tag flash-mini">秒杀</span>
         </div>
-        <span v-if="ratingInfo" class="rating-brief"><i>★</i>{{ ratingInfo.avg.toFixed(1) }}<em>({{ ratingInfo.count }})</em></span>
+        <!-- 右下角圆形「＋」加购（生鲜电商主流做法）：替代旧的双通栏按钮，卡片更轻盈。
+             整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
+        <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop="$emit('add', product)">＋</button>
+        <span v-else-if="flashCapped" class="flash-cap-note">已达限购（每人 {{ flashLimitText }} 件）</span>
+        <span v-else-if="isAdmin" class="admin-inline-note">管理员仅查看上架商品</span>
       </div>
       <div class="meta-line">
         <small :class="{ 'low-stock': lowStock }">
@@ -42,6 +49,7 @@
           <template v-if="salesText">已售 {{ salesText }}</template>
           <template v-if="!lowStock && !salesText">7 天内发货</template>
         </small>
+        <span v-if="ratingInfo" class="rating-brief"><i>★</i>{{ ratingInfo.avg.toFixed(1) }}<em>({{ ratingInfo.count }})</em></span>
       </div>
     </div>
     <div class="price-line" v-else>
@@ -49,15 +57,8 @@
         <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || product.price) }}</strong>
         <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
         <span v-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
-        <span v-if="flashPrice" class="member-price-tag flash-mini">秒杀</span>
       </div>
     </div>
-    <template v-if="mode === 'full'">
-      <button class="ghost" @click.stop="$emit('open', product)">查看详情</button>
-      <button v-if="addable && !flashCapped" @click.stop="$emit('add', product)">加入购物车</button>
-      <span v-else-if="flashCapped" class="admin-note flash-cap-note">已达限购（每人 {{ flashLimitText }} 件）</span>
-      <span v-else-if="isAdmin" class="admin-note">管理员仅查看上架商品</span>
-    </template>
   </article>
 </template>
 
@@ -77,10 +78,13 @@ const props = defineProps({
 defineEmits(['open', 'add']);
 
 const appCtx = inject('appCtx', null);
-// 商品平均星级（来自 /products/rating-summary 聚合），无评价时不显示
-const ratingInfo = computed(() => (appCtx && appCtx.ratingSummaryMap
-  ? appCtx.ratingSummaryMap.value[props.product.id]
-  : null));
+// 商品平均星级（来自 /products/rating-summary 聚合）。评价少于 3 条时不展示：
+// 一两条评价就挂「满分 5.0」更像刷出来的，反而减分
+const ratingInfo = computed(() => {
+  if (!appCtx || !appCtx.ratingSummaryMap) return null;
+  const info = appCtx.ratingSummaryMap.value[props.product.id];
+  return info && Number(info.count) >= 3 ? info : null;
+});
 // 商品命中的营销活动标签（满减/折扣），让活动在浏览商品时可见
 const activityTag = computed(() => (appCtx && typeof appCtx.productActivityTag === 'function'
   ? appCtx.productActivityTag(props.product)
