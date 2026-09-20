@@ -40,13 +40,9 @@
             <input v-model="headerKeyword" type="search" placeholder="搜索牛奶、面包、五常大米、抽纸…" aria-label="搜索商品" />
             <button type="submit" aria-label="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
           </form>
-          <div class="hot-words">
+          <div class="hot-words" v-if="hotSearches.length">
             <span class="hw-tag">热搜</span>
-            <a @click.prevent="quickSearch('牛奶')">纯牛奶</a>
-            <a @click.prevent="quickSearch('大米')">五常大米</a>
-            <a @click.prevent="quickSearch('食用油')">食用油</a>
-            <a @click.prevent="quickSearch('抽纸')">抽纸</a>
-            <a @click.prevent="quickSearch('鸡蛋')">鸡蛋</a>
+            <a v-for="word in hotSearches" :key="word.id" @click.prevent="quickSearch(word.keyword)">{{ word.label }}</a>
           </div>
         </div>
 
@@ -417,6 +413,13 @@ function quickSearch(kw) {
   return goSearch();
 }
 
+// 头部「热搜」词条：原先是前端写死的 5 条（既没有"怎么才算热"的规则，后台也改不了），
+// 现由后台「热搜词管理」维护，前台只读启用项。无数据时整块隐藏（别只剩一个「热搜」空标签）。
+const hotSearches = ref([]);
+async function loadHotSearches() {
+  try { hotSearches.value = (await api.get('/hot-searches')) || []; } catch { hotSearches.value = []; }
+}
+
 // 页脚订阅
 const subEmail = ref('');
 const subMsg = ref('');
@@ -485,6 +488,10 @@ const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminAnnouncements = ref([]);
 const announcementForm = reactive({ id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
 const announcementFormOpen = ref(false);
+// 后台「热搜词」：首页头部那排词由这里维护（原先写死在模板里）
+const adminHotSearches = ref([]);
+const hotSearchForm = reactive({ id: null, keyword: '', label: '', sortOrder: 0, enabled: true });
+const hotSearchFormOpen = ref(false);
 const adminBanners = ref([]);
 const bannerForm = reactive({ id: null, imageUrl: '', linkProductId: null, sortOrder: 0, enabled: true });
 const bannerFormOpen = ref(false);
@@ -1514,7 +1521,7 @@ function rememberUser(user) {
 }
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
-const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'stores', 'banners', 'users', 'passwordResets'];
+const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'stores', 'banners', 'users', 'passwordResets'];
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -2884,6 +2891,67 @@ async function deleteAnnouncement(a) {
   }, '公告已删除');
 }
 
+/* ===== 后台「热搜词管理」：首页头部那排「热搜」词 ===== */
+
+async function loadAdminHotSearches() {
+  if (!isAdmin.value) return;
+  try {
+    adminHotSearches.value = await api.get('/admin/hot-searches');
+  } catch (e) {
+    adminHotSearches.value = [];
+  }
+}
+
+function openHotSearchForm(h) {
+  Object.assign(hotSearchForm, h
+    ? { id: h.id, keyword: h.keyword, label: h.label || '', sortOrder: h.sortOrder || 0, enabled: Number(h.enabled) === 1 }
+    : { id: null, keyword: '', label: '', sortOrder: 0, enabled: true });
+  hotSearchFormOpen.value = true;
+}
+
+function closeHotSearchForm() {
+  hotSearchFormOpen.value = false;
+  hotSearchForm.id = null;
+}
+
+async function saveHotSearch() {
+  const form = hotSearchForm;
+  if (!form.keyword.trim()) { showAlert('搜索词要填写'); return; }
+  await run(async () => {
+    const payload = {
+      keyword: form.keyword.trim(),
+      // 留空就传 null → 前台回落成关键词本身（展示词与搜索词允许不同，如显示「纯牛奶」搜「牛奶」）
+      label: (form.label || '').trim() || null,
+      sortOrder: Number(form.sortOrder) || 0,
+      enabled: !!form.enabled,
+    };
+    if (form.id) await api.put(`/admin/hot-searches/${form.id}`, payload);
+    else await api.post('/admin/hot-searches', payload);
+    closeHotSearchForm();
+    // 同时刷新前台那份，改完立刻能在头部看到（不用等刷新页面）
+    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
+  }, '热搜词已保存');
+}
+
+async function toggleHotSearch(h) {
+  await run(async () => {
+    await api.put(`/admin/hot-searches/${h.id}`, {
+      keyword: h.keyword, label: h.label, sortOrder: h.sortOrder || 0,
+      enabled: Number(h.enabled) !== 1,
+    });
+    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
+  }, Number(h.enabled) === 1 ? '热搜词已停用' : '热搜词已启用');
+}
+
+async function deleteHotSearch(h) {
+  const ok = await askConfirm(`确定删除热搜词「${h.label || h.keyword}」？删除后前台立即消失。`);
+  if (!ok) return;
+  await run(async () => {
+    await api.delete(`/admin/hot-searches/${h.id}`);
+    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
+  }, '热搜词已删除');
+}
+
 /* ===== 轮播位管理（后台） ===== */
 async function loadAdminBanners() {
   if (!isAdmin.value) return;
@@ -3123,6 +3191,7 @@ async function refreshAdminData() {
     loadRefundOrders(),
     loadStockAlerts(),
     loadAdminCoupons(),
+    loadAdminHotSearches(),
   ]);
 }
 
@@ -3174,6 +3243,7 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
   await run(async () => {
     await loadCategories();
+    await loadHotSearches();     // 头部「热搜」词条（公开接口，游客可见）
     applyShopQueryFromRoute();   // 深链 /shop?category=3 要在首次 loadProducts 之前生效，否则先拉一遍全量再纠正
     await loadProducts();
     await loadRatingSummary();
@@ -3197,7 +3267,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onDocumentKeydown);
 
 });
-const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement };
+const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
 const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);

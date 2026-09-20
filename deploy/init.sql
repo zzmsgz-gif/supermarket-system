@@ -692,3 +692,17 @@ CREATE TABLE password_reset_request (
     KEY idx_prr_status_created (status, created_at),
     KEY idx_prr_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='找回密码申请';
+
+-- 首页头部「热搜」词条（原先这 5 条写死在前端 App.vue 里，既没有"怎么才算热"的规则、后台也改不了）
+CREATE TABLE hot_search (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    keyword VARCHAR(30) NOT NULL COMMENT '点击后实际搜索的词（对应 /shop?kw=）',
+    label VARCHAR(30) NULL COMMENT '前台展示文案，可空；空则前台回落成 keyword（展示词与搜索词可以不同）',
+    sort_order INT NOT NULL DEFAULT 0 COMMENT 'Display order, asc',
+    enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
+    deleted TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_hot_search_enabled_sort (enabled, sort_order, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页热搜词（后台可管）';
