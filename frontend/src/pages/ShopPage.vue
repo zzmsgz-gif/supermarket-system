@@ -250,12 +250,11 @@
     </div>
   </div>
 
-  <!-- ⑥ 品牌墙：从真实在售商品聚合去重，点击按品牌筛选 -->
-  <div v-if="brandWall.length" class="brand-wall">
-    <span class="lb">合作品牌</span>
-    <button v-for="brand in brandWall" :key="brand" class="brand-chip" @click="filterBrand(brand)">{{ brand }}</button>
-    <span v-if="brands.length > brandWall.length" class="muted-note">等 {{ brands.length }} 个品牌</span>
-  </div>
+  <!-- ⑥ 品牌墙：已移除（09-20）。
+       原意是「从真实在售商品聚合去重」做品牌直达，但 product.brand 字段里混了非品牌值 ——
+       烟台/海南/菲律宾/五常 是产地、自然熟 是品类描述、安慕希 是伊利的产品系列，
+       被当成「合作品牌」摆出来既不准、也像在编合作方。
+       品牌筛选没丢：工具条的「品牌」下拉用的仍是完整列表。 -->
 
 </section>
 
@@ -510,6 +509,7 @@ export default {
       .filter((floor) => floor.items.length));
 
     // 品牌墙：真实商品品牌去重（保持出现顺序）
+    // 品牌列表（工具条「品牌」下拉用完整列表；原「品牌墙」已于 09-20 移除，见模板注释）
     const brands = computed(() => {
       const seen = [];
       allProducts.value.forEach((p) => {
@@ -517,9 +517,6 @@ export default {
       });
       return seen;
     });
-
-    // 品牌墙只展示前 14 个（品牌筛选下拉仍用完整列表），避免 chip 过多糊成一片
-    const brandWall = computed(() => brands.value.slice(0, 14));
 
     // 只要用户主动筛选过，就切换到结果网格（排序不算筛选，仍走楼层）
     const isFiltering = computed(() => Boolean(
@@ -536,11 +533,6 @@ export default {
 
     function catEmoji(name) {
       return CAT_EMOJI[name] || '🛍️';
-    }
-
-    async function filterBrand(brand) {
-      filters.brand = brand;
-      await ctx.loadProducts();
     }
 
     // 左侧分类栏的 hover 预览面板（仿京东/淘宝的分类导航）：
@@ -634,7 +626,6 @@ export default {
       onTrackTransitionEnd,
       floors,
       brands,
-      brandWall,
       isFiltering,
       activityText,
       catEmoji,
@@ -649,7 +640,6 @@ export default {
       activeChannelKey,
       activeChannelItems,
       refreshActiveChannel,
-      filterBrand,
       nextSlide,
       prevSlide,
       goSlide,

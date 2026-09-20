@@ -4120,34 +4120,9 @@ button.mini.danger:hover {
 
 .muted-note { color: var(--muted); font-size: 12.5px; }
 
-/* ⑥ 品牌墙 */
-.brand-wall {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 24px;
-  padding: 16px 20px;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: var(--shadow);
-}
-
-.brand-wall .lb { margin-right: 4px; color: var(--muted); font-size: 12.5px; }
-
-.brand-chip {
-  min-height: 32px;
-  padding: 5px 14px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 13.5px;
-  font-weight: 700;
-  box-shadow: none;
-}
-
-.brand-chip:hover { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); box-shadow: none; }
+/* ⑥ 品牌墙（.brand-wall / .brand-chip）已于 09-20 移除：
+   product.brand 字段里混了产地（烟台/海南/菲律宾/五常）、品类词（自然熟）、产品系列（安慕希），
+   被当作「合作品牌」展示不准确。品牌筛选仍由工具条的「品牌」下拉承担。 */
 
 .empty-hint {
   padding: 28px;
