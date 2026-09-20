@@ -3755,7 +3755,8 @@ button.mini.danger:hover {
 .hero-cat .cat-emoji { font-size: 16px; }
 
 /* 分类 hover 预览面板 —— 定位在「分类栏右侧 → 公告栏左侧」之间，正好盖住轮播区。
-   刻意不加遮罩：它只是浏览预览、不是模态；压暗整页会在鼠标掠过分类栏时闪一下。
+   半透明磨砂（不是不透明白底）：轮播图仍能透出来，首页主视觉不会被一块白板吃掉。
+   也刻意不加遮罩：它只是浏览预览、不是模态；压暗整页会在鼠标掠过分类栏时闪一下。
    也刻意不放商品卡：图文卡片由下方「楼层」承担，这里只做「快速定位单品」的名称索引，两者不重复。 */
 .hero-cat-panel {
   display: none;
@@ -3767,10 +3768,16 @@ button.mini.danger:hover {
   z-index: 6;
   flex-direction: column;
   padding: 14px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(15, 23, 33, 0.08);
   border-radius: 16px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.68);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
   box-shadow: var(--shadow);
+}
+/* 兜底：浏览器不支持 backdrop-filter 时，仍靠上面的 rgba 保持半透明（文字可读性由 0.68 的白色保证） */
+@supports not (backdrop-filter: blur(1px)) {
+  .hero-cat-panel { background: rgba(255, 255, 255, 0.86); }
 }
 /* 只在「有 hover 能力且 ≥901px」时出现：≤900px 时 .hero 已变单列，绝对定位会错位；
    触屏没有 hover，保持原来的点击筛选行为。 */
@@ -3784,7 +3791,7 @@ button.mini.danger:hover {
   align-items: center;
   gap: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid rgba(15, 23, 33, 0.1);
 }
 .hcp-head strong { font-size: 15px; font-weight: 600; }
 .hcp-head .cat-emoji { font-size: 16px; }
@@ -3822,18 +3829,18 @@ button.mini.danger:hover {
   text-overflow: ellipsis;
 }
 .hcp-item:hover {
-  background: var(--brand-soft);
+  background: rgba(0, 168, 112, 0.14);
   background-image: none;
   box-shadow: none;
-  color: var(--brand);
+  color: var(--brand-deep);
 }
 .hcp-item:active { transform: none; }
 .hcp-all {
   padding: 9px 0;
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(15, 23, 33, 0.1);
   border-radius: 0;
-  color: var(--brand);
+  color: var(--brand-deep);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
