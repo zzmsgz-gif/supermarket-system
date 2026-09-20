@@ -157,12 +157,8 @@
     </div>
   </div>
 
-  <!-- ③ 工具条：搜索 / 价格 / 品牌 / 排序 -->
+  <!-- ③ 工具条：价格 / 品牌 / 排序（搜索统一走页头全局搜索框，避免首页出现两个搜索框） -->
   <div class="shop-filters">
-    <div class="search-box">
-      <input v-model="filters.keyword" placeholder="搜索上架商品" @keyup.enter="loadProducts" />
-      <button @click="loadProducts">搜索</button>
-    </div>
     <div class="filter-group">
       <label>价格</label>
       <input v-model="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
