@@ -157,20 +157,13 @@
     </div>
   </div>
 
-  <!-- ③ 工具条：价格 / 品牌 / 排序（搜索统一走页头全局搜索框，避免首页出现两个搜索框） -->
+  <!-- ③ 工具条：价格 / 排序（搜索统一走页头全局搜索框，避免首页出现两个搜索框） -->
   <div class="shop-filters">
     <div class="filter-group">
       <label>价格</label>
       <input v-model="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
       <span class="dash">—</span>
       <input v-model="filters.maxPrice" type="number" min="0" placeholder="最高" @keyup.enter="applyFilters" />
-    </div>
-    <div class="filter-group">
-      <label>品牌</label>
-      <select v-model="filters.brand" @change="applyFilters">
-        <option value="">全部品牌</option>
-        <option v-for="brand in brands" :key="brand" :value="brand">{{ brand }}</option>
-      </select>
     </div>
     <div class="filter-group">
       <label>排序</label>
@@ -250,7 +243,7 @@
        原意是「从真实在售商品聚合去重」做品牌直达，但 product.brand 字段里混了非品牌值 ——
        烟台/海南/菲律宾/五常 是产地、自然熟 是品类描述、安慕希 是伊利的产品系列，
        被当成「合作品牌」摆出来既不准、也像在编合作方。
-       品牌筛选没丢：工具条的「品牌」下拉用的仍是完整列表。 -->
+       工具条「品牌」筛选也一并移除（09-20）：同一脏数据，下拉会暴露「烟台/海南/自然熟/五常」等无意义选项。 -->
 
 </section>
 
@@ -479,7 +472,7 @@ export default {
       allProducts.value = Array.isArray(data?.items) ? data.items : [];
     }
 
-    // 头部搜索 / 分类 / 价格 / 品牌 / 排序这些筛选状态现在统一由 App.vue 与 URL query 双向同步
+    // 头部搜索 / 分类 / 价格 / 排序这些筛选状态现在统一由 App.vue 与 URL query 双向同步
     // （syncShopQuery / applyShopQueryFromRoute），本页不再自己监听 route.query —— 同一份状态两处管必出分歧。
 
     onMounted(() => {
@@ -504,19 +497,11 @@ export default {
       }))
       .filter((floor) => floor.items.length));
 
-    // 品牌墙：真实商品品牌去重（保持出现顺序）
-    // 品牌列表（工具条「品牌」下拉用完整列表；原「品牌墙」已于 09-20 移除，见模板注释）
-    const brands = computed(() => {
-      const seen = [];
-      allProducts.value.forEach((p) => {
-        if (p.brand && !seen.includes(p.brand)) seen.push(p.brand);
-      });
-      return seen;
-    });
+    // 品牌列表原用于工具条「品牌」筛选，已于 09-20 移除（product.brand 含产地/系列等非品牌脏值）。
 
     // 只要用户主动筛选过，就切换到结果网格（排序不算筛选，仍走楼层）
     const isFiltering = computed(() => Boolean(
-      filters.keyword || filters.brand || filters.categoryId
+      filters.keyword || filters.categoryId
       || (filters.minPrice !== '' && filters.minPrice != null)
       || (filters.maxPrice !== '' && filters.maxPrice != null),
     ));
@@ -621,7 +606,6 @@ export default {
       trackEl,
       onTrackTransitionEnd,
       floors,
-      brands,
       isFiltering,
       activityText,
       catEmoji,

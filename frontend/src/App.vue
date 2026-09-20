@@ -873,7 +873,7 @@ const forcedChange = ref(false);
 const resetForm = reactive({ username: '', contact: '' });
 const resetErrors = reactive({ username: '', contact: '' });
 const resetSubmitting = ref(false);
-const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', brand: '', sort: '' });
+const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
 const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
 const hotProducts = ref([]);
@@ -2109,9 +2109,9 @@ async function loadCategories() {
 // ===== 首页筛选状态 ↔ URL query（09-20）=====
 // 起因：点分类原先只改 filters + 重拉商品，URL 一直是 /shop → 不能分享/收藏、刷新即丢；
 // 返回键也拿不到「取消筛选」的语义（实测按返回视图毫无变化）。现在把筛选写进 URL：
-//   /shop?category=3&kw=牛奶&brand=蒙牛&min=10&max=50&sort=price_asc
+//   /shop?category=3&kw=牛奶&min=10&max=50&sort=price_asc
 // ⚠️ 关键词沿用既有的 `kw` 键（头部搜索 goSearch 已在用），别改成 q。
-const SHOP_FILTER_KEYS = ['category', 'kw', 'brand', 'min', 'max', 'sort'];
+const SHOP_FILTER_KEYS = ['category', 'kw', 'min', 'max', 'sort'];
 
 // 「这次筛选变更之后要把结果区带进视野」的一次性标记。
 // ⚠️ 不要在 goSearch 里直接调 scrollToResultsIfNeeded —— 那时导航还没落地、商品还没重新渲染，
@@ -2122,7 +2122,6 @@ function filterQueryFromFilters() {
   const q = {};
   if (filters.categoryId) q.category = String(filters.categoryId);
   if (filters.keyword) q.kw = String(filters.keyword);
-  if (filters.brand) q.brand = String(filters.brand);
   if (filters.minPrice !== '' && filters.minPrice != null) q.min = String(filters.minPrice);
   if (filters.maxPrice !== '' && filters.maxPrice != null) q.max = String(filters.maxPrice);
   if (filters.sort) q.sort = String(filters.sort);
@@ -2136,7 +2135,7 @@ function sameShopQuery(a, b) {
 // filters → URL。push / replace 的取舍：
 //   push —— ① 筛选的"有无"发生变化（楼层 → 分类、清空筛选），或 ② **分类变了**
 //           （「搜牛奶 → 点分类酒水饮料」、「分类A → 分类B」按返回键都应退回上一步，而不是直接跳回楼层）
-//   replace —— 其余（改排序/价格/品牌），避免改一次排序就多一条历史
+//   replace —— 其余（改排序/价格），避免改一次排序就多一条历史
 function syncShopQuery() {
   if (route.name !== 'shop') return;              // 别在别的页面把用户拽回 /shop
   const next = filterQueryFromFilters();
@@ -2154,14 +2153,12 @@ function applyShopQueryFromRoute() {
   const next = {
     categoryId: (q.category || '').toString(),
     keyword: (q.kw || '').toString(),
-    brand: (q.brand || '').toString(),
     minPrice: q.min != null ? String(q.min) : '',
     maxPrice: q.max != null ? String(q.max) : '',
     sort: (q.sort || '').toString(),
   };
   const changed = String(filters.categoryId || '') !== next.categoryId
     || String(filters.keyword || '') !== next.keyword
-    || String(filters.brand || '') !== next.brand
     || String(filters.minPrice ?? '') !== next.minPrice
     || String(filters.maxPrice ?? '') !== next.maxPrice
     || String(filters.sort || '') !== next.sort;
@@ -2190,7 +2187,6 @@ async function loadProducts() {
   if (filters.keyword) params.set('keyword', filters.keyword);
   if (filters.minPrice !== '' && filters.minPrice != null) params.set('minPrice', String(filters.minPrice));
   if (filters.maxPrice !== '' && filters.maxPrice != null) params.set('maxPrice', String(filters.maxPrice));
-  if (filters.brand) params.set('brand', filters.brand);
   if (filters.sort) params.set('sort', filters.sort);
   const data = await api.get(`/products?${params}`);
   Object.assign(products, data);
@@ -2210,7 +2206,6 @@ async function loadProducts() {
 async function chooseCategory(categoryId) {
   filters.categoryId = categoryId;
   filters.keyword = '';
-  filters.brand = '';
   filters.minPrice = '';
   filters.maxPrice = '';
   await loadProducts();
@@ -2253,7 +2248,6 @@ function resetFilters() {
   filters.keyword = '';
   filters.minPrice = '';
   filters.maxPrice = '';
-  filters.brand = '';
   filters.sort = '';
   loadProducts();
 }
