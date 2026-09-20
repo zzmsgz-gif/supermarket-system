@@ -4136,10 +4136,7 @@ button.mini.danger:hover {
 /* 商品卡：低库存预警 */
 .product-card .price-line small.low-stock { color: var(--warn); font-weight: 800; } /* 兼容他处 */
 
-/* 工具条里的搜索框 */
 .shop-filters { align-items: center; }
-.shop-filters .search-box { display: flex; gap: 8px; min-width: 220px; }
-.shop-filters .search-box button { flex-shrink: 0; padding-inline: 18px; }
 
 /* ============ 页脚 ============ */
 
