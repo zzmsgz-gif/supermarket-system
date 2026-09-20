@@ -358,7 +358,9 @@ export default {
         linkProductId: b.linkProductId || null,
       }));
       if (bannerSlides.length) return bannerSlides;
-      return (activities.value || []).map((a) => ({
+      // 纯文案活动（type=PROMOTION）只投放到首页顶部利益条，不进这里 —— 它没有满减/折扣可展示，
+      // 混进来的话标签会退化成「满减」、值显示成「满0 减 0」。
+      return (activities.value || []).filter((a) => a.type !== 'PROMOTION').map((a) => ({
         kind: 'activity',
         title: a.name,
         tag: a.type === 'DISCOUNT' ? '折扣' : '满减',

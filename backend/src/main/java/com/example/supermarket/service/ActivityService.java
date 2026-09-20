@@ -119,13 +119,18 @@ public class ActivityService {
     }
 
     private void applyRequest(Activity activity, AdminActivityRequest request) {
+        boolean promotion = Activity.TYPE_PROMOTION.equals(request.getType());
         activity.setName(request.getName().trim());
         activity.setType(request.getType());
-        activity.setScope(request.getScope());
-        activity.setCategoryId(Activity.SCOPE_CATEGORY.equals(request.getScope()) ? request.getCategoryId() : null);
-        activity.setProductId(Activity.SCOPE_PRODUCT.equals(request.getScope()) ? request.getProductId() : null);
-        activity.setThreshold(request.getThreshold() != null ? request.getThreshold() : BigDecimal.ZERO);
-        activity.setDiscount(request.getDiscount());
+        // 纯文案活动只占一个「展示位」：作用域/门槛/优惠值都无意义，统一清空（name 就是顶栏那句话）
+        activity.setScope(promotion ? Activity.SCOPE_ALL : request.getScope());
+        activity.setCategoryId(!promotion && Activity.SCOPE_CATEGORY.equals(request.getScope())
+                ? request.getCategoryId() : null);
+        activity.setProductId(!promotion && Activity.SCOPE_PRODUCT.equals(request.getScope())
+                ? request.getProductId() : null);
+        activity.setThreshold(promotion ? null
+                : (request.getThreshold() != null ? request.getThreshold() : BigDecimal.ZERO));
+        activity.setDiscount(promotion ? null : request.getDiscount());
         activity.setStartTime(request.getStartTime());
         activity.setEndTime(request.getEndTime());
         activity.setStatus(request.getStatus() != null ? request.getStatus().byteValue() : ENABLED);
@@ -133,9 +138,11 @@ public class ActivityService {
     }
 
     private void validate(AdminActivityRequest request) {
+        boolean promotion = Activity.TYPE_PROMOTION.equals(request.getType());
         if (!Activity.TYPE_FULL_REDUCTION.equals(request.getType())
-                && !Activity.TYPE_DISCOUNT.equals(request.getType())) {
-            throw new BusinessException(400, "活动类型仅支持 FULL_REDUCTION / DISCOUNT");
+                && !Activity.TYPE_DISCOUNT.equals(request.getType())
+                && !promotion) {
+            throw new BusinessException(400, "活动类型仅支持 FULL_REDUCTION / DISCOUNT / PROMOTION");
         }
         if (!Activity.SCOPE_ALL.equals(request.getScope())
                 && !Activity.SCOPE_CATEGORY.equals(request.getScope())
@@ -151,6 +158,10 @@ public class ActivityService {
         if (request.getStartTime() == null || request.getEndTime() == null
                 || !request.getStartTime().isBefore(request.getEndTime())) {
             throw new BusinessException(400, "活动结束时间必须晚于开始时间");
+        }
+        // 纯文案活动没有优惠值（不参与计价），至此为止，不再做优惠相关校验
+        if (promotion) {
+            return;
         }
         if (request.getDiscount() == null || request.getDiscount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(400, "优惠值必须大于 0");
