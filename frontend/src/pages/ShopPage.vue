@@ -217,45 +217,35 @@
     <p v-if="!floors.length" class="empty-hint">暂无上架商品</p>
   </div>
 
-  <!-- ⑤ 运营栏目：均为后端真实数据 -->
-  <div class="home-channels">
-    <div class="channel" v-if="hotProducts.length">
+  <!-- ⑤ 运营栏目：4 个频道合并成一个标签区块。
+       原先 4 个频道各占一行（🔥热门/🆕新品/🤖猜你喜欢/👀在看），而全库在售商品只有 30 件、
+       楼层已经把它们全展示过一遍 → 同一批商品在首页被反复排列 4 遍，且每行 8 件配 6 列还会留空洞。
+       现在一次只显示一个标签的一行（横滑，见 .channel-row）→ 空洞在结构上不可能出现，页面也短了三行。 -->
+  <div v-if="activeChannelItems.length" class="home-channels">
+    <div class="channel">
       <div class="channel-head">
-        <h3>🔥 热门推荐</h3>
-        <button class="ghost mini" @click="loadHot">换一批</button>
+        <div class="channel-tabs">
+          <button
+            v-for="tab in channelTabs"
+            :key="tab.key"
+            class="channel-tab"
+            :class="{ on: tab.key === activeChannelKey }"
+            @click="activeChannelKey = tab.key"
+          >{{ tab.label }}</button>
+        </div>
+        <!-- 候选池不足两屏时按钮不渲染（如「新品上架」全库只有 5 件，换了也还是这 5 件） -->
+        <button v-if="channelRotatable(activeChannelKey)" class="ghost mini" @click="refreshActiveChannel">换一批</button>
       </div>
       <div class="channel-row">
-        <ProductCard v-for="p in hotProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
-      </div>
-    </div>
-
-    <div class="channel" v-if="newProducts.length">
-      <div class="channel-head">
-        <h3>🆕 新品上架</h3>
-        <button class="ghost mini" @click="loadNew">换一批</button>
-      </div>
-      <div class="channel-row">
-        <ProductCard v-for="p in newProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
-      </div>
-    </div>
-
-    <div class="channel" v-if="guessProducts.length">
-      <div class="channel-head">
-        <h3>🤖 猜你喜欢</h3>
-        <button class="ghost mini" @click="loadGuess">换一批</button>
-      </div>
-      <div class="channel-row">
-        <ProductCard v-for="p in guessProducts" :key="p.id" :product="p" mode="compact" :badges="true" @open="openProductDetail" />
-      </div>
-    </div>
-
-    <div class="channel" v-if="dwellRankProducts.length">
-      <div class="channel-head">
-        <h3>👀 大家都在看</h3>
-        <button class="ghost mini" @click="loadDwellRank">换一批</button>
-      </div>
-      <div class="channel-row">
-        <ProductCard v-for="p in dwellRankProducts" :key="p.productId" :product="{ id: p.productId, name: p.productName, coverUrl: p.coverUrl }" mode="compact" :extra="'浏览 ' + p.viewCount + ' 次 · 均 ' + p.avgSeconds + 's'" @open="openProductDetail({ id: p.productId })" />
+        <ProductCard
+          v-for="item in activeChannelItems"
+          :key="item.key"
+          :product="item.product"
+          mode="compact"
+          :badges="!!item.badges"
+          :extra="item.extra"
+          @open="openProductDetail(item.product)"
+        />
       </div>
     </div>
   </div>
@@ -298,7 +288,8 @@ export default {
   name: 'ShopPage',
   setup() {
     const ctx = inject('appCtx');
-    const { api, ref, computed, onMounted, watch, categories, filters, products, loadProducts, openProductDetail, chooseCategory } = ctx;
+    const { api, ref, computed, onMounted, watch, categories, filters, products, loadProducts, openProductDetail, chooseCategory,
+      hotProducts, newProducts, guessProducts, dwellRankProducts, rotateChannel, channelRotatable } = ctx;
     const route = useRoute();
 
     // 本页自建状态（不污染 App.vue）
@@ -607,6 +598,35 @@ export default {
       hoverCat.value = null;
     }
 
+    // ================= ⑤ 运营栏目：一个标签区块顶替原先的 4 个频道行 =================
+    // 标签顺序刻意保留原来的频道顺序（热门 → 新品 → 猜你喜欢 → 在看），只是不再各占一行。
+    const channelTabs = [
+      { key: 'hot', label: '🔥 热门推荐' },
+      { key: 'new', label: '🆕 新品上架' },
+      { key: 'guess', label: '🤖 猜你喜欢' },
+      { key: 'dwell', label: '👀 大家都在看' },
+    ];
+    const activeChannelKey = ref('hot');
+    // 各频道的数据形状不一致（在看榜是 productId/productName/viewCount/avgSeconds 的统计对象），
+    // 在这里统一成 ProductCard 要的 { product, extra, badges }，模板里就不用再分叉。
+    const activeChannelItems = computed(() => {
+      const plain = (list, badges) => (list || []).map((p) => ({ key: 'p' + p.id, product: p, badges: !!badges, extra: '' }));
+      if (activeChannelKey.value === 'new') return plain(newProducts.value);
+      if (activeChannelKey.value === 'guess') return plain(guessProducts.value, true);
+      if (activeChannelKey.value === 'dwell') {
+        return (dwellRankProducts.value || []).map((d) => ({
+          key: 'd' + d.productId,
+          product: { id: d.productId, name: d.productName, coverUrl: d.coverUrl },
+          badges: false,
+          extra: `浏览 ${d.viewCount} 次 · 均 ${d.avgSeconds}s`,
+        }));
+      }
+      return plain(hotProducts.value);
+    });
+    function refreshActiveChannel() {
+      rotateChannel(activeChannelKey.value);
+    }
+
     return {
       ...ctx,
       activities,
@@ -636,6 +656,10 @@ export default {
       closeCatSoon,
       cancelCatClose,
       closeCatNow,
+      channelTabs,
+      activeChannelKey,
+      activeChannelItems,
+      refreshActiveChannel,
       filterBrand,
       nextSlide,
       prevSlide,

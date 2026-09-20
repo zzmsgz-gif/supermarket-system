@@ -3299,6 +3299,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 .channel-head h3 {
@@ -3311,10 +3312,64 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   padding: 4px 12px;
   font-size: 12px;
 }
+/* 频道标签：4 个频道收成「标签 + 一行」，一次只显示一个。
+   ⚠️ 全局 button 规则会漏到这些小胶囊上（min-height:38px + 绿渐变 + 字重 700 + hover 光晕 + active 下移）
+   —— 单类选择器能压过它，但压不过"它没写、我也没写"的属性，所以下面这些必须逐条显式覆盖。 */
+.channel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.channel-tab {
+  min-height: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  background-image: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.channel-tab:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  background-image: none;
+  box-shadow: none;
+  color: var(--brand-dark);
+}
+.channel-tab:active { transform: none; }
+.channel-tab.on,
+.channel-tab.on:hover {
+  border-color: var(--brand);
+  background: var(--brand);
+  background-image: none;
+  color: #fff;
+}
+/* 单行横滑，而不是 auto-fill 网格：网格的列数随视口浮动，取数条数一旦不是列数的整数倍
+   末行就会留下空洞（原先 4 个频道 8 件配 6 列，右侧空 4 格）；横滑则在任何宽度都不可能出现空洞。
+   ⚠️ overflow-x 一旦不是 visible，另一轴的 visible 会被计算成 auto → 必须显式写 overflow-y:hidden，
+   否则会冒出一条多余的纵向滚动条；同时要用 padding 给卡片的 translateY(-2px) 与 34px 阴影留出空间，
+   再用负 margin 抵消，保证左边缘与其他区块对齐。 */
 .channel-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  display: flex;
   gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -12px;
+  padding: 14px 12px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+/* 6 件正好铺满一行（不出现横向滚动条）；窄屏时卡片不再压缩，改为横向滚动而不是折行留空洞 */
+.channel-row > * {
+  flex: 1 1 170px;
+  min-width: 170px;
+  max-width: 260px;
 }
 .channel-row .product-card {
   margin: 0;
