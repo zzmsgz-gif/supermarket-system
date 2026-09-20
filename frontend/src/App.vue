@@ -2,7 +2,7 @@
   <main class="app-shell">
     <div class="header-utility">
       <div class="header-utility-inner">
-        <div class="u-left">
+        <div class="u-left" v-if="noticeList.length">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5" rx="1"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
           <Transition name="notice-fade" mode="out-in">
             <span :key="rotatingNotice">{{ rotatingNotice }}</span>
@@ -619,6 +619,20 @@ async function mergeGuestCartToServer() {
     await loadCart();
   }
 }
+// 首页顶部「利益条」的促销文案：取自后台「公告管理」里 type=PROMOTION 的启用公告标题。
+// 不再硬编码 —— 硬编码会「后台改不了」，且文案容易与真实福利脱节（曾写着"立减 ¥20 送 3 张券"，
+// 而实际是注册发 1 张「满10减10」新人券）。
+const bandPromotions = ref([]);
+async function ensureBandPromotions() {
+  if (bandPromotions.value.length) return;
+  try {
+    const list = (await api.get('/announcements')) || [];
+    bandPromotions.value = list
+      .filter((a) => String(a.type || '').toUpperCase() === 'PROMOTION')
+      .map((a) => String(a.title || '').trim())
+      .filter(Boolean);
+  } catch { /* 非关键 */ }
+}
 // 活动规则缓存拉取（凑单进度条用；公开接口，游客也可调）
 async function ensureActiveActivities() {
   if (activeActivities.value.length) return;
@@ -640,14 +654,15 @@ function activityNoticeText(a) {
   if (/满|折|减/.test(name)) return name;
   return name ? `${name} · ${slogan}` : slogan;
 }
-// 公告带轮播：多个营销活动 + 新人福利轮流展示（4s 一换）
+// 公告带轮播：多个营销活动 + 促销文案（含新人福利）轮流展示（4s 一换）
 const noticeIndex = ref(0);
 let noticeTimer = null;
 const noticeList = computed(() => {
   const items = (activeActivities.value || [])
     .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
     .map((a) => `限时活动 ${activityNoticeText(a)}`);
-  items.push('新人首单立减 ¥20，再送 3 张满减券');
+  // 促销文案来自后台「公告管理」中 type=促销 的启用公告：可改、可停用、可加新的一条
+  items.push(...(bandPromotions.value || []));
   return items;
 });
 const rotatingNotice = computed(() => noticeList.value[noticeIndex.value % noticeList.value.length] || '');
@@ -2990,7 +3005,7 @@ async function refreshForSession() {
 
 watch(view, async (next) => {
   ensureAllowedView();
-  if (next === 'cart') { await loadCart(); await ensureActiveActivities(); }
+  if (next === 'cart') { await loadCart(); await ensureActiveActivities(); await ensureBandPromotions(); }
   if (next === 'checkout') { await loadWallet(); await loadAddresses(); await loadMyCoupons(); await loadUsableCoupons(); usePoints.value = false; pointsToUse.value = 0; resetFulfillment(); await Promise.all([loadStores(), loadDeliverySlots()]); }
   if (next === 'points') { await loadMemberProfile(); await loadMemberLedger(); }
   if (next === 'favorites') { await loadFavorites(); await loadPriceAlerts(); await loadAlertUnread(); }
@@ -3026,6 +3041,7 @@ onMounted(async () => {
     if (session.user) await refreshForSession();
     else await refreshGuestCartView(); // 游客：水合本地购物车（角标/购物车页）
     await ensureActiveActivities();
+    await ensureBandPromotions();
     syncRoute();
   });
 
