@@ -277,7 +277,6 @@
 
 <script>
 import { inject, onUnmounted, watch, nextTick } from 'vue';
-import { useRoute } from 'vue-router';
 
 const CAT_EMOJI = {
   生鲜食品: '🥬', 时令蔬菜: '🥬', 时令水果: '🍓', 肉禽蛋品: '🥩', 海鲜水产: '🦐',
@@ -290,7 +289,6 @@ export default {
     const ctx = inject('appCtx');
     const { api, ref, computed, onMounted, watch, categories, filters, products, loadProducts, openProductDetail, chooseCategory,
       hotProducts, newProducts, guessProducts, dwellRankProducts, rotateChannel, channelRotatable } = ctx;
-    const route = useRoute();
 
     // 本页自建状态（不污染 App.vue）
     const activities = ref([]);
@@ -486,24 +484,15 @@ export default {
       allProducts.value = Array.isArray(data?.items) ? data.items : [];
     }
 
-    // 头部搜索：从路由 query.kw 读取关键词并应用到筛选（挂载时 + 路由变化时）
-    function applyQueryKeyword() {
-      const kw = (route.query.kw || '').toString().trim();
-      if (!kw) return;
-      if (kw === (filters.keyword || '')) return;
-      filters.keyword = kw;
-      loadProducts();
-    }
+    // 头部搜索 / 分类 / 价格 / 品牌 / 排序这些筛选状态现在统一由 App.vue 与 URL query 双向同步
+    // （syncShopQuery / applyShopQueryFromRoute），本页不再自己监听 route.query —— 同一份状态两处管必出分歧。
 
     onMounted(() => {
       loadBanners();
       loadActivities();
       loadAllProducts();
       loadAnnouncements();
-      applyQueryKeyword();
     });
-
-    watch(() => route.query.kw, applyQueryKeyword);
 
     onUnmounted(() => {
       clearTimer();
