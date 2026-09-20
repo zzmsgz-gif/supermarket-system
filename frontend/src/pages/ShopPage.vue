@@ -2,21 +2,49 @@
 <section class="shop-home">
 
   <!-- 头部 hero：左分类 / 中轮播 / 右公告（均为后端真实数据） -->
-  <div class="hero">
-    <aside class="hero-cats">
-      <button class="hero-cat" :class="{ on: !filters.categoryId }" @click="chooseCategory('')">
+  <div class="hero" @mouseleave="closeCatNow">
+    <aside class="hero-cats" @mouseleave="closeCatSoon">
+      <button class="hero-cat" :class="{ on: !filters.categoryId }" @click="chooseCategory('')" @mouseenter="openCatSoon(null)">
         <span class="cat-emoji">🛒</span>全部商品
       </button>
       <button
         v-for="category in categories"
         :key="category.id"
         class="hero-cat"
-        :class="{ on: String(filters.categoryId) === String(category.id) }"
+        :class="{ on: String(filters.categoryId) === String(category.id), 'on-panel': hoverCat && String(hoverCat.id) === String(category.id) }"
         @click="chooseCategory(category.id)"
+        @mouseenter="openCatSoon(category)"
+        @focus="openCatNow(category)"
+        @blur="closeCatSoon"
       >
         <span class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
       </button>
     </aside>
+
+    <!-- 分类 hover 预览面板：盖住轮播区、不压暗页面（只是浏览预览，不是模态）。
+         里面只列商品名 —— 图文卡片交给下方「楼层」，两者分工不重复。 -->
+    <div
+      v-if="hoverCat && hoverCatItems.length"
+      class="hero-cat-panel"
+      @mouseenter="cancelCatClose"
+      @mouseleave="closeCatSoon"
+    >
+      <div class="hcp-head">
+        <span class="cat-emoji">{{ catEmoji(hoverCat.name) }}</span>
+        <strong>{{ hoverCat.name }}</strong>
+        <span class="hcp-count">{{ hoverCatItems.length }} 件在售</span>
+      </div>
+      <div class="hcp-list">
+        <button
+          v-for="p in hoverCatItems.slice(0, 16)"
+          :key="p.id"
+          type="button"
+          class="hcp-item"
+          @click="openProductDetail(p)"
+        >{{ p.name }}</button>
+      </div>
+      <button type="button" class="hcp-all" @click="chooseCategory(hoverCat.id)">查看全部 {{ hoverCatItems.length }} 件 ›</button>
+    </div>
 
     <!-- 无限循环轮播：渲染序列首尾各插一张克隆图，使「最后一张 → 第一张」也保持向左连续滑动 -->
     <div class="hero-carousel" @mouseenter="pauseAuto" @mouseleave="resumeAuto">
@@ -489,6 +517,7 @@ export default {
     onUnmounted(() => {
       clearTimer();
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
+      clearCatTimers();
     });
 
     // 按真实分类分组的楼层，只保留有商品的分类
@@ -534,6 +563,50 @@ export default {
       await ctx.loadProducts();
     }
 
+    // 左侧分类栏的 hover 预览面板（仿京东/淘宝的分类导航）：
+    //   · hover 只做「预览」，点击分类仍走 chooseCategory（筛选/切网格）—— 两个动作不抢同一件事
+    //   · 进出各留一点迟滞，避免鼠标掠过分类栏时面板闪烁
+    //   · 面板里只列商品名（不放价格、不放卡片）：与下方「楼层」的图文卡片分工 —— 这里用于快速定位单品
+    //   · 只在「有 hover 能力且 ≥901px」时才显示（见 styles.css）—— 触屏没有 hover，保持原来的点击行为
+    const hoverCat = ref(null);
+    let catOpenTimer = null;
+    let catCloseTimer = null;
+    const CAT_OPEN_DELAY = 120;
+    // 关闭留 180ms（略大于常见值）：分类栏与面板之间有 16px 网格间隙，
+    // 鼠标从按钮横穿到面板时不能让面板先闪没了 —— 面板自己的 mouseenter 会取消这次关闭。
+    const CAT_CLOSE_DELAY = 180;
+
+    const hoverCatItems = computed(() => {
+      const cat = hoverCat.value;
+      if (!cat) return [];
+      return (allProducts.value || []).filter((p) => String(p.categoryId) === String(cat.id));
+    });
+
+    function clearCatTimers() {
+      if (catOpenTimer) { clearTimeout(catOpenTimer); catOpenTimer = null; }
+      if (catCloseTimer) { clearTimeout(catCloseTimer); catCloseTimer = null; }
+    }
+    function openCatSoon(category) {
+      clearCatTimers();
+      if (!category) { hoverCat.value = null; return; }
+      catOpenTimer = setTimeout(() => { hoverCat.value = category; catOpenTimer = null; }, CAT_OPEN_DELAY);
+    }
+    function openCatNow(category) {
+      clearCatTimers();
+      hoverCat.value = category || null;
+    }
+    function closeCatSoon() {
+      clearCatTimers();
+      catCloseTimer = setTimeout(() => { hoverCat.value = null; catCloseTimer = null; }, CAT_CLOSE_DELAY);
+    }
+    function cancelCatClose() {
+      if (catCloseTimer) { clearTimeout(catCloseTimer); catCloseTimer = null; }
+    }
+    function closeCatNow() {
+      clearCatTimers();
+      hoverCat.value = null;
+    }
+
     return {
       ...ctx,
       activities,
@@ -556,6 +629,13 @@ export default {
       isFiltering,
       activityText,
       catEmoji,
+      hoverCat,
+      hoverCatItems,
+      openCatSoon,
+      openCatNow,
+      closeCatSoon,
+      cancelCatClose,
+      closeCatNow,
       filterBrand,
       nextSlide,
       prevSlide,

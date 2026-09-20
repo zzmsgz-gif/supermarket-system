@@ -3714,6 +3714,7 @@ button.mini.danger:hover {
 /* ① 营销活动条（真实活动，无活动则整块不渲染） */
 /* 头部 hero：左分类 / 中轮播 / 右公告 */
 .hero {
+  position: relative;   /* 分类 hover 面板的定位基准（绝对定位到分类栏右侧、盖住轮播区） */
   display: grid;
   grid-template-columns: 200px 1fr 290px;
   gap: 16px;
@@ -3752,6 +3753,98 @@ button.mini.danger:hover {
 .hero-cat:hover { background: var(--brand-soft); color: var(--brand); }
 .hero-cat.on { background: var(--brand); color: #fff; }
 .hero-cat .cat-emoji { font-size: 16px; }
+
+/* 分类 hover 预览面板 —— 定位在「分类栏右侧 → 公告栏左侧」之间，正好盖住轮播区。
+   刻意不加遮罩：它只是浏览预览、不是模态；压暗整页会在鼠标掠过分类栏时闪一下。
+   也刻意不放商品卡：图文卡片由下方「楼层」承担，这里只做「快速定位单品」的名称索引，两者不重复。 */
+.hero-cat-panel {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 216px;   /* 200px 分类栏 + 16px gap */
+  right: 306px;  /* 290px 公告栏 + 16px gap */
+  z-index: 6;
+  flex-direction: column;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+/* 只在「有 hover 能力且 ≥901px」时出现：≤900px 时 .hero 已变单列，绝对定位会错位；
+   触屏没有 hover，保持原来的点击筛选行为。 */
+@media (hover: hover) and (min-width: 901px) {
+  .hero-cat-panel { display: flex; }
+}
+/* 面板展开期间，来源分类保持高亮 —— 否则鼠标移进面板后就不知道这是哪个分类的内容了 */
+.hero-cat.on-panel:not(.on) { background: var(--brand-soft); color: var(--brand); }
+.hcp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.hcp-head strong { font-size: 15px; font-weight: 600; }
+.hcp-head .cat-emoji { font-size: 16px; }
+.hcp-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.hcp-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 12px;
+  align-content: start;
+  padding: 10px 0;
+}
+/* ⚠️ 全局 button 规则会漏到这些小按钮上（min-height:38px + 绿渐变 + hover 光晕 + active 下移）。
+   单类选择器能压过它，但 min-height 优先于 height → 必须显式写 min-height:0，并逐个覆盖背景/圆角/字重。 */
+.hcp-item,
+.hcp-all {
+  min-height: 0;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+.hcp-item {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hcp-item:hover {
+  background: var(--brand-soft);
+  background-image: none;
+  box-shadow: none;
+  color: var(--brand);
+}
+.hcp-item:active { transform: none; }
+.hcp-all {
+  padding: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+.hcp-all:hover {
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: var(--brand-dark);
+}
+.hcp-all:active { transform: none; }
 
 .hero-carousel {
   position: relative;
