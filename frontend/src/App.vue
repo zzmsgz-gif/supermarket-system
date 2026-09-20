@@ -2109,18 +2109,19 @@ function sameShopQuery(a, b) {
   return SHOP_FILTER_KEYS.every((k) => String(a[k] ?? '') === String(b[k] ?? ''));
 }
 
-// filters → URL。只在「筛选的有无发生变化」时 push（新增一条历史），这样：
-//   楼层 → push /shop?category=3 →（改排序 replace 不占历史）→ 返回键 = 退回楼层视图 ✓
-//   清空筛选 → push /shop → 返回键 = 退回刚才那个筛选结果 ✓
-// 只在筛选值内部变化时用 replace，避免改一次排序就多一条历史。
+// filters → URL。push / replace 的取舍：
+//   push —— ① 筛选的"有无"发生变化（楼层 → 分类、清空筛选），或 ② **分类变了**
+//           （「搜牛奶 → 点分类酒水饮料」、「分类A → 分类B」按返回键都应退回上一步，而不是直接跳回楼层）
+//   replace —— 其余（改排序/价格/品牌），避免改一次排序就多一条历史
 function syncShopQuery() {
   if (route.name !== 'shop') return;              // 别在别的页面把用户拽回 /shop
   const next = filterQueryFromFilters();
   if (sameShopQuery(next, route.query)) return;   // 已是这个 URL → 不重复导航（也避免与 watcher 打环）
   const hadFilters = SHOP_FILTER_KEYS.some((k) => route.query[k]);
   const hasFilters = SHOP_FILTER_KEYS.some((k) => next[k]);
+  const categoryChanged = String(next.category ?? '') !== String(route.query.category ?? '');
   const target = { name: 'shop', query: next };
-  if (hadFilters !== hasFilters) router.push(target); else router.replace(target);
+  if (hadFilters !== hasFilters || categoryChanged) router.push(target); else router.replace(target);
 }
 
 // URL → filters（刷新、分享链接、前进/后退都靠它）。返回 true 表示 filters 真的变了（调用方据此决定是否重拉）。
@@ -2172,8 +2173,17 @@ async function loadProducts() {
   syncShopQuery();   // 所有筛选变更都从这里汇集出口，一处同步 URL 即可
 }
 
+// 点分类 = 「导航」，不是「在当前结果里再收窄」→ 先把搜索类条件（关键词/品牌/价格）清掉。
+// ⚠️ 不清就会叠加成 0 条：实测「先搜牛奶 → 再点酒水饮料」= `?category=2&kw=牛奶` → 共 0 件 +
+// 「没有符合条件的商品，换个条件试试」，用户看到的就是"点了分类不显示商品"。
+// （价格框是 v-model 直连 filters 的，随手输个数字不回车也会被带进去。）
+// 排序刻意保留：它是展示偏好，不是筛选条件。
 async function chooseCategory(categoryId) {
   filters.categoryId = categoryId;
+  filters.keyword = '';
+  filters.brand = '';
+  filters.minPrice = '';
+  filters.maxPrice = '';
   await loadProducts();
   await scrollToResultsIfNeeded();
 }
