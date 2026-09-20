@@ -16,7 +16,7 @@ public class AnnouncementRequest {
     @Size(max = 500, message = "内容最长 500 字")
     private String content;
 
-    /** NOTICE | ACTIVITY | SERVICE */
+    /** NOTICE | PROMOTION | ACTIVITY | SERVICE | WARNING（PROMOTION 的标题会出现在首页顶部利益条） */
     private String type = "NOTICE";
 
     private Integer sortOrder = 0;

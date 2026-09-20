@@ -454,7 +454,8 @@ export default {
     }, { immediate: true });
 
     function noticeTag(type) {
-      if (type === 'PROMOTION' || type === 'ACTIVITY') return '活动';
+      if (type === 'PROMOTION') return '促销';
+      if (type === 'ACTIVITY') return '活动';
       if (type === 'WARNING') return '提醒';
       return '公告';
     }

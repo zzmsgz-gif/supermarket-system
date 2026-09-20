@@ -1109,7 +1109,7 @@
             <div v-if="announcementFormOpen" class="form-card admin-form-card">
               <div class="form-title">
                 <span>{{ announcementForm.id ? '编辑公告' : '发布公告' }}</span>
-                <small>启用的公告按排序值从小到大展示在前台「商城公告」栏</small>
+                <small>启用的公告展示在前台「商城公告」栏；<b>类型选「促销」的标题还会滚动出现在首页顶部利益条</b>（如新人福利文案），可在此随时改文改停用</small>
               </div>
               <div class="admin-form-grid">
                 <label class="field span-all">
@@ -1120,6 +1120,7 @@
                   <span class="field-label">类型</span>
                   <select v-model="announcementForm.type">
                     <option value="NOTICE">公告</option>
+                    <option value="PROMOTION">促销</option>
                     <option value="ACTIVITY">活动</option>
                     <option value="SERVICE">服务</option>
                     <option value="WARNING">提醒</option>
@@ -2064,7 +2065,7 @@ const adminMenuItems = computed(() => [
   { key: 'coupons', label: '优惠券管理', desc: '创建满减券、发放与停用', group: '管理', badge: (adminCoupons.total || 0) || '' },
   { key: 'activities', label: '营销活动', desc: '创建满减/折扣活动，按全场、类目或商品精准投放', group: '管理', badge: (adminActivities.total || 0) || '' },
   { key: 'flashSales', label: '限时秒杀', desc: '按商品开秒杀场次：秒杀价、独立名额、每人限购与档期', group: '管理', badge: adminFlashSales.value.filter((f) => f.state === 'RUNNING').length || '' },
-  { key: 'notices', label: '公告管理', desc: '发布商城公告：置顶排序、类型分类、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
+  { key: 'notices', label: '公告管理', desc: '发布商城公告：类型分类（促销类标题会进首页顶栏）、排序、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
@@ -2105,6 +2106,7 @@ const dashboardStats = computed(() => {
 
 function noticeTypeLabel(type) {
   if (type === 'ACTIVITY') return '活动';
+  if (type === 'PROMOTION') return '促销';
   if (type === 'SERVICE') return '服务';
   if (type === 'WARNING') return '提醒';
   return '公告';
