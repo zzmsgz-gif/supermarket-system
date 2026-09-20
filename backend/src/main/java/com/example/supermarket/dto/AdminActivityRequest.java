@@ -25,7 +25,11 @@ public class AdminActivityRequest {
     @DecimalMin(value = "0.0", inclusive = true, message = "门槛不能为负")
     private BigDecimal threshold;
 
-    @NotNull(message = "优惠值不能为空")
+    /**
+     * 优惠值：满减=减免金额，折扣=折扣率。
+     * <p>⚠️ 刻意不加 {@code @NotNull} —— 纯文案活动（{@code type=PROMOTION}）没有优惠值，
+     * 「必填」与否必须结合 type 判断，统一放在 {@code ActivityService.validate} 里按类型校验。
+     */
     private BigDecimal discount;
 
     @NotNull(message = "开始时间不能为空")

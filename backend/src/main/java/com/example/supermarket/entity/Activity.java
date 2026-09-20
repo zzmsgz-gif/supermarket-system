@@ -15,6 +15,14 @@ public class Activity {
 
     public static final String TYPE_FULL_REDUCTION = "FULL_REDUCTION";
     public static final String TYPE_DISCOUNT = "DISCOUNT";
+    /**
+     * 纯文案活动：只占一个「展示位」，不参与计价。
+     * <p>{@code name} 即为首页顶部利益条要滚动展示的那句话（如新人福利）；
+     * {@code threshold} / {@code discount} 一律为 NULL，由 {@code ActivityService} 落库时强制清空。
+     * <p>之所以不参与计价：{@code computeDiscount} 对未知 type 直接返回 0，所以它永远不会被选为
+     * 「最优活动」。这样运营就能在同一个「营销活动管理」里既管满减/折扣、也管这类纯宣传文案。
+     */
+    public static final String TYPE_PROMOTION = "PROMOTION";
     public static final String SCOPE_ALL = "ALL";
     public static final String SCOPE_CATEGORY = "CATEGORY";
     public static final String SCOPE_PRODUCT = "PRODUCT";

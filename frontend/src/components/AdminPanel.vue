@@ -988,9 +988,10 @@
                   <select v-model="activityForm.type">
                     <option value="FULL_REDUCTION">满减</option>
                     <option value="DISCOUNT">折扣</option>
+                    <option value="PROMOTION">促销文案（首页顶栏滚动展示，不参与计价）</option>
                   </select>
                 </label>
-                <label class="field">
+                <label v-if="activityForm.type !== 'PROMOTION'" class="field">
                   <span class="field-label">作用范围 <i class="req">*</i></span>
                   <select v-model="activityForm.scope" @change="onActivityScopeChange">
                     <option value="ALL">全场</option>
@@ -1012,11 +1013,11 @@
                     <option v-for="p in activityProducts" :key="p.id" :value="p.id">{{ p.name }}</option>
                   </select>
                 </label>
-                <label class="field">
+                <label v-if="activityForm.type !== 'PROMOTION'" class="field">
                   <span class="field-label">{{ activityForm.type === 'DISCOUNT' ? '最低消费（元）' : '满减门槛（元）' }} <i class="req">*</i></span>
                   <input v-model.number="activityForm.threshold" type="number" step="0.01" min="0" :placeholder="activityForm.type === 'DISCOUNT' ? '可选，0 表示无门槛' : '满多少可用，如 200.00'" />
                 </label>
-                <label class="field">
+                <label v-if="activityForm.type !== 'PROMOTION'" class="field">
                   <span class="field-label">{{ activityForm.type === 'DISCOUNT' ? '折扣率（0.9=9折）' : '优惠金额（元）' }} <i class="req">*</i></span>
                   <input v-model.number="activityForm.discount" type="number" step="0.01" min="0" :placeholder="activityForm.type === 'DISCOUNT' ? '0.01~0.99，如 0.90' : '立减多少，如 30.00'" />
                 </label>
@@ -2621,7 +2622,9 @@ function fillActivityPeriod(days) {
 }
 
 function activityTypeLabel(type) {
-  return type === 'DISCOUNT' ? '折扣' : '满减';
+  if (type === 'DISCOUNT') return '折扣';
+  if (type === 'PROMOTION') return '促销文案';
+  return '满减';
 }
 
 function activityScopeLabel(scope) {
@@ -2631,6 +2634,8 @@ function activityScopeLabel(scope) {
 }
 
 function activityDiscountLabel(act) {
+  // 纯文案活动：只占首页顶栏一个展示位，没有门槛/优惠值
+  if (act.type === 'PROMOTION') return '首页顶栏文案（不参与计价）';
   const threshold = Number(act.threshold || 0);
   if (act.type === 'DISCOUNT') {
     const rate = Number(act.discount || 0);
@@ -2667,26 +2672,30 @@ function editActivity(act) {
 }
 
 async function saveActivity() {
+  const promotion = activityForm.type === 'PROMOTION';
   if (!activityForm.name.trim()) { fail('请填写活动名称'); return; }
   if (!activityForm.startTime || !activityForm.endTime) { fail('请选择有效起止时间'); return; }
   if (new Date(activityForm.startTime) >= new Date(activityForm.endTime)) { fail('结束时间必须晚于开始时间'); return; }
-  if (activityForm.scope === 'CATEGORY' && !activityForm.categoryId) { fail('请选择适用类目'); return; }
-  if (activityForm.scope === 'PRODUCT' && !activityForm.productId) { fail('请选择适用商品'); return; }
-  if (activityForm.type === 'FULL_REDUCTION') {
-    if (!(activityForm.threshold > 0)) { fail('满减门槛必须大于 0'); return; }
-    if (!(activityForm.discount > 0)) { fail('优惠金额必须大于 0'); return; }
-    if (Number(activityForm.discount) > Number(activityForm.threshold)) { fail('优惠金额不能超过门槛金额'); return; }
-  } else {
-    if (!(activityForm.discount > 0) || !(activityForm.discount < 1)) { fail('折扣率需在 0~1 之间，例如 0.9 表示 9 折'); return; }
+  if (!promotion && activityForm.scope === 'CATEGORY' && !activityForm.categoryId) { fail('请选择适用类目'); return; }
+  if (!promotion && activityForm.scope === 'PRODUCT' && !activityForm.productId) { fail('请选择适用商品'); return; }
+  // 纯文案活动没有门槛/优惠值（不参与计价），跳过这些校验
+  if (!promotion) {
+    if (activityForm.type === 'FULL_REDUCTION') {
+      if (!(activityForm.threshold > 0)) { fail('满减门槛必须大于 0'); return; }
+      if (!(activityForm.discount > 0)) { fail('优惠金额必须大于 0'); return; }
+      if (Number(activityForm.discount) > Number(activityForm.threshold)) { fail('优惠金额不能超过门槛金额'); return; }
+    } else {
+      if (!(activityForm.discount > 0) || !(activityForm.discount < 1)) { fail('折扣率需在 0~1 之间，例如 0.9 表示 9 折'); return; }
+    }
   }
   const payload = {
     name: activityForm.name.trim(),
     type: activityForm.type,
-    scope: activityForm.scope,
-    categoryId: activityForm.scope === 'CATEGORY' ? Number(activityForm.categoryId) : null,
-    productId: activityForm.scope === 'PRODUCT' ? Number(activityForm.productId) : null,
-    threshold: Number(activityForm.threshold || 0),
-    discount: Number(activityForm.discount),
+    scope: promotion ? 'ALL' : activityForm.scope,
+    categoryId: !promotion && activityForm.scope === 'CATEGORY' ? Number(activityForm.categoryId) : null,
+    productId: !promotion && activityForm.scope === 'PRODUCT' ? Number(activityForm.productId) : null,
+    threshold: promotion ? null : Number(activityForm.threshold || 0),
+    discount: promotion ? null : Number(activityForm.discount),
     startTime: activityForm.startTime,
     endTime: activityForm.endTime,
     priority: Number(activityForm.priority || 0),
