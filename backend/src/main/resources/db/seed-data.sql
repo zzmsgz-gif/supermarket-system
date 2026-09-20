@@ -30,3 +30,15 @@ INSERT IGNORE INTO `announcement` (id, title, content, type, sort_order, enabled
 -- title/content/type/enabled/sort_order 都会被后台「公告管理」改，若每次启动用种子值回写，
 -- 就会出现"后台改完文案，一重启就被静默重置"的假功能。与 legalDocService.ensureDefaults 同思路。
 -- （商品/活动的 stock、sales、price 等交易性字段仍照旧自愈重置，见上面几条语句。）
+
+-- 首页头部「热搜」词条：默认值与原先前端硬编码那 5 条一一对应
+-- （原写死的是「显示『纯牛奶』、点下去搜『牛奶』」——展示文案与搜索词不同，所以 label 与 keyword 是两个字段）。
+-- ⚠️ 同样必须 INSERT IGNORE：这些词会被后台「热搜词管理」改/停用/软删，用 ON DUPLICATE KEY UPDATE 回写
+-- 就会变成"后台改完一重启就被重置"的假功能（公告那条踩过一次）。
+INSERT IGNORE INTO `hot_search` (id, keyword, label, sort_order, enabled, deleted, created_at, updated_at) VALUES
+(1,'牛奶','纯牛奶',1,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00'),
+(2,'大米','五常大米',2,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00'),
+(3,'食用油',NULL,3,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00'),
+(4,'抽纸',NULL,4,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00'),
+(5,'鸡蛋',NULL,5,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00')
+;

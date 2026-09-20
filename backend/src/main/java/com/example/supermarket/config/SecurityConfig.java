@@ -53,6 +53,8 @@ public class SecurityConfig {
                         // 限时秒杀 / 协议与隐私正文：游客也要能看到
                         .requestMatchers(HttpMethod.GET, "/flash-sales", "/flash-sales/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/legal-docs", "/legal-docs/**").permitAll()
+                        // 首页头部「热搜」词条：游客也要能看到（原先这几条是前端写死的，现已后台可管）
+                        .requestMatchers(HttpMethod.GET, "/hot-searches", "/hot-searches/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/dwell", "/dwell/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/dwell").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/index.html", "/swagger-ui/**",

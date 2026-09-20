@@ -1170,6 +1170,64 @@
             </template>
           </div>
 
+          <div v-if="adminMenu === 'hotSearches'" class="data-panel">
+            <div class="toolbar">
+              <button @click="openHotSearchForm(null)">新增热搜词</button>
+              <span v-if="adminHotSearches.length" class="tag muted">共 {{ adminHotSearches.length }} 条</span>
+            </div>
+
+            <div v-if="hotSearchFormOpen" class="form-card admin-form-card">
+              <div class="form-title">
+                <span>{{ hotSearchForm.id ? '编辑热搜词' : '新增热搜词' }}</span>
+                <small>这些词显示在首页头部搜索框下面的「热搜」那一排，<b>点击即按「搜索词」跳转搜索</b>；
+                  「展示文案」留空就用搜索词本身（两者可以不同，例如显示「纯牛奶」而实际搜「牛奶」）</small>
+              </div>
+              <div class="admin-form-grid">
+                <label class="field">
+                  <span class="field-label">搜索词 <i class="req">*</i></span>
+                  <input v-model="hotSearchForm.keyword" maxlength="30" placeholder="如：牛奶（点一下就是搜它）" />
+                </label>
+                <label class="field">
+                  <span class="field-label">展示文案</span>
+                  <input v-model="hotSearchForm.label" maxlength="30" placeholder="可留空；如显示「纯牛奶」" />
+                </label>
+                <label class="field">
+                  <span class="field-label">排序值</span>
+                  <input v-model.number="hotSearchForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
+                </label>
+                <div class="field">
+                  <span class="field-label">是否启用</span>
+                  <label class="check-line"><input type="checkbox" v-model="hotSearchForm.enabled" /> 启用（前台可见）</label>
+                </div>
+              </div>
+              <div class="admin-form-foot">
+                <button class="ghost" @click="closeHotSearchForm">取消</button>
+                <button @click="saveHotSearch">保存</button>
+              </div>
+            </div>
+
+            <template v-else>
+              <div class="admin-cards" v-if="adminHotSearches.length">
+                <div v-for="h in adminHotSearches" :key="h.id" class="admin-card">
+                  <span class="tag">{{ h.label }}</span>
+                  <div class="card-info">
+                    <p class="card-title"><span class="card-title-text">点击后搜索「{{ h.keyword }}」</span></p>
+                    <p class="card-meta">
+                      <span>排序 {{ h.sortOrder }} · 越小越靠前</span>
+                      <span :class="Number(h.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(h.enabled) === 1 ? '启用中' : '已停用' }}</span>
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghost" @click="openHotSearchForm(h)">编辑</button>
+                    <button class="ghost" @click="toggleHotSearch(h)">{{ Number(h.enabled) === 1 ? '停用' : '启用' }}</button>
+                    <button class="ghost danger" @click="deleteHotSearch(h)">删除</button>
+                  </div>
+                </div>
+              </div>
+              <empty-state v-else icon="star" text="还没有热搜词，点上方「新增热搜词」加一条（全部停用或删空时，前台那一排会整块隐藏）" />
+            </template>
+          </div>
+
           <div v-if="adminMenu === 'banners'" class="data-panel">
             <div class="toolbar">
               <button @click="openBannerForm(null)">新建轮播位</button>
@@ -1601,7 +1659,7 @@ const props = defineProps({
 const isAdmin = { value: true };
 const view = toRef(props, 'view');
 const categories = toRef(props, 'categories');
-const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, } = props.adminCtx;
+const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, } = props.adminCtx;
 
 // 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
 const MEMBER_LEVEL_NAMES = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
@@ -2067,6 +2125,7 @@ const adminMenuItems = computed(() => [
   { key: 'activities', label: '营销活动', desc: '创建满减/折扣活动，按全场、类目或商品精准投放', group: '管理', badge: (adminActivities.total || 0) || '' },
   { key: 'flashSales', label: '限时秒杀', desc: '按商品开秒杀场次：秒杀价、独立名额、每人限购与档期', group: '管理', badge: adminFlashSales.value.filter((f) => f.state === 'RUNNING').length || '' },
   { key: 'notices', label: '公告管理', desc: '发布商城公告：类型分类（促销类标题会进首页顶栏）、排序、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
+  { key: 'hotSearches', label: '热搜词', desc: '维护首页头部搜索框下方的「热搜」那排词：搜索词、展示文案、排序与启停（点击即跳转搜索）', group: '管理', badge: adminHotSearches.value.length || '' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
@@ -3119,6 +3178,7 @@ const adminMenuLoaders = {
   activities: () => loadAdminActivities(),
   flashSales: () => loadAdminFlashSales(),
   notices: () => loadAdminAnnouncements(),
+  hotSearches: () => loadAdminHotSearches(),
   stores: () => loadAdminStores(),
   banners: () => loadAdminBanners(),
   users: () => loadAdminUsers(),
