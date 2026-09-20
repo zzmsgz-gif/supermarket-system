@@ -3755,10 +3755,24 @@ button.mini.danger:hover {
 .hero-cat .cat-emoji { font-size: 16px; }
 
 /* 分类 hover 预览面板 —— 定位在「分类栏右侧 → 公告栏左侧」之间，正好盖住轮播区。
-   半透明磨砂（不是不透明白底）：轮播图仍能透出来，首页主视觉不会被一块白板吃掉。
+   深色磨砂玻璃（不是不透明白底，也不是白玻璃）：白底会把首页主视觉整块吃掉；
+   白玻璃则会被背后的 banner 染色（橙色图 → 面板泛橙），且换成深色大图时文字就读不清了。
+   深色玻璃上的白字不挑底图 —— 浅底深底都清楚，这是选它而不是白玻璃的主要理由。
+   底色取项目既有的 --ink（#0f1721），与全站色板同一套。
+   ⚠️ backdrop-filter 里刻意写了 saturate(0.75)（<1 是降饱和）：只剩约 28% 的透光，
+   若这层透光还是高饱和的橙，面板会被染成暗红棕、看着「不够黑」；降饱和后透出来的是中性灰调，
+   既保住「能看见底图」又不被底图带偏色。
    也刻意不加遮罩：它只是浏览预览、不是模态；压暗整页会在鼠标掠过分类栏时闪一下。
    也刻意不放商品卡：图文卡片由下方「楼层」承担，这里只做「快速定位单品」的名称索引，两者不重复。 */
 .hero-cat-panel {
+  /* 面板专用的玻璃色板 —— 想调透明度/深浅只需要改这里 */
+  --glass-bg: rgba(15, 23, 33, 0.72);
+  --glass-ink: #f2f6f8;
+  --glass-ink-soft: rgba(255, 255, 255, 0.6);
+  --glass-line: rgba(255, 255, 255, 0.14);
+  --glass-accent: #5fe0ad;        /* 品牌绿在深底上压暗后不可读，提亮一档 */
+  --glass-accent-hover: #8ff0c8;
+
   display: none;
   position: absolute;
   top: 0;
@@ -3768,16 +3782,17 @@ button.mini.danger:hover {
   z-index: 6;
   flex-direction: column;
   padding: 14px 16px;
-  border: 1px solid rgba(15, 23, 33, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.68);
-  -webkit-backdrop-filter: blur(16px) saturate(1.25);
-  backdrop-filter: blur(16px) saturate(1.25);
-  box-shadow: var(--shadow);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(16px) saturate(0.75);
+  backdrop-filter: blur(16px) saturate(0.75);
+  box-shadow: 0 18px 40px rgba(15, 23, 33, 0.3);
+  color: var(--glass-ink);
 }
-/* 兜底：浏览器不支持 backdrop-filter 时，仍靠上面的 rgba 保持半透明（文字可读性由 0.68 的白色保证） */
+/* 兜底：浏览器不支持 backdrop-filter 时无法靠模糊保住可读性 → 直接把底压深一档 */
 @supports not (backdrop-filter: blur(1px)) {
-  .hero-cat-panel { background: rgba(255, 255, 255, 0.86); }
+  .hero-cat-panel { background: rgba(15, 23, 33, 0.9); }
 }
 /* 只在「有 hover 能力且 ≥901px」时出现：≤900px 时 .hero 已变单列，绝对定位会错位；
    触屏没有 hover，保持原来的点击筛选行为。 */
@@ -3791,11 +3806,11 @@ button.mini.danger:hover {
   align-items: center;
   gap: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(15, 23, 33, 0.1);
+  border-bottom: 1px solid var(--glass-line);
 }
-.hcp-head strong { font-size: 15px; font-weight: 600; }
+.hcp-head strong { font-size: 15px; font-weight: 600; color: #fff; }
 .hcp-head .cat-emoji { font-size: 16px; }
-.hcp-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.hcp-count { margin-left: auto; font-size: 12px; color: var(--glass-ink-soft); }
 .hcp-list {
   flex: 1;
   min-height: 0;
@@ -3805,6 +3820,8 @@ button.mini.danger:hover {
   gap: 2px 12px;
   align-content: start;
   padding: 10px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
 }
 /* ⚠️ 全局 button 规则会漏到这些小按钮上（min-height:38px + 绿渐变 + hover 光晕 + active 下移）。
    单类选择器能压过它，但 min-height 优先于 height → 必须显式写 min-height:0，并逐个覆盖背景/圆角/字重。 */
@@ -3820,7 +3837,7 @@ button.mini.danger:hover {
   padding: 6px 8px;
   border: 0;
   border-radius: 8px;
-  color: var(--ink);
+  color: var(--glass-ink);
   font-size: 13px;
   font-weight: 400;
   text-align: left;
@@ -3829,18 +3846,18 @@ button.mini.danger:hover {
   text-overflow: ellipsis;
 }
 .hcp-item:hover {
-  background: rgba(0, 168, 112, 0.14);
+  background: rgba(0, 168, 112, 0.32);
   background-image: none;
   box-shadow: none;
-  color: var(--brand-deep);
+  color: var(--glass-accent-hover);
 }
 .hcp-item:active { transform: none; }
 .hcp-all {
   padding: 9px 0;
   border: 0;
-  border-top: 1px solid rgba(15, 23, 33, 0.1);
+  border-top: 1px solid var(--glass-line);
   border-radius: 0;
-  color: var(--brand-deep);
+  color: var(--glass-accent);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -3849,7 +3866,7 @@ button.mini.danger:hover {
   background: transparent;
   background-image: none;
   box-shadow: none;
-  color: var(--brand-dark);
+  color: var(--glass-accent-hover);
 }
 .hcp-all:active { transform: none; }
 
