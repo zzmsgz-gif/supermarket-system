@@ -429,6 +429,9 @@ async function syncRoute() {
   const name = route.name;
   view.value = name;
   ensureAllowedView();
+  // 首页的筛选状态跟着 URL 走：刷新 / 分享链接 / 前进后退都靠这一步恢复。
+  // 有了它，返回键才真正等于「取消上一次筛选」（返回楼层视图），而不是毫无反应。
+  if (name === 'shop' && applyShopQueryFromRoute()) await loadProducts();
   if (name === 'product' && route.params.id) {
     const id = Number(route.params.id);
     if (productNavLock) return;
@@ -2084,6 +2087,78 @@ async function loadCategories() {
 
 }
 
+// ===== 首页筛选状态 ↔ URL query（09-20）=====
+// 起因：点分类原先只改 filters + 重拉商品，URL 一直是 /shop → 不能分享/收藏、刷新即丢；
+// 返回键也拿不到「取消筛选」的语义（实测按返回视图毫无变化）。现在把筛选写进 URL：
+//   /shop?category=3&kw=牛奶&brand=蒙牛&min=10&max=50&sort=price_asc
+// ⚠️ 关键词沿用既有的 `kw` 键（头部搜索 goSearch 已在用），别改成 q。
+const SHOP_FILTER_KEYS = ['category', 'kw', 'brand', 'min', 'max', 'sort'];
+
+function filterQueryFromFilters() {
+  const q = {};
+  if (filters.categoryId) q.category = String(filters.categoryId);
+  if (filters.keyword) q.kw = String(filters.keyword);
+  if (filters.brand) q.brand = String(filters.brand);
+  if (filters.minPrice !== '' && filters.minPrice != null) q.min = String(filters.minPrice);
+  if (filters.maxPrice !== '' && filters.maxPrice != null) q.max = String(filters.maxPrice);
+  if (filters.sort) q.sort = String(filters.sort);
+  return q;
+}
+
+function sameShopQuery(a, b) {
+  return SHOP_FILTER_KEYS.every((k) => String(a[k] ?? '') === String(b[k] ?? ''));
+}
+
+// filters → URL。只在「筛选的有无发生变化」时 push（新增一条历史），这样：
+//   楼层 → push /shop?category=3 →（改排序 replace 不占历史）→ 返回键 = 退回楼层视图 ✓
+//   清空筛选 → push /shop → 返回键 = 退回刚才那个筛选结果 ✓
+// 只在筛选值内部变化时用 replace，避免改一次排序就多一条历史。
+function syncShopQuery() {
+  if (route.name !== 'shop') return;              // 别在别的页面把用户拽回 /shop
+  const next = filterQueryFromFilters();
+  if (sameShopQuery(next, route.query)) return;   // 已是这个 URL → 不重复导航（也避免与 watcher 打环）
+  const hadFilters = SHOP_FILTER_KEYS.some((k) => route.query[k]);
+  const hasFilters = SHOP_FILTER_KEYS.some((k) => next[k]);
+  const target = { name: 'shop', query: next };
+  if (hadFilters !== hasFilters) router.push(target); else router.replace(target);
+}
+
+// URL → filters（刷新、分享链接、前进/后退都靠它）。返回 true 表示 filters 真的变了（调用方据此决定是否重拉）。
+function applyShopQueryFromRoute() {
+  const q = route.query || {};
+  const next = {
+    categoryId: (q.category || '').toString(),
+    keyword: (q.kw || '').toString(),
+    brand: (q.brand || '').toString(),
+    minPrice: q.min != null ? String(q.min) : '',
+    maxPrice: q.max != null ? String(q.max) : '',
+    sort: (q.sort || '').toString(),
+  };
+  const changed = String(filters.categoryId || '') !== next.categoryId
+    || String(filters.keyword || '') !== next.keyword
+    || String(filters.brand || '') !== next.brand
+    || String(filters.minPrice ?? '') !== next.minPrice
+    || String(filters.maxPrice ?? '') !== next.maxPrice
+    || String(filters.sort || '') !== next.sort;
+  if (!changed) return false;
+  Object.assign(filters, next);
+  return true;
+}
+
+// 点分类后把结果区带进视野。**这是必须的**：从 hero 左侧分类栏点（页面顶部）时，
+// 结果区在视口下方 900+px（视口只有 627px），屏幕上什么都不会变，用户以为点了没反应。
+// 已经在上半屏内就不打扰 —— 从楼层「查看全部」进时结果区正好落在视口顶部，再滚一下反而莫名。
+async function scrollToResultsIfNeeded() {
+  await nextTick();
+  const el = document.querySelector('.product-area');
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  if (rect.top >= 0 && rect.top <= window.innerHeight * 0.5) return;
+  const sticky = document.querySelector('.site-header');   // 吸顶头部会盖住结果区首行，要减掉它的高度
+  const offset = (sticky ? sticky.getBoundingClientRect().height : 0) + 12;
+  window.scrollTo({ top: Math.max(0, window.scrollY + rect.top - offset), behavior: 'smooth' });
+}
+
 async function loadProducts() {
   const params = new URLSearchParams({ page: '1', size: String(products.size) });
   if (filters.categoryId) params.set('categoryId', filters.categoryId);
@@ -2094,12 +2169,13 @@ async function loadProducts() {
   if (filters.sort) params.set('sort', filters.sort);
   const data = await api.get(`/products?${params}`);
   Object.assign(products, data);
+  syncShopQuery();   // 所有筛选变更都从这里汇集出口，一处同步 URL 即可
 }
 
 async function chooseCategory(categoryId) {
   filters.categoryId = categoryId;
   await loadProducts();
-
+  await scrollToResultsIfNeeded();
 }
 
 // 四个运营频道：合并成一个标签区块、一次只显示一行（ShopPage 的 .channel-row 是单行横滑），
@@ -2130,7 +2206,12 @@ function applyFilters() {
   loadProducts();
 }
 
+// ⚠️ 必须连 categoryId / keyword 一起清：isFiltering 把 categoryId 也算作筛选条件，
+// 只清价格/品牌/排序会**清不掉分类** → 用户卡在「筛选结果」视图回不去楼层，
+// 而 .shop-filters 里又没有分类控件可以取消（09-20 实测：点「清空筛选」后楼层不回来、hero 里分类仍高亮）。
 function resetFilters() {
+  filters.categoryId = '';
+  filters.keyword = '';
   filters.minPrice = '';
   filters.maxPrice = '';
   filters.brand = '';
@@ -3061,6 +3142,7 @@ onMounted(async () => {
   document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
   await run(async () => {
     await loadCategories();
+    applyShopQueryFromRoute();   // 深链 /shop?category=3 要在首次 loadProducts 之前生效，否则先拉一遍全量再纠正
     await loadProducts();
     await loadRatingSummary();
     await loadHomeChannels();
