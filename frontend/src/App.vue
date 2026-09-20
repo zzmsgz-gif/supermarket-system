@@ -392,17 +392,29 @@ const route = useRoute();
 const cartStore = useCartStore();
 const userStore = useUserStore();
 
-// 头部搜索：跳转到商城并把关键词写入路由 query，ShopPage 挂载/监听后应用到筛选
+// 头部搜索框的输入（仅承载"用户刚敲的字"，筛选的真相在 filters + URL）
 const headerKeyword = ref('');
-function goSearch() {
+
+// 头部搜索：跳转到商城并把关键词写入路由 query，其余条件一律丢掉（搜 = 一次全新查询，
+// 与「点分类会清掉关键词」正好对称）。⚠️ 光改 URL 不够 —— 结果区在首屏下方 900+px
+// （视口才 627px），不滚屏的话用户看到的就是"点了热搜/搜索没反应"。见 scrollToResultsIfNeeded。
+async function goSearch() {
   const kw = (headerKeyword.value || '').trim();
-  router.push({ name: 'shop', query: kw ? { kw } : {} });
+  const query = kw ? { kw } : {};
+  // 重复点同一个热搜词：路由对相同 query 的 push 会判为重复导航直接中止 → 数据不动是对的，
+  // 但不能连一点反应都没有，至少把用户带到结果区。
+  if (route.name === 'shop' && sameShopQuery(query, route.query)) {
+    await scrollToResultsIfNeeded();
+    return;
+  }
+  scrollToResultsAfterLoad = true;   // 由紧随其后的 loadProducts() 消费（它比在这里猜时机更准）
+  await router.push({ name: 'shop', query });
 }
 
 // 头部热词：一键填充并搜索
 function quickSearch(kw) {
   headerKeyword.value = kw;
-  goSearch();
+  return goSearch();
 }
 
 // 页脚订阅
@@ -2094,6 +2106,11 @@ async function loadCategories() {
 // ⚠️ 关键词沿用既有的 `kw` 键（头部搜索 goSearch 已在用），别改成 q。
 const SHOP_FILTER_KEYS = ['category', 'kw', 'brand', 'min', 'max', 'sort'];
 
+// 「这次筛选变更之后要把结果区带进视野」的一次性标记。
+// ⚠️ 不要在 goSearch 里直接调 scrollToResultsIfNeeded —— 那时导航还没落地、商品还没重新渲染，
+// 只能靠猜时机（setTimeout/轮询）；交给紧随其后的 loadProducts() 末尾消费最准。
+let scrollToResultsAfterLoad = false;
+
 function filterQueryFromFilters() {
   const q = {};
   if (filters.categoryId) q.category = String(filters.categoryId);
@@ -2171,6 +2188,11 @@ async function loadProducts() {
   const data = await api.get(`/products?${params}`);
   Object.assign(products, data);
   syncShopQuery();   // 所有筛选变更都从这里汇集出口，一处同步 URL 即可
+  // 头部搜索/热搜留下的标记：等这一批商品渲染完再滚（nextTick 在 scrollToResultsIfNeeded 里）
+  if (scrollToResultsAfterLoad) {
+    scrollToResultsAfterLoad = false;
+    await scrollToResultsIfNeeded();
+  }
 }
 
 // 点分类 = 「导航」，不是「在当前结果里再收窄」→ 先把搜索类条件（关键词/品牌/价格）清掉。
