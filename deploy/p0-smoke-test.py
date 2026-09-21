@@ -73,6 +73,18 @@ def cleanup():
                 f"JOIN supermarket_system.orders o ON o.id=pr.order_id WHERE o.user_id IN ({idlist})")
             sql(f"DELETE FROM supermarket_system.orders WHERE user_id IN ({idlist})")
             sql(f"DELETE FROM supermarket_system.sys_user WHERE id IN ({idlist})")
+        # ⚠️ 兜底：上面只按内存里的 uid / admin_uid 清，而这两个变量要到很后面才赋值
+        #    （admin_uid 在「注册 → 提权 → 登录」之后）。一旦脚本在此之前中断 —— 被限流 429、
+        #    或被超时强杀导致 atexit 也不执行 —— 账号就漏清了，会沉淀出**可登录的 ADMIN 残留账号**
+        #    （2026-09-21 实测从库里清出 2 个 p0admin_*）。这里按本次运行的用户名再兜一遍；
+        #    正常跑完时这两个账号已被上面删掉，此处是空操作（幂等）。
+        names = [n for n in (globals().get("buyer"), globals().get("admin")) if n]
+        if names:
+            name_cond = "username IN (" + ",".join(f"'{n}'" for n in names) + ")"
+            # 先断开 stock_log 的引用（operator_id 可为 NULL），否则删 sys_user 会被 fk_stock_log_operator 挡住
+            sql("UPDATE supermarket_system.stock_log SET operator_id=NULL WHERE operator_id IN "
+                f"(SELECT id FROM (SELECT id FROM supermarket_system.sys_user WHERE {name_cond}) x)")
+            sql(f"DELETE FROM supermarket_system.sys_user WHERE {name_cond}")
         # 本商品库存被脚本改过（设为 4 再补货 50），结束时还原回脚本开始前的值
         for pid, qty in ORIGINAL_STOCK.items():
             sql(f"UPDATE supermarket_system.product SET stock = {qty} WHERE id = {pid}")
