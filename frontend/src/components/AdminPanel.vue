@@ -36,10 +36,7 @@
 
           <div v-if="adminMenu === 'orders'" class="data-panel">
             <div class="toolbar">
-              <div class="search-box admin-search">
-                <input v-model="adminOrderKeyword" placeholder="按订单号搜索" @keyup.enter="searchAdminOrders" />
-                <button @click="searchAdminOrders">查询</button>
-              </div>
+              <AdminSearchBox v-model="adminOrderKeyword" placeholder="按订单号搜索" @search="searchAdminOrders" />
               <select v-model="adminOrderStatus" class="filter-select" @change="searchAdminOrders">
                 <option value="">全部状态</option>
                 <option value="PENDING_PAYMENT">待付款</option>
@@ -49,11 +46,7 @@
                 <option value="CANCELLED">已取消</option>
                 <option value="CLOSED">已关闭</option>
               </select>
-              <select v-model="adminOrders.size" class="filter-select" @change="changeAdminOrderPageSize">
-                <option :value="10">10 条/页</option>
-                <option :value="20">20 条/页</option>
-                <option :value="50">50 条/页</option>
-              </select>
+              <AdminPageSize v-model="adminOrders.size" @change="changeAdminOrderPageSize" />
               <button class="ghost" @click="resetAdminOrderSearch">重置</button>
               <span class="result-count">共 {{ adminOrders.total }} 笔订单</span>
             </div>
@@ -110,16 +103,7 @@
                   </template>
                 </tbody>
               </table>
-              <div v-if="adminOrders.total > adminOrders.size" class="pagination">
-                <button class="ghost" :disabled="adminOrders.page <= 1" @click="changeAdminOrderPage(-1)">上一页</button>
-                <span class="page-info">第 {{ adminOrders.page }} / {{ adminOrderTotalPages }} 页</span>
-                <button class="ghost" :disabled="adminOrders.page >= adminOrderTotalPages" @click="changeAdminOrderPage(1)">下一页</button>
-                <span class="page-jump-wrap">跳至
-                  <input type="number" min="1" :max="adminOrderTotalPages" v-model.number="adminOrderJumpPage" class="page-jump" @keyup.enter="goAdminOrderPage" />
-                  页
-                  <button class="ghost" @click="goAdminOrderPage">跳转</button>
-                </span>
-              </div>
+              <AdminPager :page="adminOrders.page" :total-pages="adminOrderTotalPages" v-model:jump-page="adminOrderJumpPage" @change="changeAdminOrderPage" @jump="goAdminOrderPage" />
             </div>
           </div>
 
@@ -130,11 +114,7 @@
                 <option value="APPROVED">已通过</option>
                 <option value="REJECTED">已拒绝</option>
               </select>
-              <select v-model="refundOrders.size" class="filter-select" @change="changeRefundPageSize">
-                <option :value="10">10 条/页</option>
-                <option :value="20">20 条/页</option>
-                <option :value="50">50 条/页</option>
-              </select>
+              <AdminPageSize v-model="refundOrders.size" @change="changeRefundPageSize" />
               <button class="ghost" @click="resetRefundSearch">重置</button>
               <span class="result-count">共 {{ refundOrders.total }} 笔退款</span>
             </div>
@@ -181,16 +161,7 @@
                   </template>
                 </tbody>
               </table>
-              <div v-if="refundOrders.total > refundOrders.size" class="pagination">
-                <button class="ghost" :disabled="refundOrders.page <= 1" @click="changeRefundPage(-1)">上一页</button>
-                <span class="page-info">第 {{ refundOrders.page }} / {{ refundTotalPages }} 页</span>
-                <button class="ghost" :disabled="refundOrders.page >= refundTotalPages" @click="changeRefundPage(1)">下一页</button>
-                <span class="page-jump-wrap">跳至
-                  <input type="number" min="1" :max="refundTotalPages" v-model.number="refundJumpPage" class="page-jump" @keyup.enter="goRefundPage" />
-                  页
-                  <button class="ghost" @click="goRefundPage">跳转</button>
-                </span>
-              </div>
+              <AdminPager :page="refundOrders.page" :total-pages="refundTotalPages" v-model:jump-page="refundJumpPage" @change="changeRefundPage" @jump="goRefundPage" />
             </div>
           </div>
 
@@ -198,15 +169,8 @@
             <div v-if="!stockAlerts.length" class="empty">库存充足，暂无预警</div>
             <template v-else>
               <div class="toolbar">
-                <div class="search-box admin-search">
-                  <input v-model="stockKeyword" placeholder="按商品名称 / 编号搜索" @keyup.enter="stockPage = 1" />
-                  <button @click="stockPage = 1">查询</button>
-                </div>
-                <select v-model="stockSize" class="filter-select" @change="stockPage = 1">
-                  <option :value="10">10 条/页</option>
-                  <option :value="20">20 条/页</option>
-                  <option :value="50">50 条/页</option>
-                </select>
+                <AdminSearchBox v-model="stockKeyword" placeholder="按商品名称 / 编号搜索" @search="stockPage = 1" />
+                <AdminPageSize v-model="stockSize" @change="stockPage = 1" />
                 <button class="ghost" @click="stockKeyword = ''; stockPage = 1">重置</button>
                 <span class="result-count">共 {{ stockFiltered.length }} 条预警</span>
               </div>
@@ -254,16 +218,7 @@
                     </template>
                   </tbody>
                 </table>
-                <div v-if="stockFiltered.length > stockSize" class="pagination">
-                  <button class="ghost" :disabled="stockPage <= 1" @click="changeStockPage(-1)">上一页</button>
-                  <span class="page-info">第 {{ Math.min(stockPage, stockTotalPages) }} / {{ stockTotalPages }} 页</span>
-                  <button class="ghost" :disabled="stockPage >= stockTotalPages" @click="changeStockPage(1)">下一页</button>
-                  <span class="page-jump-wrap">跳至
-                    <input type="number" min="1" :max="stockTotalPages" v-model.number="stockJumpPage" class="page-jump" @keyup.enter="goStockPage" />
-                    页
-                    <button class="ghost" @click="goStockPage">跳转</button>
-                  </span>
-                </div>
+                <AdminPager :page="stockPage" :total-pages="stockTotalPages" v-model:jump-page="stockJumpPage" @change="changeStockPage" @jump="goStockPage" />
               </div>
             </template>
           </div>
@@ -392,21 +347,14 @@
             </div>
 
             <div class="toolbar">
-              <div class="search-box admin-search">
-                <input v-model="adminProductKeyword" placeholder="按名称 / 编号搜索" @keyup.enter="searchAdminProducts" />
-                <button @click="searchAdminProducts">查询</button>
-              </div>
+              <AdminSearchBox v-model="adminProductKeyword" placeholder="按名称 / 编号搜索" @search="searchAdminProducts" />
               <select v-model="adminProductStatus" class="filter-select" @change="searchAdminProducts">
                 <option value="">全部状态</option>
                 <option value="ON_SALE">上架</option>
                 <option value="OFF_SALE">下架</option>
                 <option value="DRAFT">草稿</option>
               </select>
-              <select v-model="adminProducts.size" class="filter-select" @change="changeAdminPageSize">
-                <option :value="10">10 条/页</option>
-                <option :value="20">20 条/页</option>
-                <option :value="50">50 条/页</option>
-              </select>
+              <AdminPageSize v-model="adminProducts.size" @change="changeAdminPageSize" />
               <button class="ghost" @click="resetAdminProductSearch">重置</button>
               <span class="result-count">共 {{ adminProducts.total }} 件商品</span>
             </div>
@@ -471,16 +419,7 @@
                 </tbody>
               </table>
             </div>
-            <div v-if="adminProducts.total > adminProducts.size" class="pagination">
-              <button class="ghost" :disabled="adminProducts.page <= 1" @click="changeAdminPage(-1)">上一页</button>
-              <span class="page-info">第 {{ adminProducts.page }} / {{ adminProductTotalPages }} 页</span>
-              <button class="ghost" :disabled="adminProducts.page >= adminProductTotalPages" @click="changeAdminPage(1)">下一页</button>
-              <span class="page-jump-wrap">跳至
-                <input type="number" min="1" :max="adminProductTotalPages" v-model.number="adminJumpPage" class="page-jump" @keyup.enter="goAdminPage" />
-                页
-                <button class="ghost" @click="goAdminPage">跳转</button>
-              </span>
-            </div>
+            <AdminPager :page="adminProducts.page" :total-pages="adminProductTotalPages" v-model:jump-page="adminJumpPage" @change="changeAdminPage" @jump="goAdminPage" />
           </div>
 
           <div v-if="adminMenu === 'categories'" class="data-panel">
@@ -513,15 +452,8 @@
             <div v-if="!categories.length" class="empty">暂无分类</div>
             <template v-else>
               <div class="toolbar">
-                <div class="search-box admin-search">
-                  <input v-model="categoryKeyword" placeholder="按分类名称搜索" @keyup.enter="categoryPage = 1" />
-                  <button @click="categoryPage = 1">查询</button>
-                </div>
-                <select v-model="categorySize" class="filter-select" @change="categoryPage = 1">
-                  <option :value="10">10 条/页</option>
-                  <option :value="20">20 条/页</option>
-                  <option :value="50">50 条/页</option>
-                </select>
+                <AdminSearchBox v-model="categoryKeyword" placeholder="按分类名称搜索" @search="categoryPage = 1" />
+                <AdminPageSize v-model="categorySize" @change="categoryPage = 1" />
                 <button class="ghost" @click="categoryKeyword = ''; categoryPage = 1">重置</button>
                 <span class="result-count">共 {{ categoryFiltered.length }} 个分类</span>
               </div>
@@ -545,16 +477,7 @@
                     </tr>
                   </tbody>
                 </table>
-                <div v-if="categoryFiltered.length > categorySize" class="pagination">
-                  <button class="ghost" :disabled="categoryPage <= 1" @click="changeCategoryPage(-1)">上一页</button>
-                  <span class="page-info">第 {{ Math.min(categoryPage, categoryTotalPages) }} / {{ categoryTotalPages }} 页</span>
-                  <button class="ghost" :disabled="categoryPage >= categoryTotalPages" @click="changeCategoryPage(1)">下一页</button>
-                  <span class="page-jump-wrap">跳至
-                    <input type="number" min="1" :max="categoryTotalPages" v-model.number="categoryJumpPage" class="page-jump" @keyup.enter="goCategoryPage" />
-                    页
-                    <button class="ghost" @click="goCategoryPage">跳转</button>
-                  </span>
-                </div>
+                <AdminPager :page="categoryPage" :total-pages="categoryTotalPages" v-model:jump-page="categoryJumpPage" @change="changeCategoryPage" @jump="goCategoryPage" />
               </div>
             </template>
           </div>
@@ -599,15 +522,8 @@
             <div v-if="adminCoupons.total === 0" class="empty">暂无优惠券</div>
             <template v-else>
               <div class="toolbar">
-                <div class="search-box admin-search">
-                  <input v-model="adminCouponKeyword" placeholder="按优惠券名称搜索" @keyup.enter="searchAdminCoupons" />
-                  <button @click="searchAdminCoupons">查询</button>
-                </div>
-                <select v-model="adminCoupons.size" class="filter-select" @change="changeAdminCouponPageSize">
-                  <option :value="10">10 条/页</option>
-                  <option :value="20">20 条/页</option>
-                  <option :value="50">50 条/页</option>
-                </select>
+                <AdminSearchBox v-model="adminCouponKeyword" placeholder="按优惠券名称搜索" @search="searchAdminCoupons" />
+                <AdminPageSize v-model="adminCoupons.size" @change="changeAdminCouponPageSize" />
                 <button class="ghost" @click="resetAdminCouponSearch">重置</button>
                 <span class="result-count">共 {{ adminCoupons.total }} 张优惠券</span>
               </div>
@@ -639,16 +555,7 @@
                     </tr>
                   </tbody>
                 </table>
-                <div v-if="adminCoupons.total > adminCoupons.size" class="pagination">
-                  <button class="ghost" :disabled="adminCoupons.page <= 1" @click="changeAdminCouponPage(-1)">上一页</button>
-                  <span class="page-info">第 {{ adminCoupons.page }} / {{ adminCouponTotalPages }} 页</span>
-                  <button class="ghost" :disabled="adminCoupons.page >= adminCouponTotalPages" @click="changeAdminCouponPage(1)">下一页</button>
-                  <span class="page-jump-wrap">跳至
-                    <input type="number" min="1" :max="adminCouponTotalPages" v-model.number="adminCouponJumpPage" class="page-jump" @keyup.enter="goAdminCouponPage" />
-                    页
-                    <button class="ghost" @click="goAdminCouponPage">跳转</button>
-                  </span>
-                </div>
+                <AdminPager :page="adminCoupons.page" :total-pages="adminCouponTotalPages" v-model:jump-page="adminCouponJumpPage" @change="changeAdminCouponPage" @jump="goAdminCouponPage" />
               </div>
             </template>
           </div>
@@ -1042,15 +949,8 @@
             <div v-if="adminActivities.total === 0 && !adminActivityKeyword" class="empty">暂无营销活动，使用上方表单创建第一个活动</div>
             <template v-else>
               <div class="toolbar">
-                <div class="search-box admin-search">
-                  <input v-model="adminActivityKeyword" placeholder="按活动名称搜索" @keyup.enter="searchAdminActivities" />
-                  <button @click="searchAdminActivities">查询</button>
-                </div>
-                <select v-model="adminActivities.size" class="filter-select" @change="changeAdminActivityPageSize">
-                  <option :value="10">10 条/页</option>
-                  <option :value="20">20 条/页</option>
-                  <option :value="50">50 条/页</option>
-                </select>
+                <AdminSearchBox v-model="adminActivityKeyword" placeholder="按活动名称搜索" @search="searchAdminActivities" />
+                <AdminPageSize v-model="adminActivities.size" @change="changeAdminActivityPageSize" />
                 <button class="ghost" @click="resetAdminActivitySearch">重置</button>
                 <span class="result-count">共 {{ adminActivities.total }} 个活动</span>
               </div>
@@ -1087,16 +987,7 @@
                     </tr>
                   </tbody>
                 </table>
-                <div v-if="adminActivities.total > adminActivities.size" class="pagination">
-                  <button class="ghost" :disabled="adminActivities.page <= 1" @click="changeAdminActivityPage(-1)">上一页</button>
-                  <span class="page-info">第 {{ adminActivities.page }} / {{ adminActivityTotalPages }} 页</span>
-                  <button class="ghost" :disabled="adminActivities.page >= adminActivityTotalPages" @click="changeAdminActivityPage(1)">下一页</button>
-                  <span class="page-jump-wrap">跳至
-                    <input type="number" min="1" :max="adminActivityTotalPages" v-model.number="adminActivityJumpPage" class="page-jump" @keyup.enter="goAdminActivityPage" />
-                    页
-                    <button class="ghost" @click="goAdminActivityPage">跳转</button>
-                  </span>
-                </div>
+                <AdminPager :page="adminActivities.page" :total-pages="adminActivityTotalPages" v-model:jump-page="adminActivityJumpPage" @change="changeAdminActivityPage" @jump="goAdminActivityPage" />
               </div>
             </template>
           </div>
@@ -1397,10 +1288,7 @@
 
           <div v-if="adminMenu === 'users'" class="data-panel">
             <div class="toolbar">
-              <div class="search-box admin-search">
-                <input v-model="adminUserKeyword" placeholder="按用户名 / 昵称搜索" @keyup.enter="searchAdminUsers" />
-                <button @click="searchAdminUsers">查询</button>
-              </div>
+              <AdminSearchBox v-model="adminUserKeyword" placeholder="按用户名 / 昵称搜索" @search="searchAdminUsers" />
               <select v-model="adminUserRole" class="filter-select" @change="searchAdminUsers">
                 <option value="">全部角色</option>
                 <option value="USER">普通用户</option>
@@ -1411,11 +1299,7 @@
                 <option :value="1">启用</option>
                 <option :value="0">禁用</option>
               </select>
-              <select v-model="adminUsers.size" class="filter-select" @change="changeAdminUserPageSize">
-                <option :value="10">10 条/页</option>
-                <option :value="20">20 条/页</option>
-                <option :value="50">50 条/页</option>
-              </select>
+              <AdminPageSize v-model="adminUsers.size" @change="changeAdminUserPageSize" />
               <button class="ghost" @click="resetAdminUserSearch">重置</button>
               <span class="result-count">共 {{ adminUsers.total }} 个用户</span>
             </div>
@@ -1456,16 +1340,7 @@
                   </tr>
                 </tbody>
               </table>
-              <div v-if="adminUsers.total > adminUsers.size" class="pagination">
-                <button class="ghost" :disabled="adminUsers.page <= 1" @click="changeAdminUserPage(-1)">上一页</button>
-                <span class="page-info">第 {{ adminUsers.page }} / {{ adminUserTotalPages }} 页</span>
-                <button class="ghost" :disabled="adminUsers.page >= adminUserTotalPages" @click="changeAdminUserPage(1)">下一页</button>
-                <span class="page-jump-wrap">跳至
-                  <input type="number" min="1" :max="adminUserTotalPages" v-model.number="adminUserJumpPage" class="page-jump" @keyup.enter="goAdminUserPage" />
-                  页
-                  <button class="ghost" @click="goAdminUserPage">跳转</button>
-                </span>
-              </div>
+              <AdminPager :page="adminUsers.page" :total-pages="adminUserTotalPages" v-model:jump-page="adminUserJumpPage" @change="changeAdminUserPage" @jump="goAdminUserPage" />
             </div>
           </div>
 
@@ -1542,11 +1417,7 @@
               </div>
             </div>
 
-            <div v-if="adminReviews.total > adminReviews.size" class="pagination">
-              <button class="ghost" :disabled="adminReviews.page <= 1" @click="changeAdminReviewPage(-1)">上一页</button>
-              <span class="page-info">第 {{ adminReviews.page }} / {{ adminReviewTotalPages }} 页</span>
-              <button class="ghost" :disabled="adminReviews.page >= adminReviewTotalPages" @click="changeAdminReviewPage(1)">下一页</button>
-            </div>
+            <AdminPager :page="adminReviews.page" :total-pages="adminReviewTotalPages" @change="changeAdminReviewPage" />
           </div>
 
           <div v-if="adminMenu === 'passwordResets'" class="data-panel">
@@ -1575,11 +1446,7 @@
                 <option value="DONE">已重置</option>
                 <option value="REJECTED">已驳回</option>
               </select>
-              <select v-model="passwordResets.size" class="filter-select" @change="changePasswordResetPageSize">
-                <option :value="10">10 条/页</option>
-                <option :value="20">20 条/页</option>
-                <option :value="50">50 条/页</option>
-              </select>
+              <AdminPageSize v-model="passwordResets.size" @change="changePasswordResetPageSize" />
               <button class="ghost" @click="refreshCurrentAdminMenu">刷新</button>
               <span class="result-count">共 {{ passwordResets.total }} 条申请</span>
             </div>
@@ -1625,16 +1492,7 @@
                   </tr>
                 </tbody>
               </table>
-              <div v-if="passwordResets.total > passwordResets.size" class="pagination">
-                <button class="ghost" :disabled="passwordResets.page <= 1" @click="changePasswordResetPage(-1)">上一页</button>
-                <span class="page-info">第 {{ passwordResets.page }} / {{ passwordResetTotalPages }} 页</span>
-                <button class="ghost" :disabled="passwordResets.page >= passwordResetTotalPages" @click="changePasswordResetPage(1)">下一页</button>
-                <span class="page-jump-wrap">跳至
-                  <input type="number" min="1" :max="passwordResetTotalPages" v-model.number="passwordResetJumpPage" class="page-jump" @keyup.enter="goPasswordResetPage" />
-                  页
-                  <button class="ghost" @click="goPasswordResetPage">跳转</button>
-                </span>
-              </div>
+              <AdminPager :page="passwordResets.page" :total-pages="passwordResetTotalPages" v-model:jump-page="passwordResetJumpPage" @change="changePasswordResetPage" @jump="goPasswordResetPage" />
             </div>
           </div>
         </div>
@@ -1646,6 +1504,9 @@ import { ref, reactive, computed, onMounted, toRef, nextTick, watch } from 'vue'
 import { api } from '../api/client';
 import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
+import AdminPager from './AdminPager.vue';
+import AdminPageSize from './AdminPageSize.vue';
+import AdminSearchBox from './AdminSearchBox.vue';
 
 const props = defineProps({
   // 响应式：admin 内会读取 view / categories
