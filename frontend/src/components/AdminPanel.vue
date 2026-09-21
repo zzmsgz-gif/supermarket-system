@@ -1642,7 +1642,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, toRef, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, toRef, nextTick, watch } from 'vue';
 import { api } from '../api/client';
 import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
@@ -3006,7 +3006,13 @@ async function loadAdminReviewUnreplied() {
   }
 }
 
-onMounted(() => { loadPasswordResetPendingCount(); loadAdminReviewUnreplied(); });
+onMounted(() => {
+  loadPasswordResetPendingCount();
+  loadAdminReviewUnreplied();
+  // 当前模块数据补一次：默认「经营看板」此前没有任何地方会触发 dashboard 接口（只有面板里的手动刷新按钮），
+  // 深链 /admin?tab=notices 同理。挂载时兜住，保证「进来就有数据」。
+  refreshCurrentAdminMenu();
+});
 
 async function searchPasswordResets() {
   passwordResets.page = 1;
@@ -3185,14 +3191,14 @@ const adminMenuLoaders = {
   passwordResets: () => loadPasswordResets(),
 };
 
+// 只负责改 adminMenu。数据加载统一交给下面的 watch —— 「点侧边菜单」和「URL 回填（深链/返回键）」
+// 因此走同一条加载路径；写 URL 由 App.vue 的 syncAdminQuery 负责，这里不碰路由。
 async function selectAdminMenu(key) {
   if (adminMenu.value === key) {
-    await refreshCurrentAdminMenu();
+    await refreshCurrentAdminMenu();   // 值没变 → watch 不触发，这里手动刷新
     return;
   }
   adminMenu.value = key;
-  await refreshCurrentAdminMenu();
-
 }
 
 async function refreshCurrentAdminMenu() {
@@ -3200,4 +3206,9 @@ async function refreshCurrentAdminMenu() {
   if (loader) await loader();
 
 }
+
+// adminMenu 一变就加载对应模块数据：触发源无论是「点侧边菜单」还是「URL 回填（深链/刷新/返回键）」都走这里，
+// 不再两处各管一半。挂载时也要跑一次 —— 深链进来时 App.vue 已在 AdminPanel 挂载前就把 adminMenu 改成目标模块，
+// watch 看不到这次变化（初值不算变更），只能靠 onMounted 兜住。
+watch(adminMenu, () => { refreshCurrentAdminMenu(); });
 </script>

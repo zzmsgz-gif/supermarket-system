@@ -447,6 +447,8 @@ async function syncRoute() {
   // 首页的筛选状态跟着 URL 走：刷新 / 分享链接 / 前进后退都靠这一步恢复。
   // 有了它，返回键才真正等于「取消上一次筛选」（返回楼层视图），而不是毫无反应。
   if (name === 'shop' && applyShopQueryFromRoute()) await loadProducts();
+  // 后台模块同理：深链 /admin?tab=notices、刷新、返回键都靠这一步回填（含首次进入）
+  if (name === 'admin') applyAdminQueryFromRoute();
   if (name === 'product' && route.params.id) {
     const id = Number(route.params.id);
     if (productNavLock) return;
@@ -2166,6 +2168,42 @@ function applyShopQueryFromRoute() {
   Object.assign(filters, next);
   return true;
 }
+
+// 后台当前模块也进 URL：/admin?tab=orders
+// 目的与前台筛选一致 —— 可深链、可收藏、刷新保持、返回键语义正确（回到上一个模块而不是直接退出后台）。
+// ⚠️ 只在这两处管（syncAdminQuery 写出 / applyAdminQueryFromRoute 读入），AdminPanel 内不碰路由，避免两份状态各管一半。
+const ADMIN_TAB_DEFAULT = 'insights';   // 经营看板：与 adminMenu 初值一致，默认不写进 URL
+function syncAdminQuery() {
+  if (route.name !== 'admin') return;             // 别在别的页面把用户拽回后台
+  const nextTab = adminMenu.value === ADMIN_TAB_DEFAULT ? '' : adminMenu.value;
+  const curTab = (route.query.tab || '').toString();
+  if (curTab === nextTab) return;                 // 已一致 → 不重复导航（也避免与 watch 打环）
+  const query = { ...route.query };
+  if (nextTab) query.tab = nextTab; else delete query.tab;
+  const target = { name: 'admin', query };
+  // 切模块用 push：返回键才会「回到上一个模块」，而不是直接退出后台。
+  // （实测用 replace 时切模块不占历史，按返回键会一路退回进入后台之前那一页。）
+  // 纯清洗非法/失效参数（目标是没有 tab）用 replace：纠错不该占一条历史。
+  if (nextTab) router.push(target); else router.replace(target);
+}
+
+// URL → adminMenu：URL 是唯一真相（与前台筛选同一套语义）——带合法 tab 就用它，没带 / 非法即默认看板。
+// 末尾再跑一次 syncAdminQuery 是为了把非法 tab 从地址栏洗掉，保证地址栏与界面一致。
+function applyAdminQueryFromRoute() {
+  const raw = (route.query.tab || '').toString();
+  const valid = ADMIN_MENU_KEYS.includes(raw);
+  const tab = valid ? raw : ADMIN_TAB_DEFAULT;
+  if (adminMenu.value !== tab) adminMenu.value = tab;   // 改值 → watch 去写 URL；若值本就一致则完全不导航
+  // 非法 tab（?tab=hacker）直接洗掉：replace 不占历史，也不进 watch 那条路径（避免两次导航）。
+  if (raw && !valid) {
+    const query = { ...route.query };
+    delete query.tab;
+    router.replace({ name: 'admin', query });
+  }
+}
+
+// adminMenu 一变就同步 URL（唯一出口）。数据加载交给 AdminPanel 里的 watch 处理。
+watch(adminMenu, () => { syncAdminQuery(); });
 
 // 点分类后把结果区带进视野。**这是必须的**：从 hero 左侧分类栏点（页面顶部）时，
 // 结果区在视口下方 900+px（视口只有 627px），屏幕上什么都不会变，用户以为点了没反应。
