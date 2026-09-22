@@ -10,10 +10,10 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from _db import DBUSER, DBPASS
 
 BASE = "http://localhost:8080/api"
 MYSQL = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-DBPASS = "zzmsgz"
 STAMP = str(int(time.time()))
 u = "bdemo_" + STAMP
 PW = "Bdemo123"
@@ -32,7 +32,7 @@ def call(method, path, body=None, token=None):
 
 
 def sql(stmt):
-    p = subprocess.run([MYSQL, "-uroot", "-p" + DBPASS, "-D", "supermarket_system",
+    p = subprocess.run([MYSQL, "-u", DBUSER, "-p" + DBPASS, "-D", "supermarket_system",
                         "--default-character-set=utf8mb4", "-N", "-B", "-e", stmt],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:

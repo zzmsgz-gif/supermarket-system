@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from urllib import request, error as urllib_error
+from _db import DBPASS, DBUSER
 
 BASE = "http://localhost:8080/api"
 STAMP = time.strftime("%Y%m%d%H%M%S")
@@ -56,7 +57,7 @@ def data_of(resp):
 
 
 def sql(stmt):
-    rc = subprocess.run([MYSQL, "-uroot", "-pzzmsgz", "supermarket_system", "-e", stmt],
+    rc = subprocess.run([MYSQL, "-u", DBUSER, "-p" + DBPASS, "supermarket_system", "-e", stmt],
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
     return rc == 0
 
@@ -113,7 +114,7 @@ def main():
 def cleanup():
     try:
         out = subprocess.run(
-            [MYSQL, "-uroot", "-pzzmsgz", "-N", "-B", "-e",
+            [MYSQL, "-u", DBUSER, "-p" + DBPASS, "-N", "-B", "-e",
              "SELECT id FROM sys_user WHERE username LIKE 's3buyer_%'",
              "supermarket_system"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True

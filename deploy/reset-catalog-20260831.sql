@@ -2,7 +2,7 @@
 -- 商品目录初始数据快照 / 一键恢复脚本
 -- 生成时间 : 2026-08-31 (当前 6 分类 / 30 商品 / 含已上传 OSS 封面)
 -- 用途     : 测试前后，将商品目录恢复到「初始状态」
--- 用法     : mysql -uroot -pzzmsgz supermarket_system < deploy/reset-catalog-20260831.sql
+-- 用法     : mysql -uroot -p supermarket_system < deploy/reset-catalog-20260831.sql
 -- 说明     : 仅重置商品目录相关表
 --             (product_category, product, product_sku, product_image, product_review)
 --            不影响 users / orders / coupons / wallet 等其他业务数据。

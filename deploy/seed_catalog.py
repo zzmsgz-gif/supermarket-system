@@ -8,7 +8,7 @@
 """
 import pymysql
 
-HOST, USER, PASS, DB = "127.0.0.1", "root", "zzmsgz", "supermarket_system"
+from _db import HOST, USER, PASS, DB
 KEEP_PRODUCT_IDS = (1, 2, 3, 9)          # 红富士苹果 / 矿泉水 / 原味薯片 / 芒果
 KEEP_CATEGORY_IDS = (1, 2, 3, 4)         # 生鲜食品 / 酒水饮料 / 休闲零食 / 日用百货
 

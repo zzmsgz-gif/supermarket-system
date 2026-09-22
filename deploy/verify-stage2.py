@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
+from _db import DBPASS, DBUSER
 
 BASE = "http://localhost:8080/api"
 MYSQL = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
@@ -42,7 +43,7 @@ def call(method, path, body=None, token=None):
 
 def sql(statement):
     proc = subprocess.run(
-        [MYSQL, "-uroot", "-pzzmsgz", "-N", "-B", "-e", statement],
+        [MYSQL, "-u", DBUSER, "-p" + DBPASS, "-N", "-B", "-e", statement],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if proc.returncode != 0:

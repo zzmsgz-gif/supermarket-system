@@ -13,8 +13,7 @@ BASE = "http://localhost:8080/api"
 MYSQL = r"C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"
 DB = "supermarket_system"
 DB_USER = "root"
-DB_PASS = "zzmsgz"
-
+from _db import DBPASS as DB_PASS
 SPEC = "color:red"  # 自由文本规格串，用于验证规格随购物车行/订单行落库
 PRODUCT_ID = None  # 运行时动态选取（见 main() 里 setup 段）；曾经写死成 35，那个商品早已不存在
 
