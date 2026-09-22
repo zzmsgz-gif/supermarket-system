@@ -690,33 +690,34 @@
             </template>
           </div>
 
-          <!-- 会员日：每月几号消费积分翻倍。
-               原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端没实现（假承诺），
-               现在日期与倍率由这里配置，积分发放按「下单日」判定加倍。 -->
+          <!-- 会员日：指定日期消费积分翻倍（从日历上挑具体日期，不再按「每月几号」循环）。
+               原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端没实现（假承诺）。
+               公告文案由管理员自己维护，系统不改写。 -->
           <div v-if="adminMenu === 'memberDays'" class="data-panel">
             <div class="toolbar">
               <button @click="openMemberDayForm(null)">新增会员日</button>
-              <span v-if="memberDayEnabledCount" class="tag muted">启用中 {{ memberDayEnabledCount }} 个 · {{ memberDaySlogan }}</span>
+              <span v-if="memberDayEnabledCount" class="tag muted">生效中 {{ memberDayEnabledCount }} 天 · {{ memberDaySlogan }}</span>
             </div>
 
             <div v-if="memberDayFormOpen" class="form-card admin-form-card">
               <div class="form-title">
                 <span>{{ memberDayForm.id ? '编辑会员日' : '新增会员日' }}</span>
-                <small>会员日当天消费，积分按倍率翻倍（2 = 双倍）。只配「每月几号」——
-                  31 号在 2 月这类小月不存在，那天自然不触发（不做顺延）。
-                  保存后公告栏那条「会员日…」的标题与正文会**自动**改成与这里一致；
-                  一个启用的会员日都没有时，那条公告会被自动停用（不留兑现不了的承诺）。</small>
+                <small>从日历上挑日期：<b>挑中的那天</b>消费积分按倍率翻倍（2 = 双倍）。
+                  可以配多天（比如 10 月 1 日、11 月 11 日各配一条），不再按「每月几号」循环。
+                  已配过的日期会划掉、今天之前的日期不可选。
+                  公告栏那条「会员日…」是运营文案，<b>由你自己维护</b>，系统不会自动改它。</small>
               </div>
               <div class="admin-form-grid">
-                <!-- 挑日期：用日历格子点选「每月几号」，不用手填数字。
-                     已被其它会员日占用的号置灰不可点 —— 免得填完保存才报"已经配置过了"。 -->
+                <!-- 挑日期：真日历（可翻月），点一天就是选那个具体日期。
+                     已配置的日期划掉不可点 / 已过去的日期不可选 —— 免得填完保存才报错。 -->
                 <div class="field span-all">
-                  <span class="field-label">每月几号 <i class="req">*</i></span>
+                  <span class="field-label">会员日日期 <i class="req">*</i></span>
                   <div class="md-calendar">
                     <div class="mdc-head">
+                      <button type="button" class="mdc-nav" aria-label="上个月" @click="shiftMemberDayCalendar(-1)">‹</button>
                       <span class="mdc-month">{{ memberDayCalendarMonthText }}</span>
-                      <small>日历只用来挑「每月的号数」，选中的号<b>每月循环</b>生效（不是一次性日期）；
-                        本月没有的号（灰底）也能选，只是那个月不触发</small>
+                      <button type="button" class="mdc-nav" aria-label="下个月" @click="shiftMemberDayCalendar(1)">›</button>
+                      <button type="button" class="mdc-today" @click="resetMemberDayCalendar">回到本月</button>
                     </div>
                     <div class="mdc-week">
                       <span v-for="w in MDC_WEEK" :key="w">{{ w }}</span>
@@ -725,16 +726,17 @@
                       <template v-for="(cell, ci) in memberDayCalendarCells" :key="ci">
                         <span v-if="!cell.day" class="mdc-day blank"></span>
                         <button v-else type="button" class="mdc-day"
-                                :class="{ on: memberDayForm.dayOfMonth === cell.day, taken: cell.taken, today: cell.today, off: cell.off }"
-                                :disabled="cell.taken"
-                                :title="cell.taken ? `每月 ${cell.day} 号已经配置过了` : `选每月 ${cell.day} 号`"
-                                @click="memberDayForm.dayOfMonth = cell.day">{{ cell.day }}</button>
+                                :class="{ on: cell.iso === memberDayForm.memberDate, taken: cell.taken, today: cell.today, past: cell.past }"
+                                :disabled="cell.taken || cell.past"
+                                :title="cell.past ? '已经过去的日期不能配（那天不会再翻倍）'
+                                        : (cell.taken ? `${cell.label} 已经配置过了` : `选 ${cell.label}`)"
+                                @click="memberDayForm.memberDate = cell.iso">{{ cell.day }}</button>
                       </template>
                     </div>
                     <p class="mdc-hint">
-                      已选：<b>每月 {{ memberDayForm.dayOfMonth }} 号</b>
-                      <span v-if="memberDayDayTaken(memberDayForm.dayOfMonth)" class="mdc-warn">该号已被其它会员日占用，请另选一天</span>
-                      <span v-else>· 当天消费积分按 {{ memberDayForm.multiplier || 2 }} 倍发放</span>
+                      已选：<b>{{ memberDayForm.memberDate ? memberDayDateLabel(memberDayForm.memberDate) : '还没选' }}</b>
+                      <span v-if="memberDayDateTaken(memberDayForm.memberDate)" class="mdc-warn">这天已经配置过了，请另选</span>
+                      <span v-else-if="memberDayForm.memberDate">· 当天消费积分按 {{ memberDayForm.multiplier || 2 }} 倍发放</span>
                     </p>
                   </div>
                 </div>
@@ -759,13 +761,14 @@
 
             <template v-else>
               <div class="admin-cards" v-if="memberDays.length">
-                <div v-for="d in memberDays" :key="d.id" class="admin-card">
-                  <span class="tag">每月 {{ d.dayOfMonth }} 号</span>
+                <div v-for="d in memberDays" :key="d.id" class="admin-card" :class="{ 'is-expired': d.expired }">
+                  <span class="tag">{{ memberDayDateLabel(d.memberDate) }}</span>
                   <div class="card-info">
                     <p class="card-title"><span class="card-title-text">积分 ×{{ d.multiplier }}</span></p>
                     <p class="card-meta">
                       <span>{{ d.remark || '未填备注' }}</span>
-                      <span :class="Number(d.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(d.enabled) === 1 ? '启用中' : '已停用' }}</span>
+                      <span v-if="d.expired" class="off-word">已过期</span>
+                      <span v-else :class="Number(d.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(d.enabled) === 1 ? '生效中' : '已停用' }}</span>
                     </p>
                   </div>
                   <div class="card-actions">
@@ -775,7 +778,7 @@
                   </div>
                 </div>
               </div>
-              <empty-state v-else icon="star" text="还没有会员日，点上方「新增会员日」加一个（一个都没有时，公告栏那条「会员日」会被自动停用，不留兑现不了的承诺）" />
+              <empty-state v-else icon="star" text="还没有会员日，点上方「新增会员日」从日历上挑一天（公告文案由你自己维护，系统不会代写）" />
             </template>
           </div>
 
@@ -1584,7 +1587,7 @@ const adminMenuItems = computed(() => [
   { key: 'flashSales', label: '限时秒杀', desc: '按商品开秒杀场次：秒杀价、独立名额、每人限购与档期', group: '管理', badge: adminFlashSales.value.filter((f) => f.state === 'RUNNING').length || '' },
   { key: 'notices', label: '公告管理', desc: '发布商城公告：类型分类（促销类标题会进首页顶栏）、排序、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
   { key: 'hotSearches', label: '热搜词', desc: '维护首页头部搜索框下方的「热搜」那排词：搜索词、展示文案、排序与启停（点击即跳转搜索）', group: '管理', badge: adminHotSearches.value.length || '' },
-  { key: 'memberDays', label: '会员日', desc: '设置每月几号消费积分翻倍（可配多天、可调倍率）；公告栏那条「会员日」文案会随之自动更新', group: '管理', badge: memberDays.value.filter((d) => Number(d.enabled) === 1).length || '' },
+  { key: 'memberDays', label: '会员日', desc: '从日历上挑日期：挑中的那天消费积分翻倍（可配多天、可调倍率）；公告文案由你自己维护', group: '管理', badge: memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired).length || '' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
@@ -2437,59 +2440,109 @@ async function toggleReviewHidden(review) {
 }
 
 const insightsPanelRef = ref(null);
-// ===== 会员日（每月几号消费积分翻倍）=====
+// ===== 会员日（指定日期消费积分翻倍）=====
 // 这个模块只有本面板在用，所以状态与函数直接放**本地** —— 不去动 App.vue 里那条 60+ 字段的
 // adminCtx（那条是「一整行」，漏一个字段就是后台白屏，09-20 踩过）。
 const memberDays = ref([]);
 const memberDayFormOpen = ref(false);
-const memberDayForm = reactive({ id: null, dayOfMonth: 18, multiplier: 2, remark: '', enabled: true });
-const memberDayEnabledCount = computed(() => memberDays.value.filter((d) => Number(d.enabled) === 1).length);
+const memberDayForm = reactive({ id: null, memberDate: '', multiplier: 2, remark: '', enabled: true });
+// 日历当前显示的月份（可翻月挑未来的日期）
+const memberDayCalendarCursor = ref(new Date());
+const memberDayEnabledCount = computed(
+  () => memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired).length,
+);
 const memberDaySlogan = computed(() => {
-  const active = memberDays.value.filter((d) => Number(d.enabled) === 1);
-  if (!active.length) return '当前没有启用的会员日';
-  const days = active.map((d) => d.dayOfMonth).join('、');
+  const active = memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired);
+  if (!active.length) return '当前没有生效中的会员日';
+  const labels = active.slice(0, 3).map((d) => memberDayShortLabel(d.memberDate)).join('、');
+  const more = active.length > 3 ? ` 等 ${active.length} 天` : '';
   const mult = Math.max(...active.map((d) => Number(d.multiplier) || 2));
-  return '每月 ' + days + ' 号消费积分 ' + (mult === 2 ? '双倍' : '×' + mult);
+  return labels + more + ' 消费积分 ' + (mult === 2 ? '双倍' : '×' + mult);
 });
 
-// ===== 选日期的日历（只挑「每月几号」，不是挑某个具体年月日）=====
+// ===== 日历（挑具体日期）=====
 const MDC_WEEK = ['日', '一', '二', '三', '四', '五', '六'];
-const memberDayCalendarMonthText = computed(() => {
-  const now = new Date();
-  return `${now.getFullYear()} 年 ${now.getMonth() + 1} 月`;
-});
 
-/** 该号是否已被**别的**会员日占用（编辑自己时不算占用）。 */
-function memberDayDayTaken(day) {
-  return memberDays.value.some((row) => Number(row.dayOfMonth) === Number(day) && row.id !== memberDayForm.id);
+/** 本地时区的 YYYY-MM-DD（⚠️ 不能用 toISOString：它按 UTC 算，东八区会差一天） */
+function isoDateOf(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-function firstFreeMemberDayDay() {
-  for (let d = 1; d <= 31; d += 1) {
-    if (!memberDayDayTaken(d)) return d;
+const memberDayTodayIso = computed(() => isoDateOf(new Date()));
+const memberDayCalendarMonthText = computed(() => {
+  const cursor = memberDayCalendarCursor.value;
+  return `${cursor.getFullYear()} 年 ${cursor.getMonth() + 1} 月`;
+});
+
+/** 该日期是否已被**别的**会员日占用（编辑自己时不算）。 */
+function memberDayDateTaken(iso) {
+  return !!iso && memberDays.value.some((row) => row.memberDate === iso && row.id !== memberDayForm.id);
+}
+
+/** 展示用：「10 月 1 日（周四）」 */
+function memberDayDateLabel(iso) {
+  if (!iso) return '未设置';
+  const [y, m, d] = iso.split('-').map(Number);
+  const weekday = MDC_WEEK[new Date(y, m - 1, d).getDay()];
+  const thisYear = new Date().getFullYear();
+  return `${y === thisYear ? '' : `${y} 年 `}${m} 月 ${d} 日（周${weekday}）`;
+}
+
+/** 列表/Toolbar 里用的短标签：「10月1日」 */
+function memberDayShortLabel(iso) {
+  if (!iso) return '';
+  const [, m, d] = iso.split('-').map(Number);
+  return `${m}月${d}日`;
+}
+
+/** 新增时默认落在今天（今天已被占用就往后找第一个空闲日期） */
+function firstFreeMemberDayDate() {
+  const base = new Date();
+  for (let i = 0; i < 90; i += 1) {
+    const candidate = isoDateOf(new Date(base.getFullYear(), base.getMonth(), base.getDate() + i));
+    if (!memberDayDateTaken(candidate)) return candidate;
   }
-  return 18;
+  return isoDateOf(base);
+}
+
+function shiftMemberDayCalendar(delta) {
+  const cursor = memberDayCalendarCursor.value;
+  memberDayCalendarCursor.value = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+}
+
+function resetMemberDayCalendar() {
+  memberDayCalendarCursor.value = new Date();
 }
 
 /**
- * 日历格子：以**本月**的真实排布当骨架（看着就是一张日历，今天有高亮），
- * 但格子永远覆盖 1-31 号 —— 因为规则是「每月几号」，2 月也得能选 30/31 号（那个月不触发而已）。
- * 所以本月没有的号会补在末尾并标灰（`off`）。
+ * 当前显示月份的全部格子。
+ * ⚠️ 这里必须只放**该月真实存在**的日子（日历嘛）—— 与上一版「每月几号」不同：
+ * 那时格子要覆盖 1-31（因为 2 月也得能配 31 号），现在挑的是具体日期，多出来的号没有意义。
+ * 已过去的日期（`past`）与已配置的日期（`taken`）都禁用。
  */
 const memberDayCalendarCells = computed(() => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const cursor = memberDayCalendarCursor.value;
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = memberDayTodayIso.value;
   const cells = [];
   for (let i = 0; i < new Date(year, month, 1).getDay(); i += 1) {
     cells.push({ day: null });
   }
   for (let d = 1; d <= daysInMonth; d += 1) {
-    cells.push({ day: d, today: d === now.getDate(), taken: memberDayDayTaken(d) });
-  }
-  for (let d = daysInMonth + 1; d <= 31; d += 1) {
-    cells.push({ day: d, off: true, taken: memberDayDayTaken(d) });
+    const iso = isoDateOf(new Date(year, month, d));
+    cells.push({
+      day: d,
+      iso,
+      label: `${month + 1} 月 ${d} 日`,
+      today: iso === todayIso,
+      past: iso < todayIso,
+      taken: memberDayDateTaken(iso),
+    });
   }
   return cells;
 });
@@ -2505,11 +2558,16 @@ async function loadMemberDays() {
 
 function openMemberDayForm(row) {
   memberDayForm.id = row ? row.id : null;
-  // 新增时默认落在**第一个没被占用的号**上：否则默认 18 号常常已被占用，一打开就顶着红字
-  memberDayForm.dayOfMonth = row ? row.dayOfMonth : firstFreeMemberDayDay();
+  memberDayForm.memberDate = row ? row.memberDate : firstFreeMemberDayDate();
   memberDayForm.multiplier = row ? Number(row.multiplier) : 2;
   memberDayForm.remark = row ? (row.remark || '') : '';
   memberDayForm.enabled = row ? Number(row.enabled) === 1 : true;
+  if (row && row.memberDate) {
+    const [y, m] = row.memberDate.split('-').map(Number);
+    memberDayCalendarCursor.value = new Date(y, m - 1, 1);   // 编辑时把日历翻到那个月
+  } else {
+    memberDayCalendarCursor.value = new Date();
+  }
   memberDayFormOpen.value = true;
 }
 
@@ -2519,18 +2577,22 @@ function closeMemberDayForm() {
 
 async function saveMemberDay() {
   const form = memberDayForm;
-  const day = Number(form.dayOfMonth);
-  if (!Number.isInteger(day) || day < 1 || day > 31) {
+  const date = form.memberDate;
+  if (!date) {
     showAlert('请在日历上挑一个日期');
     return;
   }
-  if (memberDayDayTaken(day)) {
-    showAlert(`每月 ${day} 号已经配置过了，请在日历上另选一天`);
+  if (date < memberDayTodayIso.value) {
+    showAlert('会员日不能设在今天之前，请在日历上另选一天');
+    return;
+  }
+  if (memberDayDateTaken(date)) {
+    showAlert(`${memberDayDateLabel(date)} 已经配置过了，请在日历上另选一天`);
     return;
   }
   await run(async () => {
     const payload = {
-      dayOfMonth: day,
+      memberDate: date,
       multiplier: Number(form.multiplier) || 2,
       remark: (form.remark || '').trim(),
       enabled: !!form.enabled,
@@ -2538,34 +2600,33 @@ async function saveMemberDay() {
     if (form.id) await api.put(`/admin/member-days/${form.id}`, payload);
     else await api.post('/admin/member-days', payload);
     closeMemberDayForm();
-    // 后端保存时会顺带把公告栏那条「会员日」的标题/正文重写一遍 → 一并刷新公告，免得后台还显示旧文案
-    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
-  }, '会员日已保存，公告栏「会员日」文案已同步');
+    await loadMemberDays();
+  }, '会员日已保存');
 }
 
 async function toggleMemberDay(row) {
   const enabled = Number(row.enabled) !== 1;
   await run(async () => {
     await api.put(`/admin/member-days/${row.id}`, {
-      dayOfMonth: row.dayOfMonth,
+      memberDate: row.memberDate,
       multiplier: Number(row.multiplier),
       remark: row.remark || '',
       enabled,
     });
-    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
+    await loadMemberDays();
   }, enabled ? '已启用' : '已停用');
 }
 
 async function deleteMemberDay(row) {
   const confirmed = await askConfirm({
     title: '删除会员日',
-    message: `删除后「每月 ${row.dayOfMonth} 号」当天消费不再翻倍积分。`,
+    message: `删除后 ${memberDayDateLabel(row.memberDate)} 当天消费不再翻倍积分。`,
     confirmText: '确认删除',
   });
   if (!confirmed) return;
   await run(async () => {
     await api.delete(`/admin/member-days/${row.id}`);
-    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
+    await loadMemberDays();
   }, '已删除');
 }
 
