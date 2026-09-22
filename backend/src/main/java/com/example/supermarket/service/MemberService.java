@@ -8,6 +8,7 @@ import com.example.supermarket.repository.PointLedgerRepository;
 import com.example.supermarket.repository.SysUserRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,12 +43,14 @@ public class MemberService {
     private final SysUserRepository userRepository;
     private final PointLedgerRepository ledgerRepository;
     private final MessageService messageService;
+    private final MemberDayService memberDayService;
 
     public MemberService(SysUserRepository userRepository, PointLedgerRepository ledgerRepository,
-                         MessageService messageService) {
+                         MessageService messageService, MemberDayService memberDayService) {
         this.userRepository = userRepository;
         this.ledgerRepository = ledgerRepository;
         this.messageService = messageService;
+        this.memberDayService = memberDayService;
     }
 
     public int levelForSpent(BigDecimal spent) {
@@ -80,12 +83,29 @@ public class MemberService {
         return base.multiply(BigDecimal.ONE.subtract(rate)).setScale(2, RoundingMode.HALF_UP).max(ZERO);
     }
 
-    /** 实付金额可获积分（每满 1 元 1 分，向下取整） */
+    /** 实付金额可获积分（每满 1 元 1 分，向下取整）；按「今天」判定会员日。 */
     public long earnPoints(BigDecimal paidAmount) {
+        return earnPoints(paidAmount, LocalDate.now());
+    }
+
+    /**
+     * 实付金额可获积分：每满 1 元 1 分（向下取整），**会员日按倍率加倍**（见 {@code member_day} 表）。
+     *
+     * @param consumeDate 判定会员日用的「消费日」—— 项目里用**下单日**（订单创建日），
+     *                    而不是支付日：订单上存的 {@code pointsEarned} 也是下单当天算的，
+     *                    两边同口径才不会出现「订单显示 20 分、实际发了 10 分」。
+     */
+    public long earnPoints(BigDecimal paidAmount, LocalDate consumeDate) {
         if (paidAmount == null) {
             return 0L;
         }
-        return paidAmount.setScale(0, RoundingMode.FLOOR).longValue();
+        long base = paidAmount.setScale(0, RoundingMode.FLOOR).longValue();
+        BigDecimal multiplier = memberDayService.multiplierFor(consumeDate);
+        if (multiplier.compareTo(BigDecimal.ONE) <= 0) {
+            return base;
+        }
+        return BigDecimal.valueOf(base).multiply(multiplier)
+                .setScale(0, RoundingMode.FLOOR).longValue();
     }
 
     /** 下单时预留积分抵扣：扣减用户积分并记流水，返回实际抵扣积分（已按用户积分与金额上限封顶）。 */
@@ -126,11 +146,11 @@ public class MemberService {
 
     /** 支付成功后发放积分 + 累计消费升级（幂等：同一订单仅发放一次） */
     @Transactional
-    public void awardOnPaidOrder(Long userId, Long orderId, BigDecimal payAmount) {
+    public void awardOnPaidOrder(Long userId, Long orderId, BigDecimal payAmount, LocalDate consumeDate) {
         if (ledgerRepository.existsByRefOrderIdAndType(orderId, PointLedger.TYPE_EARN)) {
             return;
         }
-        long earn = earnPoints(payAmount);
+        long earn = earnPoints(payAmount, consumeDate);
         SysUser user = lockUser(userId);
         user.setPoints(user.getPoints() + earn);
         BigDecimal spent = user.getTotalSpent() == null ? ZERO : user.getTotalSpent();
@@ -141,7 +161,12 @@ public class MemberService {
         user.setMemberLevel(currentLevel);
         userRepository.save(user);
         if (earn > 0) {
-            saveLedger(user.getId(), PointLedger.TYPE_EARN, earn, user.getPoints(), orderId, "消费获得积分");
+            // 会员日当天多给的那部分在备注里点明，用户对账时看得懂为什么多
+            BigDecimal multiplier = memberDayService.multiplierFor(consumeDate);
+            String remark = multiplier.compareTo(BigDecimal.ONE) > 0
+                    ? "消费获得积分（会员日 " + multiplier.stripTrailingZeros().toPlainString() + " 倍）"
+                    : "消费获得积分";
+            saveLedger(user.getId(), PointLedger.TYPE_EARN, earn, user.getPoints(), orderId, remark);
         }
         if (currentLevel > previousLevel) {
             // 消息中心：会员升级（同一等级只提醒一次）

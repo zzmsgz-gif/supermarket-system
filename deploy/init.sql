@@ -706,3 +706,20 @@ CREATE TABLE hot_search (
     PRIMARY KEY (id),
     KEY idx_hot_search_enabled_sort (enabled, sort_order, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页热搜词（后台可管）';
+
+-- 会员日：每月几号消费积分翻倍（默认 18 号 ×2），后台「会员日」菜单可增删改。
+-- 原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端根本没实现（假承诺）；
+-- 现在这张表是唯一真相，公告栏那条的文案由 MemberDayService 按配置自动维护。
+-- 只配到「号」不配到「月」：31 号在小月不存在，那天自然不触发（不做顺延，免得解释不清）。
+CREATE TABLE member_day (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    day_of_month INT NOT NULL COMMENT '每月几号（1-31）',
+    multiplier DECIMAL(3, 1) NOT NULL DEFAULT 2.0 COMMENT '积分倍率，2 = 双倍',
+    remark VARCHAR(60) NOT NULL DEFAULT '' COMMENT '展示用备注',
+    enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_member_day_day (day_of_month),
+    KEY idx_member_day_enabled (enabled, day_of_month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会员日（消费积分翻倍，后台可管）';

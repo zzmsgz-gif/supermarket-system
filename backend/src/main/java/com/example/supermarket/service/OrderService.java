@@ -33,6 +33,7 @@ import com.example.supermarket.repository.UserAddressRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -315,7 +316,9 @@ public class OrderService {
         }
         BigDecimal pointsValue = new BigDecimal(pointsUsed).divide(POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
         BigDecimal finalPay = payBeforePoints.subtract(pointsValue).max(ZERO);
-        long pointsEarned = memberService.earnPoints(finalPay);
+        // 会员日（每月指定几号）按「下单日」加倍：这里存的就是最终会发放的积分，
+        // 支付时 awardOnPaidOrder 用同一个口径（订单创建日）重算，两边不会打架
+        long pointsEarned = memberService.earnPoints(finalPay, LocalDate.now());
         savedOrder.setMemberDiscount(memberDiscount);
         // 落库的是"实际抵扣掉的金额"（而非按点数现算），这样订单详情里
         // 小计 - 券 - 活动 - 会员折扣 - 积分抵扣 恒等于实付，不会因任何一处兜底 max(ZERO) 而对不上账
@@ -384,7 +387,11 @@ public class OrderService {
         order.setStatus(PAID);
         order.setPaymentStatus(PAYMENT_PAID);
         order.setPaidAt(now);
-        memberService.awardOnPaidOrder(userId, orderId, order.getPayAmount());
+        // 会员日积分按**下单日**判定（与下单时存进订单的 pointsEarned 同口径），
+        // 所以这里取订单自身的创建日；createdAt 是 DB 生成列，取不到时退回今天
+        LocalDate consumeDate = order.getCreatedAt() != null
+                ? order.getCreatedAt().toLocalDate() : LocalDate.now();
+        memberService.awardOnPaidOrder(userId, orderId, order.getPayAmount(), consumeDate);
         OrderEntity savedOrder = orderRepository.save(order);
         if (paymentRecordRepository.findByOrderId(orderId).isEmpty()) {
             paymentRecordRepository.save(buildPaymentRecord(order, now));
