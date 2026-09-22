@@ -2,6 +2,8 @@
 """验证：管理员编辑商品库存(绝对值)是否真正落库。
 同时静态核对前端「点击头像换头像」与「账户余额框对齐」的构建产物。"""
 import json, random, string, subprocess, sys, glob, os, urllib.request, urllib.error
+from _db import DBPASS, DBUSER
+from _admin_token import temp_admin
 
 BASE = "http://localhost:8080/api"
 MYSQL = "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"
@@ -9,7 +11,7 @@ DB = "supermarket_system"
 
 def mysql_val(sql):
     """执行 SQL 并返回首个数据单元格（用参数列表，避免 shell 对 $ 的扩展）。"""
-    p = subprocess.run([MYSQL, "-u", "root", "-pzzmsgz", "--default-character-set=utf8mb4", DB, "-N", "-e", sql],
+    p = subprocess.run([MYSQL, "-u", DBUSER, "-p" + DBPASS, "--default-character-set=utf8mb4", DB, "-N", "-e", sql],
                        capture_output=True, encoding="utf-8", errors="ignore")
     for line in p.stdout.splitlines():
         line = line.strip()
@@ -35,19 +37,15 @@ def req(method, path, body=None, token=None):
             return e.code, {}
 
 def main():
-    # 1) 临时设置 admin 密码以便登录（结束还原）
-    orig = mysql_val("SELECT password_hash FROM sys_user WHERE id=1;")
-    import bcrypt
-    newhash = bcrypt.hashpw(b"Admin123456", bcrypt.gensalt()).decode()
-    subprocess.run([MYSQL, "-u", "root", "-pzzmsgz", "--default-character-set=utf8mb4", DB, "-N", "-e",
-                   f"UPDATE sys_user SET password_hash='{newhash}' WHERE id=1;"],
-                   encoding="utf-8", errors="ignore")
+    # 1) 用**临时管理员**登录 —— 不再改 admin(id=1) 的密码。
+    #    旧写法把 id=1 的密码临时换成硬编码值再换回来，中途崩溃（429 / 超时强杀 / assert 失败）
+    #    就会把它留在那个硬编码值上，而本仓库是公开仓库。清理由 _admin_token 的 atexit 兜底。
+    adm = temp_admin()
+    atok = adm.token
+    print(f"临时管理员 {adm.username}（id={adm.uid}）；admin(id=1) 的密码未被改动")
 
-    code, resp = req("POST", "/auth/login", {"username": "admin", "password": "Admin123456"})
-    assert resp.get("code") == 0, f"admin login failed: {resp}"
-    atok = resp["data"]["token"]
-
-    pid = 35
+    # 动态取一个在售商品 —— 原来写死 product 35，那个 id 早已不存在，脚本一直跑不通
+    pid = int(adm.sql("SELECT id FROM product WHERE deleted=0 ORDER BY id LIMIT 1"))
     code, resp = req("GET", f"/admin/products/{pid}", token=atok)
     assert resp.get("code") == 0, f"get product failed: {resp}"
     d = resp["data"]
@@ -85,10 +83,8 @@ def main():
     # 还原库存
     payload["stock"] = before
     req("PUT", f"/admin/products/{pid}", payload, token=atok)
-    subprocess.run([MYSQL, "-u", "root", "-pzzmsgz", "--default-character-set=utf8mb4", DB, "-N", "-e",
-                   f"UPDATE sys_user SET password_hash='{orig}' WHERE id=1;"],
-                   encoding="utf-8", errors="ignore")
-    print("已还原商品库存与 admin 密码哈希。")
+    adm.cleanup()          # 删临时账号（atexit 里还有一次兜底；cleanup 幂等）
+    print(f"已还原商品库存，并删除临时管理员 {adm.username}（admin 密码全程未动）。")
 
     # 4) 静态核对前端构建产物（以 index.html 实际引用的资源为准）
     import re
@@ -102,8 +98,11 @@ def main():
     no_standalone_button = ("点击更换头像" in jtxt) and (jtxt.count("换头像") == jtxt.count("点击更换头像"))
     print(("PASS " if has_clickable else "FAIL ") + "Bug1-构建产物含 avatar-clickable(点击换头像)")
     print(("PASS " if no_standalone_button else "FAIL ") + "Bug1-已无独立的『换头像』按钮(仅作头像提示)")
-    ok_css = ".wallet-box" in ctxt and "inline-flex" in ctxt.replace(" ", "")
-    print(("PASS " if ok_css else "FAIL ") + "Bug2-wallet-box 已改为 inline-flex 单行对齐")
+    # 余额框「单行对齐」：类名早已从 .wallet-box 改成 .ama-balance（头像下拉重构），
+    # 对齐方式也由 inline-flex 改为 flex + align-items:baseline —— 断言同步到现状，
+    # 否则这条会一直 FAIL 而实际功能是好的（旧类名只留在 dist 里的废弃 bundle 中）。
+    ok_css = ".ama-balance" in ctxt and "align-items:baseline" in ctxt.replace(" ", "")
+    print(("PASS " if ok_css else "FAIL ") + "Bug2-头像下拉余额单行对齐(.ama-balance + align-items:baseline)")
 
     allok = ok1 and ok2 and ok3 and has_clickable and no_standalone_button and ok_css
     print("\n=== 结果:", "ALL PASS" if allok else "SOME FAILED", "===")
