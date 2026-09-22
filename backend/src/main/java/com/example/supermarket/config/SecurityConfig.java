@@ -16,19 +16,23 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.example.supermarket.security.CustomUserDetailsService;
 import com.example.supermarket.security.JwtAuthenticationFilter;
+import com.example.supermarket.security.MustChangePasswordFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final MustChangePasswordFilter mustChangePasswordFilter;
     private final CustomUserDetailsService userDetailsService;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            MustChangePasswordFilter mustChangePasswordFilter,
             CustomUserDetailsService userDetailsService
     ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.mustChangePasswordFilter = mustChangePasswordFilter;
         this.userDetailsService = userDetailsService;
     }
 
@@ -82,6 +86,8 @@ public class SecurityConfig {
                         }))
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // 强制改密必须在 JWT 之后（要先有 SecurityContext 才能判断是谁），拦截 see MustChangePasswordFilter
+                .addFilterAfter(mustChangePasswordFilter, JwtAuthenticationFilter.class)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable);
         return http.build();

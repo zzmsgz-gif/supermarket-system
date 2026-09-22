@@ -1875,6 +1875,11 @@ function handleAuthExpired() {
 }
 if (typeof window !== 'undefined') {
   window.addEventListener('auth-expired', handleAuthExpired);
+  // 后端也会拦「待强制改密」的账号（40302，见 MustChangePasswordFilter）：任何调用被拦都把
+  // 不可关闭的改密弹窗拉起来，避免出现「页面能点、接口全 403」这种说不清的状态。
+  window.addEventListener('must-change-password', () => {
+    if (!authOpen.value && session.user) openChangePassword(true);
+  });
 }
 
 async function loadMe() {

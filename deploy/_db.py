@@ -100,8 +100,13 @@ def mysql_args(*extra, host=False):
     return args + list(extra)
 
 
-def run_sql(sql, database=DB, extra=("--default-character-set=utf8mb4",)):
-    """执行一段 SQL，返回 (stdout+stderr 文本)。默认带上 utf8mb4（带中文的 SQL 不加会 ERROR 1366）。"""
+def run_sql(sql, database=DB, extra=("--default-character-set=utf8mb4", "-N", "-B")):
+    """执行一段 SQL，返回 (stdout+stderr 文本)。
+
+    默认带 `--default-character-set=utf8mb4`（带中文的 SQL 不加会 ERROR 1366）
+    与 `-N -B`（不要表头、制表符分隔）—— 仓库里老脚本一律这么用；
+    少了 `-N` 的话 `SELECT id ...` 的第一行是列名 `id`，取值会直接踩坑。
+    """
     args = mysql_args(*extra)
     if database:
         args += [database]
