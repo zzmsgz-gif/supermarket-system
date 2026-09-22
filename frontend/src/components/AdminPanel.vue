@@ -690,6 +690,69 @@
             </template>
           </div>
 
+          <!-- 会员日：每月几号消费积分翻倍。
+               原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端没实现（假承诺），
+               现在日期与倍率由这里配置，积分发放按「下单日」判定加倍。 -->
+          <div v-if="adminMenu === 'memberDays'" class="data-panel">
+            <div class="toolbar">
+              <button @click="openMemberDayForm(null)">新增会员日</button>
+              <span v-if="memberDayEnabledCount" class="tag muted">启用中 {{ memberDayEnabledCount }} 个 · {{ memberDaySlogan }}</span>
+            </div>
+
+            <div v-if="memberDayFormOpen" class="form-card admin-form-card">
+              <div class="form-title">
+                <span>{{ memberDayForm.id ? '编辑会员日' : '新增会员日' }}</span>
+                <small>会员日当天消费，积分按倍率翻倍（2 = 双倍）。只配「每月几号」——
+                  31 号在 2 月这类小月不存在，那天自然不触发（不做顺延）。
+                  保存后公告栏那条「会员日…」的标题与正文会**自动**改成与这里一致；
+                  一个启用的会员日都没有时，那条公告会被自动停用（不留兑现不了的承诺）。</small>
+              </div>
+              <div class="admin-form-grid">
+                <label class="field">
+                  <span class="field-label">每月几号 <i class="req">*</i></span>
+                  <input v-model.number="memberDayForm.dayOfMonth" type="number" min="1" max="31" placeholder="如 18" />
+                </label>
+                <label class="field">
+                  <span class="field-label">积分倍率</span>
+                  <input v-model.number="memberDayForm.multiplier" type="number" min="1" max="10" step="0.5" placeholder="2 = 双倍" />
+                </label>
+                <label class="field">
+                  <span class="field-label">备注（仅后台可见）</span>
+                  <input v-model="memberDayForm.remark" maxlength="60" placeholder="如：超级会员日" />
+                </label>
+                <div class="field">
+                  <span class="field-label">是否启用</span>
+                  <label class="check-line"><input type="checkbox" v-model="memberDayForm.enabled" /> 启用（当天消费积分翻倍）</label>
+                </div>
+              </div>
+              <div class="admin-form-foot">
+                <button class="ghost" @click="closeMemberDayForm">取消</button>
+                <button @click="saveMemberDay">保存</button>
+              </div>
+            </div>
+
+            <template v-else>
+              <div class="admin-cards" v-if="memberDays.length">
+                <div v-for="d in memberDays" :key="d.id" class="admin-card">
+                  <span class="tag">每月 {{ d.dayOfMonth }} 号</span>
+                  <div class="card-info">
+                    <p class="card-title"><span class="card-title-text">积分 ×{{ d.multiplier }}</span></p>
+                    <p class="card-meta">
+                      <span>{{ d.remark || '未填备注' }}</span>
+                      <span :class="Number(d.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(d.enabled) === 1 ? '启用中' : '已停用' }}</span>
+                    </p>
+                  </div>
+                  <div class="card-actions">
+                    <button class="ghost" @click="openMemberDayForm(d)">编辑</button>
+                    <button class="ghost" @click="toggleMemberDay(d)">{{ Number(d.enabled) === 1 ? '停用' : '启用' }}</button>
+                    <button class="ghost danger" @click="deleteMemberDay(d)">删除</button>
+                  </div>
+                </div>
+              </div>
+              <empty-state v-else icon="star" text="还没有会员日，点上方「新增会员日」加一个（一个都没有时，公告栏那条「会员日」会被自动停用，不留兑现不了的承诺）" />
+            </template>
+          </div>
+
           <div v-if="adminMenu === 'banners'" class="data-panel">
             <div class="toolbar">
               <button @click="openBannerForm(null)">新建轮播位</button>
@@ -1479,6 +1542,7 @@ const adminIcons = {
   insights: adminIcon('<path d="M4 19.5h16"/><path d="M7 16.5V10M12 16.5V5.5M17 16.5v-4.5"/>'),
   flashSales: adminIcon('<path d="M13.5 2.5 5 13.5h5.5l-1 8 9-11h-5.5l.5-8z"/>'),
   passwordResets: adminIcon('<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 19.5 3.5"/><path d="M16.5 3.5H20V7"/>'),
+  memberDays: adminIcon('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M12 12.6l1.1 2.2 2.4.35-1.75 1.7.42 2.4-2.17-1.14-2.17 1.14.42-2.4-1.75-1.7 2.4-.35z"/>'),
 };
 
 const adminMenuItems = computed(() => [
@@ -1494,6 +1558,7 @@ const adminMenuItems = computed(() => [
   { key: 'flashSales', label: '限时秒杀', desc: '按商品开秒杀场次：秒杀价、独立名额、每人限购与档期', group: '管理', badge: adminFlashSales.value.filter((f) => f.state === 'RUNNING').length || '' },
   { key: 'notices', label: '公告管理', desc: '发布商城公告：类型分类（促销类标题会进首页顶栏）、排序、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
   { key: 'hotSearches', label: '热搜词', desc: '维护首页头部搜索框下方的「热搜」那排词：搜索词、展示文案、排序与启停（点击即跳转搜索）', group: '管理', badge: adminHotSearches.value.length || '' },
+  { key: 'memberDays', label: '会员日', desc: '设置每月几号消费积分翻倍（可配多天、可调倍率）；公告栏那条「会员日」文案会随之自动更新', group: '管理', badge: memberDays.value.filter((d) => Number(d.enabled) === 1).length || '' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
@@ -2346,6 +2411,91 @@ async function toggleReviewHidden(review) {
 }
 
 const insightsPanelRef = ref(null);
+// ===== 会员日（每月几号消费积分翻倍）=====
+// 这个模块只有本面板在用，所以状态与函数直接放**本地** —— 不去动 App.vue 里那条 60+ 字段的
+// adminCtx（那条是「一整行」，漏一个字段就是后台白屏，09-20 踩过）。
+const memberDays = ref([]);
+const memberDayFormOpen = ref(false);
+const memberDayForm = reactive({ id: null, dayOfMonth: 18, multiplier: 2, remark: '', enabled: true });
+const memberDayEnabledCount = computed(() => memberDays.value.filter((d) => Number(d.enabled) === 1).length);
+const memberDaySlogan = computed(() => {
+  const active = memberDays.value.filter((d) => Number(d.enabled) === 1);
+  if (!active.length) return '当前没有启用的会员日';
+  const days = active.map((d) => d.dayOfMonth).join('、');
+  const mult = Math.max(...active.map((d) => Number(d.multiplier) || 2));
+  return '每月 ' + days + ' 号消费积分 ' + (mult === 2 ? '双倍' : '×' + mult);
+});
+
+async function loadMemberDays() {
+  if (!isAdmin.value) return;
+  try {
+    memberDays.value = (await api.get('/admin/member-days')) || [];
+  } catch (err) {
+    fail(err?.message || '会员日加载失败');
+  }
+}
+
+function openMemberDayForm(row) {
+  memberDayForm.id = row ? row.id : null;
+  memberDayForm.dayOfMonth = row ? row.dayOfMonth : 18;
+  memberDayForm.multiplier = row ? Number(row.multiplier) : 2;
+  memberDayForm.remark = row ? (row.remark || '') : '';
+  memberDayForm.enabled = row ? Number(row.enabled) === 1 : true;
+  memberDayFormOpen.value = true;
+}
+
+function closeMemberDayForm() {
+  memberDayFormOpen.value = false;
+}
+
+async function saveMemberDay() {
+  const form = memberDayForm;
+  const day = Number(form.dayOfMonth);
+  if (!Number.isInteger(day) || day < 1 || day > 31) {
+    showAlert('请填写 1-31 之间的日期');
+    return;
+  }
+  await run(async () => {
+    const payload = {
+      dayOfMonth: day,
+      multiplier: Number(form.multiplier) || 2,
+      remark: (form.remark || '').trim(),
+      enabled: !!form.enabled,
+    };
+    if (form.id) await api.put(`/admin/member-days/${form.id}`, payload);
+    else await api.post('/admin/member-days', payload);
+    closeMemberDayForm();
+    // 后端保存时会顺带把公告栏那条「会员日」的标题/正文重写一遍 → 一并刷新公告，免得后台还显示旧文案
+    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
+  }, '会员日已保存，公告栏「会员日」文案已同步');
+}
+
+async function toggleMemberDay(row) {
+  const enabled = Number(row.enabled) !== 1;
+  await run(async () => {
+    await api.put(`/admin/member-days/${row.id}`, {
+      dayOfMonth: row.dayOfMonth,
+      multiplier: Number(row.multiplier),
+      remark: row.remark || '',
+      enabled,
+    });
+    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
+  }, enabled ? '已启用' : '已停用');
+}
+
+async function deleteMemberDay(row) {
+  const confirmed = await askConfirm({
+    title: '删除会员日',
+    message: `删除后「每月 ${row.dayOfMonth} 号」当天消费不再翻倍积分。`,
+    confirmText: '确认删除',
+  });
+  if (!confirmed) return;
+  await run(async () => {
+    await api.delete(`/admin/member-days/${row.id}`);
+    await Promise.all([loadMemberDays(), loadAdminAnnouncements()]);
+  }, '已删除');
+}
+
 const adminMenuLoaders = {
   insights: () => insightsPanelRef.value?.load(),
   orders: () => loadAdminOrders(),
@@ -2359,6 +2509,7 @@ const adminMenuLoaders = {
   flashSales: () => loadAdminFlashSales(),
   notices: () => loadAdminAnnouncements(),
   hotSearches: () => loadAdminHotSearches(),
+  memberDays: () => loadMemberDays(),
   stores: () => loadAdminStores(),
   banners: () => loadAdminBanners(),
   users: () => loadAdminUsers(),
