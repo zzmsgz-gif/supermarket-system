@@ -48,8 +48,17 @@ async function request(path, options = {}) {
         window.dispatchEvent(new CustomEvent('auth-expired'));
       }
     }
+    // 40302 = 后端拦下了「管理员重置过密码、还没改」的账号（见 MustChangePasswordFilter）。
+    // 前端本来就会弹不可关闭的改密弹窗，这里再补一次事件，保证任何调用路径被拦都能拉起来。
+    const mustChange = payload?.code === 40302;
+    if (mustChange && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('must-change-password'));
+    }
     const err = new Error(message);
     if (authFailed) err.authExpired = true;
+    if (mustChange) err.mustChangePassword = true;
+    err.code = payload?.code;
+    err.status = response.status;
     throw err;
   }
 
