@@ -1356,6 +1356,52 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
   color: var(--ink);
 }
 
+/* ===== 会员日：挑日期用的日历（只挑「每月几号」）===== */
+.md-calendar {
+  margin-top: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.mdc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.mdc-head small { color: #7d8f89; line-height: 1.5; }
+.mdc-month { font-weight: 800; color: var(--ink); }
+.mdc-week,
+.mdc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.mdc-week span {
+  padding-bottom: 2px; text-align: center;
+  font-size: 12px; font-weight: 700; color: #8fa39c;
+}
+
+/* ⚠️ 全局 `button` 有 min-height:38px + 绿渐变 + padding，而 min-height 优先级高于 height ——
+   不把这些逐条压掉，日历格子会被撑成 38px 高的绿色小方块（项目里踩过好几次）。 */
+.mdc-day {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 0; height: 32px; padding: 0;
+  border: 1px solid transparent; border-radius: 8px;
+  background: #f4f8f6; color: var(--ink);
+  font-size: 13px; font-weight: 600;
+  box-shadow: none;
+}
+.mdc-day:hover:not(:disabled) { background: #e6f4ee; border-color: #b9dfd0; }
+.mdc-day.today { box-shadow: inset 0 0 0 1px var(--brand); }
+.mdc-day.off { color: #b9c6c1; }
+.mdc-day.blank { background: transparent; }
+.mdc-day.on {
+  border-color: transparent; color: #fff;
+  background: linear-gradient(180deg, #12c48b, var(--brand));
+  box-shadow: 0 3px 8px rgba(0, 168, 112, .28);
+}
+.mdc-day:disabled,
+.mdc-day:disabled:hover {
+  background: #f1f2f3; color: #b6bcbe;
+  border-color: transparent; cursor: not-allowed; text-decoration: line-through;
+}
+.mdc-hint { margin: 8px 0 0; color: #5d736c; font-size: 13px; }
+.mdc-hint b { color: var(--brand-deep); }
+.mdc-warn { color: #c0392b; }
+
 .admin-form-foot {
   display: flex;
   justify-content: flex-end;
