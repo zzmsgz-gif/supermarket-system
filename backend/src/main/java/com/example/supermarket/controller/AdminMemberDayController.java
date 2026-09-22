@@ -18,8 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 后台「会员日」管理：每月几号消费积分翻倍（可配多个日期）。
  *
- * <p>⚠️ 增删改都会顺带把公告栏里那条「会员日…」的标题/正文重写成与配置一致
- * （见 {@code MemberDayService.syncAnnouncement}），避免文案与配置对不上。
+ * <p>⚠️ 不负责公告文案：公告栏那条「会员日…」由管理员自己维护，系统不改写
+ * （自动生成会与运营的手写内容打架）。
  */
 @RestController
 @RequestMapping("/admin/member-days")

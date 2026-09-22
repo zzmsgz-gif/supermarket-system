@@ -27,7 +27,7 @@ INSERT IGNORE INTO `activity` (id, name, type, scope, category_id, product_id, t
 INSERT IGNORE INTO `announcement` (id, title, content, type, sort_order, enabled, publish_time, deleted, created_at, updated_at) VALUES
 (2,'全场满200减50 火热进行中','活动详情见首页轮播，结算自动减免。','ACTIVITY',2,1,'2026-09-02 09:00:00',0,'2026-09-02 09:00:00','2026-09-02 09:00:00'),
 (3,'生鲜产地直发 新鲜直达','每日产地直采，冷链配送，到手更新鲜。','NOTICE',3,1,'2026-09-03 09:00:00',0,'2026-09-03 09:00:00','2026-09-03 09:00:00'),
-(4,'会员日 每月18号 双倍积分','会员日（每月18号）消费可得双倍积分；积分可在结算时抵扣现金。','PROMOTION',4,1,'2026-09-05 09:00:00',0,'2026-09-05 09:00:00','2026-09-05 09:00:00'),
+(4,'会员日 消费双倍积分','会员日当天消费可得双倍积分，具体日期见会员中心「我的积分」页；积分可在结算时抵扣现金。','PROMOTION',4,1,'2026-09-05 09:00:00',0,'2026-09-05 09:00:00','2026-09-05 09:00:00'),
 (5,'关于配送时效的说明','当日 18:00 前下单，次日送达；偏远地区顺延。','NOTICE',5,1,'2026-09-06 09:00:00',0,'2026-09-06 09:00:00','2026-09-06 09:00:00')
 ;
 -- ⚠️ 公告是「运营内容」，刻意用 INSERT IGNORE（缺行才插入），**不做 ON DUPLICATE KEY UPDATE**：
@@ -61,11 +61,13 @@ INSERT IGNORE INTO `flash_sale` (id, name, product_id, flash_price, total_quota,
 (1,'红富士苹果 限时秒杀',1,ROUND((SELECT price FROM `product` WHERE id=1)*0.75,2),30,0,2,NOW(),DATE_ADD(NOW(), INTERVAL 30 DAY),1,10,0,NOW(),NOW()),
 (2,'纯牛奶 限时秒杀',84,ROUND((SELECT price FROM `product` WHERE id=84)*0.75,2),100,0,1,NOW(),DATE_ADD(NOW(), INTERVAL 30 DAY),1,0,0,NOW(),NOW());
 
--- 会员日：每月几号消费积分翻倍，默认 18 号 ×2 —— 与上面公告里那条「会员日 每月18号 双倍积分」一致。
--- （那条公告的标题/正文由 MemberDayService 在后台改动会员日时自动重写 → 两处不会长期不一致；
---   一条会员日都没启用时它会被自动停用，不会留下一句兑现不了的承诺。）
--- 只配到「号」不配到「月」：31 号在小月不存在，那天自然不触发（不做顺延，免得解释不清）。
--- ⚠️ 必须 INSERT IGNORE：日期/倍率/启停都会被后台「会员日」菜单改，
+-- 会员日：**指定的具体日期**当天消费积分翻倍，默认给「下一个 18 号」（今天就是 18 号则用今天），
+-- 保证新部署装完就有一个未过期的会员日可看。之后日期/倍率都在后台「会员日」菜单里调。
+-- ⚠️ 公告栏那条「会员日…」**不由系统改写** —— 那是运营文案，由管理员自己维护（别再加自动同步：
+--    系统代写会跟运营的手写内容打架，09-22 按用户要求已去掉）。
+-- ⚠️ 必须 INSERT IGNORE：日期/倍率/启停都会被后台改，
 --    用 ON DUPLICATE KEY UPDATE 回写就成了"后台改完一重启被重置"的假功能（公告/热搜词/热门标记都踩过）。
-INSERT IGNORE INTO `member_day` (id, day_of_month, multiplier, remark, enabled) VALUES
-(1,18,2.0,'会员日',1);
+INSERT IGNORE INTO `member_day` (id, member_date, multiplier, remark, enabled) VALUES
+(1, IF(DAY(CURDATE()) <= 18,
+       DATE_FORMAT(CURDATE(), '%Y-%m-18'),
+       DATE_FORMAT(DATE_ADD(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-18')), 2.0, '会员日', 1);

@@ -7,16 +7,20 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * 会员日：**按「每月几号」循环**配置（与公告里「会员日 每月18号」的说法一致）。
+ * 会员日：**指定具体日期**（年月日），当天消费积分翻倍。
  *
- * 会员日当天消费积分翻倍（倍率见 {@link #multiplier}，默认 2 = 双倍）。
- * 可配多个（如 8 / 18 / 28 号），由后台「会员日」菜单维护。
+ * <p>由后台「会员日」菜单维护，可配多个日期（如 10-01、11-11）。
+ * 判定用「下单日」是否命中列表里的某一天，见 {@code MemberDayService.multiplierFor}。
  *
- * ⚠️ 只配到「号」不配到「月」：31 号在 2 月这类小月不存在，那天自然不触发（不做「顺延到月末」，
- * 避免出现"2 月 28 号突然双倍"这种解释不清的行为）。
+ * <p>⚠️ 原先实现的是「每月几号」（只存 day_of_month、按月循环），2026-09-22 按用户要求改成
+ * **具体日期**：管理员从日历上挑哪天就是哪天，不再循环。所以这里存 {@link #memberDate}。
+ *
+ * <p>⚠️ 公告栏里那条「会员日…」**不再由系统改写** —— 那是运营文案，由管理员自己维护
+ * （系统自动生成会与运营的手写内容打架）。
  */
 @Entity
 @Table(name = "member_day")
@@ -26,9 +30,9 @@ public class MemberDay {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** 每月几号（1-31） */
-    @Column(name = "day_of_month", nullable = false)
-    private Integer dayOfMonth;
+    /** 会员日日期（具体到年月日） */
+    @Column(name = "member_date", nullable = false)
+    private LocalDate memberDate;
 
     /** 积分倍率：2 = 双倍（当天消费积分 ×2） */
     @Column(nullable = false, precision = 3, scale = 1)
@@ -59,12 +63,12 @@ public class MemberDay {
         this.id = id;
     }
 
-    public Integer getDayOfMonth() {
-        return dayOfMonth;
+    public LocalDate getMemberDate() {
+        return memberDate;
     }
 
-    public void setDayOfMonth(Integer dayOfMonth) {
-        this.dayOfMonth = dayOfMonth;
+    public void setMemberDate(LocalDate memberDate) {
+        this.memberDate = memberDate;
     }
 
     public BigDecimal getMultiplier() {
