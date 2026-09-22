@@ -46,3 +46,17 @@ INSERT IGNORE INTO `hot_search` (id, keyword, label, sort_order, enabled, delete
 (4,'抽纸',NULL,4,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00'),
 (5,'鸡蛋',NULL,5,1,0,'2026-09-01 09:00:00','2026-09-01 09:00:00')
 ;
+
+-- 限时秒杀场次：**新部署装完就有场次可看**。
+-- 原先场次只存在于演示库里、任何初始化脚本都没写 —— 新装机的秒杀区是空的（2026-09-22 确认）。
+-- ⚠️ 时间窗按 NOW() 现算（30 天），所以「装完当天」就是进行中，不会一上来就是过期场次。
+-- ⚠️ 用 INSERT IGNORE + 固定 id：只在缺行时插入，**不覆盖运营在后台「秒杀管理」改过的场次**
+--    （场次名/秒杀价/名额/限购/时间都能在后台改；用 ON DUPLICATE KEY UPDATE 回写就变成
+--     "后台改完一重启被重置"的假功能 —— 公告 / 热搜词 / 商品热门标记都踩过这个坑）。
+-- ⚠️ flash_price 由商品售价现算（×0.75），不写死数字：秒杀价必须低于售价，
+--    写死的话哪天商品降价就会违反这个约束（product 的同文件 INSERT 在本条之前执行，
+--    所以这两个商品一定存在）。
+-- 说明：这两条是**演示场次**。库里放久了会过期，届时在后台新建一场即可（或删掉该行重启，种子会重新插）。
+INSERT IGNORE INTO `flash_sale` (id, name, product_id, flash_price, total_quota, sold_quota, per_user_limit, start_time, end_time, status, sort_no, deleted, created_at, updated_at) VALUES
+(1,'红富士苹果 限时秒杀',1,ROUND((SELECT price FROM `product` WHERE id=1)*0.75,2),30,0,2,NOW(),DATE_ADD(NOW(), INTERVAL 30 DAY),1,10,0,NOW(),NOW()),
+(2,'纯牛奶 限时秒杀',84,ROUND((SELECT price FROM `product` WHERE id=84)*0.75,2),100,0,1,NOW(),DATE_ADD(NOW(), INTERVAL 30 DAY),1,0,0,NOW(),NOW());
