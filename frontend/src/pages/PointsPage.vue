@@ -21,6 +21,13 @@
     </div>
   </div>
 
+  <!-- 会员日：哪天翻倍由后台「会员日」菜单配置（原先公告里那句「每月18号双倍」，后端其实并没实现） -->
+  <div class="member-day-tip" v-if="memberDay.enabled">
+    <span class="mdt-badge">会员日</span>
+    <span class="mdt-text">{{ memberDayText }}</span>
+    <small v-if="memberDayNextText" class="mdt-next">{{ memberDayNextText }}</small>
+  </div>
+
   <!-- 升级进度 -->
   <div class="member-progress" v-if="memberProfile.nextLevelName">
     <div class="mp-head">
@@ -71,7 +78,7 @@
 </template>
 
 <script>
-import { inject } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
 export default {
   name: 'PointsPage',
   setup() {
@@ -79,12 +86,46 @@ export default {
     const ledgerLabel = (type) => ({
       EARN: '消费获得', REDEEM: '积分抵扣', REFUND: '订单回退', ADJUST: '系统调整',
     }[type] || type || '变动');
-    return { ...appCtx, ledgerLabel };
+
+    // 会员日（每月几号消费积分翻倍）是**公共配置**、但只有本页与结算页用得上，
+    // 所以直接在页面里读公开接口，不往 App.vue 那条 60+ 字段的 appCtx 里加东西（改动面越小越安全）。
+    const memberDay = ref({ enabled: false, slogan: '', nextDate: null });
+    onMounted(async () => {
+      try {
+        memberDay.value = (await appCtx.api.get('/member-days')) || memberDay.value;
+      } catch (err) {
+        // 拿不到就不显示这一块，不影响积分页其它内容
+      }
+    });
+    const memberDayNextText = computed(() => {
+      const raw = memberDay.value?.nextDate;
+      if (!raw) return '';
+      const parts = String(raw).split('-');
+      if (parts.length < 3) return '';
+      return `下次：${Number(parts[1])} 月 ${Number(parts[2])} 日`;
+    });
+    // 徽标里已经写了「会员日」，正文再去掉重复的开头，读起来是「会员日（每月18号）消费可得双倍积分」
+    const memberDayText = computed(() => {
+      const slogan = memberDay.value?.slogan || '';
+      return slogan.startsWith('会员日') ? slogan.slice(3) : slogan;
+    });
+
+    return { ...appCtx, ledgerLabel, memberDay, memberDayText, memberDayNextText };
   }
 };
 </script>
 
 <style scoped>
+.member-day-tip {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #fff7e6; border: 1px solid #f3d9a4; border-radius: 12px;
+  padding: 10px 14px; margin-top: 12px; font-size: 14px; color: #7a5417;
+}
+.mdt-badge {
+  min-height: 0; background: #f0a020; color: #fff; border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; font-weight: 700;
+}
+.mdt-next { margin-left: auto; color: #96703a; }
 .member-overview {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
   background: linear-gradient(120deg, #f3f8f6, #eaf3ef);
