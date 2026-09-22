@@ -201,20 +201,7 @@
                           </div>
                         </td>
                       </tr>
-                      <tr v-if="stockForm.productId === alert.id" class="row-extra-tr">
-                        <td colspan="6">
-                          <div class="row-extra">
-                            <span class="extra-label">补货数量</span>
-                            <input v-model.number="stockForm.quantity" type="number" min="1" step="1" class="qty-input" />
-                            <button type="button" class="chip" @click="stockForm.quantity = 10">+10</button>
-                            <button type="button" class="chip" @click="stockForm.quantity = 50">+50</button>
-                            <button type="button" class="chip" @click="stockForm.quantity = 100">+100</button>
-                            <input v-model="stockForm.remark" placeholder="备注（选填，如：供应商补货）" class="remark-input" />
-                            <button @click="submitStock(alert)">确认入库</button>
-                            <button class="ghost" @click="stockForm.productId = null">取消</button>
-                          </div>
-                        </td>
-                      </tr>
+                      <AdminStockFormRow :form="stockForm" :target="alert" :colspan="6" label="补货数量" @submit="submitStock(alert)" @cancel="stockForm.productId = null" />
                     </template>
                   </tbody>
                 </table>
@@ -401,20 +388,7 @@
                         </div>
                       </td>
                     </tr>
-                    <tr v-if="stockForm.productId === product.id" class="row-extra-tr">
-                      <td colspan="8">
-                        <div class="row-extra">
-                          <span class="extra-label">入库数量</span>
-                          <input v-model.number="stockForm.quantity" type="number" min="1" step="1" class="qty-input" />
-                          <button type="button" class="chip" @click="stockForm.quantity = 10">+10</button>
-                          <button type="button" class="chip" @click="stockForm.quantity = 50">+50</button>
-                          <button type="button" class="chip" @click="stockForm.quantity = 100">+100</button>
-                          <input v-model="stockForm.remark" placeholder="备注（选填，如：供应商补货）" class="remark-input" />
-                          <button @click="submitStock(product)">确认入库</button>
-                          <button class="ghost" @click="stockForm.productId = null">取消</button>
-                        </div>
-                      </td>
-                    </tr>
+                    <AdminStockFormRow :form="stockForm" :target="product" :colspan="8" label="入库数量" @submit="submitStock(product)" @cancel="stockForm.productId = null" />
                   </template>
                 </tbody>
               </table>
@@ -1287,6 +1261,7 @@ import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, forma
 import ImageUpload from './ImageUpload.vue';
 import AdminPager from './AdminPager.vue';
 import AdminInsightsPanel from './AdminInsightsPanel.vue';
+import AdminStockFormRow from './AdminStockFormRow.vue';
 import AdminPageSize from './AdminPageSize.vue';
 import AdminSearchBox from './AdminSearchBox.vue';
 
