@@ -18,9 +18,9 @@
 """
 import subprocess
 import sys
+from _db import DBUSER, DBPASS
 
 MYSQL = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
-DBPASS = "zzmsgz"
 DB = "supermarket_system"
 
 if len(sys.argv) < 2:
@@ -30,7 +30,7 @@ uid = sys.argv[1].strip()
 
 
 def sql(stmt):
-    p = subprocess.run([MYSQL, "-uroot", "-p" + DBPASS, "-D", DB,
+    p = subprocess.run([MYSQL, "-u", DBUSER, "-p" + DBPASS, "-D", DB,
                         "--default-character-set=utf8mb4", "-N", "-B", "-e", stmt],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:

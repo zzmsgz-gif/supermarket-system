@@ -4,8 +4,7 @@ import urllib.request, urllib.error, json, subprocess, random, string, sys
 
 BASE = "http://localhost:8080/api"
 MYSQL = "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"
-DB, DBUSER, DBPASS = "supermarket_system", "root", "zzmsgz"
-
+from _db import DB, DBUSER, DBPASS
 def mysql(sql):
     r = subprocess.run([MYSQL, "-u", DBUSER, f"-p{DBPASS}", "--default-character-set=utf8mb4",
                         DB, "-e", sql], capture_output=True, text=True)

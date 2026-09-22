@@ -17,11 +17,11 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
+from _db import DBUSER, DBPASS
 
 BASE = "http://localhost:8080/api"
 MYSQL = r"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe"
 DB = "supermarket_system"
-DBPASS = "zzmsgz"
 STAMP = str(int(time.time()))
 TOL = 0.011
 
@@ -73,7 +73,7 @@ def status_of(method, path, body=None, token=None):
 
 
 def sql(stmt):
-    p = subprocess.run([MYSQL, "-uroot", "-p" + DBPASS, "--default-character-set=utf8mb4",
+    p = subprocess.run([MYSQL, "-u", DBUSER, "-p" + DBPASS, "--default-character-set=utf8mb4",
                         "-D", DB, "-N", "-B", "-e", stmt],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
