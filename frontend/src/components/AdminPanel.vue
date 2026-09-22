@@ -708,10 +708,36 @@
                   一个启用的会员日都没有时，那条公告会被自动停用（不留兑现不了的承诺）。</small>
               </div>
               <div class="admin-form-grid">
-                <label class="field">
+                <!-- 挑日期：用日历格子点选「每月几号」，不用手填数字。
+                     已被其它会员日占用的号置灰不可点 —— 免得填完保存才报"已经配置过了"。 -->
+                <div class="field span-all">
                   <span class="field-label">每月几号 <i class="req">*</i></span>
-                  <input v-model.number="memberDayForm.dayOfMonth" type="number" min="1" max="31" placeholder="如 18" />
-                </label>
+                  <div class="md-calendar">
+                    <div class="mdc-head">
+                      <span class="mdc-month">{{ memberDayCalendarMonthText }}</span>
+                      <small>日历只用来挑「每月的号数」，选中的号<b>每月循环</b>生效（不是一次性日期）；
+                        本月没有的号（灰底）也能选，只是那个月不触发</small>
+                    </div>
+                    <div class="mdc-week">
+                      <span v-for="w in MDC_WEEK" :key="w">{{ w }}</span>
+                    </div>
+                    <div class="mdc-grid">
+                      <template v-for="(cell, ci) in memberDayCalendarCells" :key="ci">
+                        <span v-if="!cell.day" class="mdc-day blank"></span>
+                        <button v-else type="button" class="mdc-day"
+                                :class="{ on: memberDayForm.dayOfMonth === cell.day, taken: cell.taken, today: cell.today, off: cell.off }"
+                                :disabled="cell.taken"
+                                :title="cell.taken ? `每月 ${cell.day} 号已经配置过了` : `选每月 ${cell.day} 号`"
+                                @click="memberDayForm.dayOfMonth = cell.day">{{ cell.day }}</button>
+                      </template>
+                    </div>
+                    <p class="mdc-hint">
+                      已选：<b>每月 {{ memberDayForm.dayOfMonth }} 号</b>
+                      <span v-if="memberDayDayTaken(memberDayForm.dayOfMonth)" class="mdc-warn">该号已被其它会员日占用，请另选一天</span>
+                      <span v-else>· 当天消费积分按 {{ memberDayForm.multiplier || 2 }} 倍发放</span>
+                    </p>
+                  </div>
+                </div>
                 <label class="field">
                   <span class="field-label">积分倍率</span>
                   <input v-model.number="memberDayForm.multiplier" type="number" min="1" max="10" step="0.5" placeholder="2 = 双倍" />
@@ -2426,6 +2452,48 @@ const memberDaySlogan = computed(() => {
   return '每月 ' + days + ' 号消费积分 ' + (mult === 2 ? '双倍' : '×' + mult);
 });
 
+// ===== 选日期的日历（只挑「每月几号」，不是挑某个具体年月日）=====
+const MDC_WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+const memberDayCalendarMonthText = computed(() => {
+  const now = new Date();
+  return `${now.getFullYear()} 年 ${now.getMonth() + 1} 月`;
+});
+
+/** 该号是否已被**别的**会员日占用（编辑自己时不算占用）。 */
+function memberDayDayTaken(day) {
+  return memberDays.value.some((row) => Number(row.dayOfMonth) === Number(day) && row.id !== memberDayForm.id);
+}
+
+function firstFreeMemberDayDay() {
+  for (let d = 1; d <= 31; d += 1) {
+    if (!memberDayDayTaken(d)) return d;
+  }
+  return 18;
+}
+
+/**
+ * 日历格子：以**本月**的真实排布当骨架（看着就是一张日历，今天有高亮），
+ * 但格子永远覆盖 1-31 号 —— 因为规则是「每月几号」，2 月也得能选 30/31 号（那个月不触发而已）。
+ * 所以本月没有的号会补在末尾并标灰（`off`）。
+ */
+const memberDayCalendarCells = computed(() => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < new Date(year, month, 1).getDay(); i += 1) {
+    cells.push({ day: null });
+  }
+  for (let d = 1; d <= daysInMonth; d += 1) {
+    cells.push({ day: d, today: d === now.getDate(), taken: memberDayDayTaken(d) });
+  }
+  for (let d = daysInMonth + 1; d <= 31; d += 1) {
+    cells.push({ day: d, off: true, taken: memberDayDayTaken(d) });
+  }
+  return cells;
+});
+
 async function loadMemberDays() {
   if (!isAdmin.value) return;
   try {
@@ -2437,7 +2505,8 @@ async function loadMemberDays() {
 
 function openMemberDayForm(row) {
   memberDayForm.id = row ? row.id : null;
-  memberDayForm.dayOfMonth = row ? row.dayOfMonth : 18;
+  // 新增时默认落在**第一个没被占用的号**上：否则默认 18 号常常已被占用，一打开就顶着红字
+  memberDayForm.dayOfMonth = row ? row.dayOfMonth : firstFreeMemberDayDay();
   memberDayForm.multiplier = row ? Number(row.multiplier) : 2;
   memberDayForm.remark = row ? (row.remark || '') : '';
   memberDayForm.enabled = row ? Number(row.enabled) === 1 : true;
@@ -2452,7 +2521,11 @@ async function saveMemberDay() {
   const form = memberDayForm;
   const day = Number(form.dayOfMonth);
   if (!Number.isInteger(day) || day < 1 || day > 31) {
-    showAlert('请填写 1-31 之间的日期');
+    showAlert('请在日历上挑一个日期');
+    return;
+  }
+  if (memberDayDayTaken(day)) {
+    showAlert(`每月 ${day} 号已经配置过了，请在日历上另选一天`);
     return;
   }
   await run(async () => {
