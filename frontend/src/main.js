@@ -17,11 +17,20 @@ import AddressCard from './components/AddressCard.vue';
 import StarRating from './components/StarRating.vue';
 import ImageUpload from './components/ImageUpload.vue';
 import EmptyState from './components/EmptyState.vue';
+import FestiveDecor from './components/FestiveDecor.vue';
+import { reveal } from './directives/reveal';
+import { applyFestiveTheme } from './festive';
 import './styles.css';
+
+// 节日氛围：给 <html> 打 data-festive 标记（换/撤节日只改 ./festive.js 里那个常量）
+applyFestiveTheme();
 
 const app = createApp(App);
 app.use(pinia);
 app.use(createAppRouter());
+
+// 滚动入场：v-reveal（元素自身）/ v-reveal.stagger（直接子元素逐张错开入场）
+app.directive('reveal', reveal);
 
 // 全局注册抽取出的页面组件，使 App.vue 模板中的 <XPage /> 可被解析。
 app.component('ShopPage', ShopPage);
@@ -42,5 +51,6 @@ app.component('AddressCard', AddressCard);
 app.component('StarRating', StarRating);
 app.component('ImageUpload', ImageUpload);
 app.component('EmptyState', EmptyState);
+app.component('FestiveDecor', FestiveDecor);   // 节日装饰层（内部按开关自行 v-if）
 
 app.mount('#app');

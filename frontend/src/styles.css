@@ -4469,3 +4469,126 @@ button.mini.danger:hover {
 .rar-reply b { color: var(--brand-deep); margin-right: 4px; }
 .rar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
 .rar-actions input { flex: 1 1 260px; min-width: 200px; }
+
+/* ==========================================================================
+   动效与节日氛围（2026-09-23）
+   —— 这一整块都是"锦上添花"，删掉不影响任何功能。
+   ⚠️ 初始的「隐形」状态**只挂在 JS 动态添加的类**（`.reveal` / `.reveal-stagger`）上，
+      指令失效时这些类不存在 → 内容照常显示，不会出现"永久隐形"。
+   ⚠️ 位移类动效统一放在 `prefers-reduced-motion: no-preference` 里：晕动症用户拿到的
+      是**静态但完整**的页面，而不是"什么都没有"。
+   ========================================================================== */
+
+/* 入场动画的关键帧。
+   ⚠️ 用 `animation` 而不是 `transition`，并且只动 `translate`/`opacity` —— **这是踩过一次才改的**：
+      最初写成 `transition` + `.reveal-stagger.is-in > * { transform: none }`，它与
+      `.product-card:hover { transform: translateY(-2px) }` **同优先级（0,2,0）**，而本块在文件末尾，
+      后写的赢 → **商品卡 hover 的「抬起」被静默吃掉**（只剩图片放大，很难一眼看出）。
+      换成 animation + `translate` 后：`transform` 完整留给 hover，`transition` 也不再被覆盖
+      （若坚持用 transition，就得把卡片的 border-color/box-shadow/transform 过渡一起重写，很脆）。
+   ⚠️ 填充模式用 `backwards` 而不是 `both`：`both` 会让动画结束后**永久保留 `translate: 0 0`**，
+      而非 none 的 translate/transform 会把该元素变成「所有后代（含 position:fixed）的包含块」——
+      给每张商品卡和整个 hero 都挂上这个副作用不值得。`backwards` 只在延迟期间用起始帧，
+      结束后回到自然样式（与终止帧视觉等价），副作用消失。 */
+@keyframes reveal-up {
+  from { opacity: 0; translate: 0 var(--reveal-shift, 14px); }
+  to   { opacity: 1; translate: 0 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* ① 滚动入场：元素自身（v-reveal） */
+  .reveal { opacity: 0; }
+  .reveal.is-in { opacity: 1; animation: reveal-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards; }
+
+  /* ② 逐张错开入场：容器的直接子元素（v-reveal.stagger） */
+  .reveal-stagger > * { opacity: 0; }
+  .reveal-stagger.is-in > * {
+    opacity: 1;
+    --reveal-shift: 16px;
+    animation: reveal-up 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  }
+}
+
+/* 错开间隔用 nth-child 给，不给每张卡传 index：模板不用改、也不用逐张挂指令。
+   第 11 张之后统一 450ms —— 否则 35 件商品的网格要等两三秒才走完，越往后越像卡住。 */
+.reveal-stagger.is-in > *:nth-child(1) { animation-delay: 0ms; }
+.reveal-stagger.is-in > *:nth-child(2) { animation-delay: 45ms; }
+.reveal-stagger.is-in > *:nth-child(3) { animation-delay: 90ms; }
+.reveal-stagger.is-in > *:nth-child(4) { animation-delay: 135ms; }
+.reveal-stagger.is-in > *:nth-child(5) { animation-delay: 180ms; }
+.reveal-stagger.is-in > *:nth-child(6) { animation-delay: 225ms; }
+.reveal-stagger.is-in > *:nth-child(7) { animation-delay: 270ms; }
+.reveal-stagger.is-in > *:nth-child(8) { animation-delay: 315ms; }
+.reveal-stagger.is-in > *:nth-child(9) { animation-delay: 360ms; }
+.reveal-stagger.is-in > *:nth-child(10) { animation-delay: 405ms; }
+.reveal-stagger.is-in > *:nth-child(n + 11) { animation-delay: 450ms; }
+
+/* ③ 商品卡精修：图片轻微放大（容器 .product-image 已是 overflow:hidden，放大被裁在框内） */
+.product-image img { transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1); }
+@media (prefers-reduced-motion: no-preference) {
+  .product-card:hover .product-image img { transform: scale(1.05); }
+}
+
+/* 收藏按钮平时淡一点，移到卡片上再变清晰 —— 是「变清晰」不是「才出现」：
+   直接隐藏会让人根本发现不了这个功能（它还是降价提醒的入口）。 */
+.fav-btn {
+  opacity: 0.72;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.12s ease, opacity 0.2s ease;
+}
+.product-card:hover .fav-btn,
+.fav-btn:focus-visible,
+.fav-btn.on { opacity: 1; }
+
+/* ④ 中秋氛围（开关在 src/festive.js：`FESTIVE_THEME = 'midautumn'`）
+   装饰层盖在 hero 上，所以必须 pointer-events:none —— 绝不能挡住轮播/分类/公告的点击。 */
+[data-festive='midautumn'] .festive-decor {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+/* 月晕 / 金色微光：只占 hero 顶部一条带，**故意压得很淡**。
+   ⚠️ 第一版是 940×400、alpha 0.3 的一大片 —— 实测把右侧白色「商城公告」面板整块染黄，看着像脏了。
+      改成「窄 + 淡 + 向内收」，只在 hero 上沿造一层暖光。 */
+.fd-glow {
+  position: absolute;
+  left: 50%;
+  top: -60px;
+  width: 820px;
+  height: 230px;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side,
+              rgba(255, 205, 120, 0.34),
+              rgba(255, 205, 120, 0.12) 62%,
+              rgba(255, 205, 120, 0) 100%);
+}
+
+/* 飘落桂花。
+   ⚠️ 尺寸/透明度由组件里那份数据给（也是实测调过的）：5–8px + 低透明度在密集背景上等于隐形。
+      这里补一圈深色描边 —— 花瓣会同时落在白面板和深色轮播图上，只靠金色在浅色底上会糊掉。 */
+@keyframes fd-fall {
+  0%   { transform: translate3d(0, -26px, 0) rotate(0deg); opacity: 0; }
+  10%  { opacity: var(--fd-opacity, 0.9); }
+  88%  { opacity: var(--fd-opacity, 0.9); }
+  100% { transform: translate3d(var(--fd-sway, 20px), 370px, 0) rotate(240deg); opacity: 0; }
+}
+
+.fd-petal {
+  position: absolute;
+  top: -16px;
+  border-radius: 62% 38% 55% 45%;
+  background: radial-gradient(circle at 38% 32%, #fff3c4, #f2c14a 62%, #dda32c);
+  border: 1px solid rgba(150, 96, 12, 0.42);
+  box-shadow: 0 1px 3px rgba(120, 74, 8, 0.28);
+  animation-name: fd-fall;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+
+/* 减少动效时：只留静态光晕与月亮，不留飘落（飘落是最容易引起不适的那类） */
+@media (prefers-reduced-motion: reduce) {
+  .fd-petal { display: none; }
+}
