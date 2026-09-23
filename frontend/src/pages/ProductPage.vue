@@ -88,7 +88,7 @@
                   <span>{{ detailQuantity }}</span>
                   <button type="button" @click="changeDetailQty(1)">+</button>
                 </div>
-                <button @click="addDetailToCart">加入购物车</button>
+                <button class="js-add-cart" @click="addDetailToCart">加入购物车</button>
                 <button class="ghost" @click="buyDetailNow">立即购买</button>
                 <button class="ghost fav-detail-btn" :class="{ on: favorited }" @click="toggleFavorite(productDetail.data)">
                   <svg viewBox="0 0 24 24" :fill="favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg>

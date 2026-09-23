@@ -17,6 +17,7 @@ import AddressCard from './components/AddressCard.vue';
 import StarRating from './components/StarRating.vue';
 import ImageUpload from './components/ImageUpload.vue';
 import EmptyState from './components/EmptyState.vue';
+import SkeletonGrid from './components/SkeletonGrid.vue';
 import FestiveDecor from './components/FestiveDecor.vue';
 import { reveal } from './directives/reveal';
 import { applyFestiveTheme } from './festive';
@@ -51,6 +52,7 @@ app.component('AddressCard', AddressCard);
 app.component('StarRating', StarRating);
 app.component('ImageUpload', ImageUpload);
 app.component('EmptyState', EmptyState);
+app.component('SkeletonGrid', SkeletonGrid);   // 商品骨架屏（多根节点，直接铺在 .product-grid 里）
 app.component('FestiveDecor', FestiveDecor);   // 节日装饰层（内部按开关自行 v-if）
 
 app.mount('#app');
