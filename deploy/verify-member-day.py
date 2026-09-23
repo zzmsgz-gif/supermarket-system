@@ -12,7 +12,13 @@
      支付后用户积分按翻倍值入账、流水备注写明「会员日」；再关掉 → 恢复 1 倍；倍率调 3 → 按 3 倍
   E. ⭐ **公告不由系统改动**：改会员日配置前后，公告栏那条「会员日…」的标题/正文/启停必须**一字不变**
      （2026-09-22 用户明确要求公告由管理员自己写；这条断言就是防它被改回自动生成）
-  F. 自清：删测试账号/订单 + **还原**会员日配置
+  F. 自清：删测试账号/订单 + **按快照还原**会员日配置
+
+安全约定（2026-09-23 加固，都是踩过的坑）：
+  · 还原**不再是「整表 DELETE 后重插」** —— 那样进程中途被杀就把运营配置清空了；改为「只删本次新建的行 + 按 id 回写快照」。
+  · 「今天」若已有运营配的会员日，脚本只在运行期临时改它，B8 会**当场按快照原值写回**；
+    删除接口改用「明天」的临时行验证 —— 绝不删运营数据。
+  · 若启动时快照里就带着已过期的历史残留行，脚本会**打印提醒但不擅自删**（那是要人来判断的）。
 
 用法：`python deploy/verify-member-day.py`（后端在 8080 跑着）
 """
@@ -67,19 +73,44 @@ ANN_SQL = ("SELECT id, title, content, enabled, sort_order, type FROM announceme
 ORIGINAL_DAYS = run_sql("SELECT id, member_date, multiplier, remark, enabled FROM member_day ORDER BY id")
 ORIGINAL_ANN = run_sql(ANN_SQL)
 
+# 快照里若已含过期行 = 上一次跑崩留下的残留（脚本按原样保留，但**必须让人知道**，
+# 否则这种行会被"已还原"的断言一直保护着，永远没人发现）。只提醒，不擅自删。
+_stale = [l.split("\t") for l in ORIGINAL_DAYS.strip().split("\n")
+          if l.strip() and l.split("\t")[1] < TODAY]
+if _stale:
+    print(f"⚠️ 注意：启动前 member_day 里就有 {len(_stale)} 条**已过期**的行（不是本次产生的，"
+          f"脚本会原样保留）：{[r[0] + '=' + r[1] for r in _stale]}")
+    print("   过期行不会生效（公开接口只返回今天及以后的），但建议人工确认是否要清掉。\n")
+
 
 def restore_days():
+    """把会员日配置还原到运行前的快照。
+
+    ⚠️ 以前这里是「`DELETE FROM member_day` 整表清空 → 再按快照重插」，有两个真问题：
+      ① **进程在中途被杀（Ctrl-C / 超时 / 机器重启）就会把配置全丢**，而配置是运营数据；
+      ② 快照里若本来就带着历史垃圾行（上一次中断留下的），会被当成"原样"永久保留，
+         而 F1「已还原」的断言还会**假通过**（09-22 实测踩到：一条空的 2026-09-22 残留就是这么活下来的）。
+    现在改为**只删本次新建的行 + 按 id 回写快照**：不清空、不依赖删除动作。
+    """
+    snapshot_ids = set()
+    for line in ORIGINAL_DAYS.strip().split("\n"):
+        if line.strip():
+            snapshot_ids.add(line.split("\t")[0])
     try:
-        run_sql("DELETE FROM member_day")
-        if ORIGINAL_DAYS.strip():
-            rows = []
-            for line in ORIGINAL_DAYS.strip().split("\n"):
-                cols = line.split("\t")
-                if len(cols) >= 5:
-                    rows.append("(%s,'%s',%s,'%s',%s)" % (cols[0], cols[1], cols[2], cols[3], cols[4]))
-            if rows:
-                run_sql("INSERT INTO member_day (id, member_date, multiplier, remark, enabled) VALUES "
-                        + ",".join(rows))
+        # 只删「本次为了验证而新建的」行：日期是今天、且不在快照里
+        for line in run_sql(f"SELECT id FROM member_day WHERE member_date='{TODAY}'").strip().split("\n"):
+            rid = line.split("\t")[0].strip()
+            if rid and rid not in snapshot_ids:
+                run_sql(f"DELETE FROM member_day WHERE id={rid}")
+        # 按快照回写（缺行 INSERT / 被改过的行 UPDATE），不先清表
+        for line in ORIGINAL_DAYS.strip().split("\n"):
+            cols = line.split("\t")
+            if len(cols) >= 5:
+                run_sql(
+                    "INSERT INTO member_day (id, member_date, multiplier, remark, enabled) "
+                    "VALUES (%s,'%s',%s,'%s',%s) "
+                    "ON DUPLICATE KEY UPDATE member_date=VALUES(member_date), multiplier=VALUES(multiplier), "
+                    "remark=VALUES(remark), enabled=VALUES(enabled)" % tuple(cols[:5]))
     except Exception as e:
         print(f"[restore] ⚠️ 还原会员日失败，请手工核对：{e}")
 
@@ -233,10 +264,35 @@ with temp_admin() as adm:
     check("E2 ⭐ 多次增改删之后公告仍然没被动过", run_sql(ANN_SQL) == ORIGINAL_ANN)
 
     # ---------- B5. 删除 ----------
-    st, body = req("DELETE", f"/admin/member-days/{row_id}", atok)
-    check("B5 删除会员日成功", st == 200 and body.get("code") == 0, f"HTTP {st}")
-    left = run_sql(f"SELECT COUNT(*) FROM member_day WHERE member_date='{TODAY}'").strip()
-    check("B6 删除后该日期不再存在", left == "0", f"count={left}")
+    # ⚠️ 不能删「今天」那行：它可能是运营（用户）自己配的会员日 —— 脚本删掉后若进程中途挂掉，
+    #    配置就丢了（快照还原只在正常退出时兜底）。所以：今天这行只读不动，
+    #    删除接口另用「明天」建一条临时行来验证（覆盖度一样，风险为零）。
+    scratch_date = (date.today() + timedelta(days=1)).isoformat()
+    st, body = req("POST", "/admin/member-days", atok,
+                   {"memberDate": scratch_date, "multiplier": 2, "remark": "脚本临时行（待删）", "enabled": False})
+    scratch_id = data_of(body)["id"] if st == 200 and data_of(body) else None
+    check("B5 建临时行（用于验证删除接口）", scratch_id is not None, f"HTTP {st} id={scratch_id}")
+    st, body = req("DELETE", f"/admin/member-days/{scratch_id}", atok)
+    check("B6 删除会员日成功", st == 200 and body.get("code") == 0, f"HTTP {st}")
+    left = run_sql(f"SELECT COUNT(*) FROM member_day WHERE member_date='{scratch_date}'").strip()
+    check("B7 删除后该日期不再存在", left == "0", f"count={left}")
+    # 今天那行的状态：
+    #  · 若本来就存在（**运营/用户自己配的**）→ 脚本为了做翻倍测试会临时改它的倍率与启停，
+    #    这里必须**立刻按快照原值写回**（不能只等进程退出时的兜底还原）；
+    #  · 若不存在 → 是脚本自己建的，留在表里，由 cleanup 删掉。
+    if existing_today:
+        tid = existing_today.split()[0]
+        orig_line = next((l for l in ORIGINAL_DAYS.strip().split("\n") if l.split("\t")[0] == tid), None)
+        if orig_line:
+            c = orig_line.split("\t")
+            run_sql("UPDATE member_day SET member_date='%s', multiplier=%s, remark='%s', enabled=%s WHERE id=%s"
+                    % (c[1], c[2], c[3], c[4], c[0]))
+        now = run_sql(f"SELECT member_date, multiplier, remark, enabled FROM member_day WHERE id={tid}").strip()
+        check("B8 运营自己配的「今天」那行已按原值还原",
+              bool(orig_line) and now == "\t".join(orig_line.split("\t")[1:]), f"now={now!r}")
+    else:
+        today_rows = run_sql(f"SELECT COUNT(*) FROM member_day WHERE member_date='{TODAY}'").strip()
+        check("B8 脚本自建的「今天」行仍在（由 cleanup 负责删）", today_rows == "1", f"count={today_rows}")
 
 # ---------- F. 清理与残留核对 ----------
 cleanup()

@@ -63,6 +63,8 @@ app:
     # 默认值为强随机串，确保即使忘记设置也能启动；生产务必用环境变量 JWT_SECRET 覆盖。
     secret: ${JWT_SECRET:tZS5KaXPu2fSadCHjBkPT6Y96IUCu0SdTfeTt_795CPfcQTiwFK_LP1LOaJdYzEs}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+    # 勾了「记住我」的有效期（默认 7 天 = 604800 秒）
+    remember-expiration-seconds: ${JWT_REMEMBER_EXPIRATION_SECONDS:604800}
   order:
     pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:30}
     close-check-interval-ms: ${ORDER_CLOSE_CHECK_INTERVAL_MS:60000}

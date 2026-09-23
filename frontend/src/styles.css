@@ -2059,13 +2059,33 @@ i.req { color: var(--danger); font-style: normal; }
 .auth-modal { max-width: 408px; gap: 16px; padding: 24px 24px 22px; }
 .auth-modal .modal-close { font-size: 24px; line-height: 1; color: var(--muted); }
 
+/* ===== 登录/注册弹窗用「浅绿」主题（2026-09-22 用户要求；原来是暖棕/橙的观感）=====
+   原来那一套的橙色其实来自三处：遮罩 rgba(45,27,18,.42) 暖棕、卡片投影 rgba(120,60,10,.28) 棕、
+   选中标签投影 rgba(177,92,16,.12) 偏橙 —— 白色卡片被这三层暖色包着，看着就是"橙色的框"。
+   所以这里要一起换成绿色系，只把卡片刷成浅绿是不够的。⚠️ 只作用于登录弹窗（`.modal-mask--auth`
+   与 `.auth-*` 都是它专属的类名），别顺手改全局 `.modal` / `.modal-mask`，那会连带改掉
+   确认框、后台表单等所有弹窗的观感。 */
+.modal-mask--auth { background: rgba(8, 48, 36, 0.34); }
+
+.modal.auth-modal {
+  background: #f4fbf8;                    /* 浅绿底 */
+  border-color: #cfe9de;
+  box-shadow: 0 26px 60px rgba(0, 125, 88, 0.22);
+}
+
+/* 浅绿底上输入框保持白底（不然和背景糊在一起看不清边界） */
+.auth-modal .auth-field input { background: #fff; }
+
+/* 标签底色与选中投影、提交按钮禁用态的颜色，都直接改在下面各自的原始规则里
+   （同优先级时「后写的赢」，把覆盖写在这里会被后面的原规则盖回去）。 */
+
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 4px;
   border-radius: 999px;
-  background: var(--surface-soft);
+  background: #e4f3ec;                    /* 浅绿（原来 var(--surface-soft) 近灰白） */
 }
 .auth-tabs button {
   min-height: 38px;
@@ -2081,7 +2101,7 @@ i.req { color: var(--danger); font-style: normal; }
 .auth-tabs button.active {
   background: #fff;
   color: var(--brand-deep);
-  box-shadow: 0 8px 18px rgba(177, 92, 16, 0.12);
+  box-shadow: 0 8px 18px rgba(0, 168, 112, 0.16);   /* 绿色投影（原来是 rgba(177,92,16,.12) 偏橙） */
 }
 
 .auth-change-title {
@@ -2178,7 +2198,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   margin-top: 2px;
   font-size: 16px;
 }
-.auth-submit:disabled { background: #f0a85e; cursor: progress; }
+.auth-submit:disabled { background: #8fccb4; cursor: progress; }   /* 浅绿（原来是橙色 #f0a85e） */
 
 .auth-tip {
   margin: 0;
