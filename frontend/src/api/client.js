@@ -1,13 +1,51 @@
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+const TOKEN_KEY = 'supermarket_token';
 
-let token = localStorage.getItem('supermarket_token') || '';
+function readStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
 
-export function setToken(nextToken) {
+let token = readStoredToken();
+
+/**
+ * 存 / 清 token。
+ *
+ * @param nextToken 新 token；传空串表示登出（两个 storage 都清）
+ * @param remember  勾了「记住我」→ 存 localStorage（关浏览器仍免登录）；
+ *                  不勾 → 存 sessionStorage（关浏览器即失效）。两者互斥，写入时会清掉另一个。
+ *
+ * ⚠️ 这与后端的 token 有效期是**两件事**，合起来才是完整的「记住我」：
+ *    勾选 → 后端签 7 天有效（app.jwt.remember-expiration-seconds）+ 前端存 localStorage；
+ *    不勾 → 后端签 24 小时 + 前端存 sessionStorage。
+ */
+export function setToken(nextToken, remember = true) {
   token = nextToken || '';
-  if (token) {
-    localStorage.setItem('supermarket_token', token);
-  } else {
-    localStorage.removeItem('supermarket_token');
+  try {
+    if (!token) {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+      return;
+    }
+    const keep = remember ? localStorage : sessionStorage;
+    const drop = remember ? sessionStorage : localStorage;
+    keep.setItem(TOKEN_KEY, token);
+    drop.removeItem(TOKEN_KEY);
+  } catch (e) {
+    // 隐私模式 / 禁用 storage 时不阻断登录：token 仍在内存里，本次会话可用
+  }
+
+}
+
+/** 登录态是否长期保存（= token 在 localStorage 里）—— 用来决定用户信息存哪。 */
+export function isRemembered() {
+  try {
+    return !!localStorage.getItem(TOKEN_KEY);
+  } catch (e) {
+    return false;
   }
 
 }

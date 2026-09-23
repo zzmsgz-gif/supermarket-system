@@ -103,7 +103,10 @@ public class AuthService {
         user.setLastLoginAt(LocalDateTime.now());
         SysUser saved = userRepository.save(user);
         CurrentUser currentUser = new CurrentUser(saved);
-        return new AuthResponse(jwtService.generateToken(currentUser), UserResponse.from(saved));
+        // 「记住我」勾了 → 7 天有效的 token（默认 24 小时）；前端据此决定 token 存 localStorage 还是 sessionStorage。
+        // ⚠️ 注册自动登录不勾（没有那个复选框），走默认有效期。
+        return new AuthResponse(jwtService.generateToken(currentUser, Boolean.TRUE.equals(request.getRemember())),
+                UserResponse.from(saved));
     }
 
     @Transactional(readOnly = true)

@@ -221,8 +221,8 @@
       <div v-if="notice" class="app-toast" role="status">{{ notice }}</div>
     </Transition>
 
-    <!-- 登录 / 注册 合一弹窗 -->
-    <div v-if="authOpen" class="modal-mask" @click.self="!forcedChange && closeAuth()">
+    <!-- 登录 / 注册 合一弹窗（modal-mask--auth 让它用浅绿主题，别动其他弹窗的暖色调） -->
+    <div v-if="authOpen" class="modal-mask modal-mask--auth" @click.self="!forcedChange && closeAuth()">
       <div class="modal auth-modal" role="dialog" aria-modal="true">
         <button v-if="!forcedChange" class="modal-close" @click="closeAuth" aria-label="关闭">×</button>
         <div v-if="authTab === 'login' || authTab === 'register'" class="auth-tabs">
@@ -246,7 +246,7 @@
             <small v-if="authErrors.password" class="field-hint warn">{{ authErrors.password }}</small>
           </label>
           <label class="auth-remember">
-            <input type="checkbox" v-model="loginForm.remember" /> 记住我
+            <input type="checkbox" v-model="loginForm.remember" /> 记住我（7 天免登录）
             <span class="auth-forgot" @click="forgotPassword">忘记密码？</span>
           </label>
           <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '登录中…' : '登录' }}</button>
@@ -370,7 +370,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, provide } from 'vue';
-import { api, setToken } from './api/client';
+import { api, setToken, isRemembered } from './api/client';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
@@ -857,7 +857,8 @@ const recharge = reactive({
 const rechargePresets = [50, 100, 200, 500];
 
 const session = reactive({
-  user: JSON.parse(localStorage.getItem('supermarket_user') || 'null'),
+  // 登录态存在哪个 storage 由「记住我」决定（见 api/client.js）：勾了在 localStorage、没勾在 sessionStorage
+  user: JSON.parse(localStorage.getItem('supermarket_user') || sessionStorage.getItem('supermarket_user') || 'null'),
 
 });
 const authOpen = ref(false);
@@ -1510,11 +1511,16 @@ async function openMessage(message) {
 
 function rememberUser(user) {
   session.user = user;
+  // 用户信息跟着 token 走：勾了「记住我」→ localStorage（关浏览器仍在），否则 sessionStorage（关浏览器即清）
+  const keep = isRemembered() ? localStorage : sessionStorage;
+  const drop = isRemembered() ? sessionStorage : localStorage;
   if (user) {
-    localStorage.setItem('supermarket_user', JSON.stringify(user));
+    keep.setItem('supermarket_user', JSON.stringify(user));
+    drop.removeItem('supermarket_user');
     wallet.balance = Number(user.balance || 0);
   } else {
     localStorage.removeItem('supermarket_user');
+    sessionStorage.removeItem('supermarket_user');
     wallet.balance = 0;
     wallet.recentTransactions = [];
   }
@@ -1704,8 +1710,13 @@ async function submitLogin() {
   if (authErrors.username || authErrors.password) return;
   authSubmitting.value = true;
   try {
-    const data = await api.post('/auth/login', { username: loginForm.username.trim(), password: loginForm.password });
-    setToken(data.token);
+    const data = await api.post('/auth/login', {
+      username: loginForm.username.trim(),
+      password: loginForm.password,
+      // 勾了「记住我」→ 后端签发 7 天有效期的 token，前端把它存 localStorage（不勾则是 24 小时 + sessionStorage）
+      remember: !!loginForm.remember,
+    });
+    setToken(data.token, !!loginForm.remember);
     rememberUser(data.user);
     await refreshForSession();
     closeAuth();
