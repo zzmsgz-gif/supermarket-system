@@ -187,13 +187,25 @@
       <span class="muted-note">共 {{ products.total }} 件</span>
       <button class="ghost mini" @click="resetFilters">清空筛选</button>
     </div>
-    <div class="product-grid" v-reveal.stagger>
-      <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+    <div class="product-grid" ref="filterGridEl" v-reveal.stagger>
+      <!-- 加载中先铺骨架。`items` 为空 ≠ 没有结果 —— 不区分的话，空态那句会先闪一下。 -->
+      <template v-if="productsLoading"><SkeletonGrid :count="skeletonCount" /></template>
+      <template v-else>
+        <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+      </template>
     </div>
-    <p v-if="!products.items.length" class="empty-hint">没有符合条件的商品，换个条件试试</p>
+    <p v-if="!productsLoading && !products.items.length" class="empty-hint">没有符合条件的商品，换个条件试试</p>
   </div>
 
   <div v-else class="floor-list">
+    <!-- 首屏加载中：一个骨架楼层（标题条 + 一行骨架卡），避免「暂无上架商品」先闪一下 -->
+    <div v-if="homeLoading" class="floor" aria-hidden="true">
+      <div class="fhead">
+        <span class="fbar"></span>
+        <span class="sk-title sk-shimmer"></span>
+      </div>
+      <div class="product-grid"><SkeletonGrid :count="8" /></div>
+    </div>
     <div v-for="floor in floors" :key="floor.id" class="floor">
       <div class="fhead">
         <span class="fbar"></span>
@@ -205,7 +217,7 @@
         <ProductCard v-for="product in floor.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
       </div>
     </div>
-    <p v-if="!floors.length" class="empty-hint">暂无上架商品</p>
+    <p v-if="!homeLoading && !floors.length" class="empty-hint">暂无上架商品</p>
   </div>
 
   <!-- ⑤ 运营栏目：4 个频道合并成一个标签区块。
@@ -278,7 +290,8 @@ export default {
   setup() {
     const ctx = inject('appCtx');
     const { api, ref, computed, onMounted, watch, categories, filters, products, loadProducts, openProductDetail, chooseCategory,
-      hotProducts, newProducts, guessProducts, dwellRankProducts, rotateChannel, channelRotatable } = ctx;
+      hotProducts, newProducts, guessProducts, dwellRankProducts, rotateChannel, channelRotatable,
+      productsLoading, nextTick } = ctx;
 
     // 本页自建状态（不污染 App.vue）
     const activities = ref([]);
@@ -469,10 +482,37 @@ export default {
       return '公告';
     }
 
+    // 首屏楼层也在等这个请求 → 加载中先出骨架，别先闪一句「暂无上架商品」
+    const homeLoading = ref(true);
     async function loadAllProducts() {
-      const data = await api.get('/products?page=1&size=60').catch(() => null);
-      allProducts.value = Array.isArray(data?.items) ? data.items : [];
+      try {
+        const data = await api.get('/products?page=1&size=60').catch(() => null);
+        allProducts.value = Array.isArray(data?.items) ? data.items : [];
+      } finally {
+        homeLoading.value = false;
+      }
     }
+
+    // 筛选结果网格的 DOM 引用：一次加载结束后重放「逐张入场」。
+    // 为什么必须手动重放：`.reveal-stagger` 容器首次入场后就永久带 is-in，
+    // 而 `.reveal-stagger.is-in > *` 会让**新插入**的卡片直接显示 —— 切分类就没入场效果了。
+    const filterGridEl = ref(null);
+    function replayReveal(el) {
+      if (!el || !el.classList || !el.classList.contains('reveal-stagger')) return;
+      if (typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      el.classList.remove('is-in');
+      void el.offsetWidth;   // 强制 reflow：同一帧里「移除再加回」不会重放动画
+      el.classList.add('is-in');
+    }
+    watch(productsLoading, async (now, prev) => {
+      if (!prev || now) return;          // 只在「加载中 → 加载完」这一次跳变重放
+      await nextTick();
+      replayReveal(filterGridEl.value);
+    });
+
+    // 骨架屏只负责「加载中」这一种状态；空态文案交给下面的 v-if 判真假空
+    const skeletonCount = computed(() => Number(products.size) || 12);
 
     // 头部搜索 / 分类 / 价格 / 排序这些筛选状态现在统一由 App.vue 与 URL query 双向同步
     // （syncShopQuery / applyShopQueryFromRoute），本页不再自己监听 route.query —— 同一份状态两处管必出分歧。
@@ -593,6 +633,9 @@ export default {
 
     return {
       ...ctx,
+      homeLoading,
+      filterGridEl,
+      skeletonCount,
       activities,
       announcements,
       banners,

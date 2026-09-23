@@ -47,10 +47,10 @@
         </div>
 
         <section class="account-panel">
-          <button v-if="!isAdmin" class="cart-pill" @click="navigate('cart')" aria-label="购物车">
+          <button v-if="!isAdmin" ref="cartPillEl" class="cart-pill" @click="navigate('cart')" aria-label="购物车">
             <svg class="icon i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.2a1.8 1.8 0 0 0 1.8 1.4h8.5a1.8 1.8 0 0 0 1.8-1.4L21.5 7H6"/></svg>
             购物车
-            <span v-if="cartBadgeCount" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
+            <span v-if="cartBadgeCount" ref="cartBadgeEl" class="cart-badge">{{ cartBadgeCount > 99 ? '99+' : cartBadgeCount }}</span>
           </button>
           <template v-if="session.user">
             <div class="account-menu-wrap">
@@ -114,7 +114,7 @@
 
     </header>
 
-    <section class="content" :class="{ 'content-wide': view === 'admin' }">
+    <section class="content" ref="contentEl" :class="{ 'content-wide': view === 'admin' }">
       <header class="topbar" v-if="view !== 'product' && view !== 'shop'">
         <h1>{{ currentTitle.title }}</h1>
         <button v-if="['orders', 'coupons', 'points', 'favorites', 'messages'].includes(view)" class="ghost" @click="refreshCurrentPage">刷新</button>
@@ -125,67 +125,25 @@
       <AdminPanel v-else :view="view" :categories="categories" :admin-ctx="adminCtx" />
     </section>
 
+    <!-- 页脚：**整条一行**（Logo + 快捷链接 + 版权，≈68px）。
+         2026-09-23 由「4 条服务承诺 + 品牌简介 + 邮箱订阅 + 5 组链接 + 版权」共 510px 收编而来。
+         ⚠️ 用户协议 / 隐私政策入口是合规必需，精简时刻意保留 —— 别再顺手删。 -->
     <footer class="site-footer">
-      <div class="footer-promise">
-        <div class="footer-promise-inner">
-          <div class="promise-item">
-            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
-            <div><strong>正品保障</strong><small>品牌直供 · 假一赔十</small></div>
-          </div>
-          <div class="promise-item">
-            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span>
-            <div><strong>极速配送</strong><small>冷链到家 · 次日必达</small></div>
-          </div>
-          <div class="promise-item">
-            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
-            <div><strong>7天无理由退换</strong><small>生鲜坏品先行赔付</small></div>
-          </div>
-          <div class="promise-item">
-            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/><path d="M21 14h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-5Z"/><path d="M3 14v-3a9 9 0 0 1 18 0v3"/></svg></span>
-            <div><strong>售后无忧</strong><small>7×24 小时在线客服</small></div>
-          </div>
-        </div>
-      </div>
       <div class="footer-inner">
-        <div class="footer-brand">
-          <div class="footer-logo">
-            <span class="brand-mark">S</span>
-            <span>超市购物系统</span>
-          </div>
-          <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
-          <form class="footer-sub" novalidate @submit.prevent="footerSubscribe">
-            <input v-model="subEmail" type="email" placeholder="输入邮箱，订阅促销情报" aria-label="订阅邮箱" />
-            <button type="button" @click="footerSubscribe">订阅</button>
-          </form>
-          <p v-if="subMsg" class="footer-sub-msg">{{ subMsg }}</p>
+        <div class="footer-logo">
+          <span class="brand-mark">S</span>
+          <span>超市购物系统</span>
         </div>
-        <div class="footer-cols">
-          <div class="footer-col">
-            <h5>购物指南</h5>
-            <a @click="navigate('shop')">首页商品</a>
-            <a @click="navigate('cart')">购物车</a>
-            <a @click="navigate('orders')">我的订单</a>
-            <a @click="navigate('coupons')">优惠券</a>
-          </div>
-          <div class="footer-col">
-            <h5>配送方式</h5>
-            <a>上门自提</a><a>极速达</a><a>配送范围</a><a>运费标准</a>
-          </div>
-          <div class="footer-col">
-            <h5>支付方式</h5>
-            <a>在线支付</a><a>微信支付</a><a>货到付款</a><a>发票说明</a>
-          </div>
-          <div class="footer-col">
-            <h5>售后服务</h5>
-            <a>售后政策</a><a>退款说明</a><a>取消订单</a><a>投诉建议</a>
-          </div>
-          <div class="footer-col">
-            <h5>法律条款</h5>
-            <a @click="openLegal('TERMS')">用户协议</a><a @click="openLegal('PRIVACY')">隐私政策</a>
-          </div>
-        </div>
+        <nav class="footer-links">
+          <a @click="navigate('shop')">首页商品</a>
+          <a @click="navigate('cart')">购物车</a>
+          <a @click="navigate('orders')">我的订单</a>
+          <a @click="navigate('coupons')">优惠券</a>
+          <a @click="openLegal('TERMS')">用户协议</a>
+          <a @click="openLegal('PRIVACY')">隐私政策</a>
+        </nav>
+        <p class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</p>
       </div>
-      <div class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</div>
     </footer>
 
     <div v-if="confirmDialog.open" class="modal-mask modal-mask--float" @click.self="resolveConfirm(false)">
@@ -217,7 +175,7 @@
     </div>
 
     <!-- 全局成功提示（run(action, message) 的消息）：3 秒自动消失 -->
-    <Transition name="notice-fade">
+    <Transition name="toast-slide">
       <div v-if="notice" class="app-toast" role="status">{{ notice }}</div>
     </Transition>
 
@@ -420,16 +378,6 @@ async function loadHotSearches() {
   try { hotSearches.value = (await api.get('/hot-searches')) || []; } catch { hotSearches.value = []; }
 }
 
-// 页脚订阅
-const subEmail = ref('');
-const subMsg = ref('');
-function footerSubscribe() {
-  const v = (subEmail.value || '').trim();
-  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  subMsg.value = ok ? '订阅成功，优惠情报将第一时间送达' : '请输入有效的邮箱地址';
-  if (ok) subEmail.value = '';
-}
-
 function navigate(name, params) {
   closeAccountMenu();
   router.push(params ? { name, params } : { name });
@@ -483,6 +431,9 @@ function onDocumentClick(event) { if (!event.target.closest('.account-menu-wrap'
 function onDocumentKeydown(event) { if (event.key === 'Escape') closeAccountMenu(); }
 const categories = ref([]);
 const products = reactive({ items: [], page: 1, size: 12, total: 0 });
+// 商品列表请求中。存在的意义是把「加载中」和「真的没有结果」分开 ——
+// 否则首屏/切分类那一下 items 为空，空态那句「没有符合条件的商品」会先闪一下。
+const productsLoading = ref(false);
 const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminStatsOverview = ref(null);
@@ -2236,6 +2187,15 @@ async function scrollToResultsIfNeeded() {
 }
 
 async function loadProducts() {
+  productsLoading.value = true;
+  try {
+    await fetchProducts();
+  } finally {
+    productsLoading.value = false;   // 用 finally：请求失败也要收骨架屏，否则骨架一直转
+  }
+}
+
+async function fetchProducts() {
   const params = new URLSearchParams({ page: '1', size: String(products.size) });
   if (filters.categoryId) params.set('categoryId', filters.categoryId);
   if (filters.keyword) params.set('keyword', filters.keyword);
@@ -2306,11 +2266,125 @@ function resetFilters() {
   loadProducts();
 }
 
+// ================= 加购微交互：飞入购物车 + 角标弹跳 =================
+// 三个刻意的设计：
+// · 幽灵元素挂 <body>（position:fixed）—— 完全脱离 Vue 与任何「包含块」。加购后会 navigate('cart')，
+//   但页头是 sticky、胶囊坐标跨视图不变，所以飞入不会被切页打断。
+// · 只做视觉且 pointer-events:none —— 绝不能挡住页头或卡片的点击。
+// · 全部尊重 prefers-reduced-motion：关了动效就只剩静默的角标变化，不会退化成"点了没反应"。
+const contentEl = ref(null);      // 视图容器（切视图时淡入）
+const cartPillEl = ref(null);     // 页头购物车胶囊（飞入落点）
+const cartBadgeEl = ref(null);    // 胶囊上的角标
+let flyingGhosts = 0;
+
+function motionAllowed() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function bob(el) {
+  if (!el || typeof el.animate !== 'function' || !motionAllowed()) return;
+  el.animate(
+    [{ transform: 'scale(1)' }, { transform: 'scale(1.38)' }, { transform: 'scale(0.96)' }, { transform: 'scale(1)' }],
+    { duration: 430, easing: 'cubic-bezier(.3,1.4,.5,1)' },
+  );
+}
+
+// 角标是 v-if="cartBadgeCount"：0 → 1 时要等 nextTick 它才在 DOM 里，所以必须更新后再弹
+async function popCartBadge() {
+  await nextTick();
+  bob(cartPillEl.value);
+  bob(cartBadgeEl.value);
+}
+
+// 从 sourceEl（一般是商品卡里的商品图）飞向页头购物车胶囊。
+// 拿不到源/目标、或用户关了动效 → 静默跳过（角标仍会弹），绝不阻断加购主流程。
+function flyToCart(sourceEl, imageUrl) {
+  if (!motionAllowed() || !sourceEl || !document.body) return;
+  const target = cartPillEl.value;
+  if (!target || typeof target.getBoundingClientRect !== 'function') return;
+  const s = sourceEl.getBoundingClientRect();
+  const t = target.getBoundingClientRect();
+  if (!s.width || !s.height || !t.width) return;
+
+  const ghost = document.createElement('img');
+  ghost.className = 'fly-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.alt = '';
+  const src = imageUrl || (sourceEl.tagName === 'IMG' ? sourceEl.currentSrc || sourceEl.src : '');
+  if (src) ghost.src = src;
+  ghost.style.left = `${s.left}px`;
+  ghost.style.top = `${s.top}px`;
+  ghost.style.width = `${s.width}px`;
+  ghost.style.height = `${s.height}px`;
+  document.body.appendChild(ghost);
+
+  const dx = (t.left + t.width / 2) - (s.left + s.width / 2);
+  const dy = (t.top + t.height / 2) - (s.top + s.height / 2);
+  flyingGhosts += 1;
+  let cleaned = false;
+  const done = () => {
+    if (cleaned) return;              // onfinish / oncancel 可能都触发 → 防重复回收
+    cleaned = true;
+    ghost.remove();
+    flyingGhosts = Math.max(0, flyingGhosts - 1);
+    popCartBadge();
+  };
+  if (typeof ghost.animate !== 'function') { done(); return; }
+  const anim = ghost.animate(
+    [
+      { transform: 'translate(0px, 0px) scale(1)', opacity: 1, offset: 0 },
+      { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 46}px) scale(0.5)`, opacity: 0.92, offset: 0.58 },
+      { transform: `translate(${dx}px, ${dy}px) scale(0.12)`, opacity: 0.15, offset: 1 },
+    ],
+    { duration: 540, easing: 'cubic-bezier(.42,.02,.4,1)' },
+  );
+  anim.onfinish = done;
+  anim.oncancel = done;
+}
+
+// 「这次点击来自哪个加购按钮」—— 用捕获阶段的委托记录，不必改 ProductCard / 详情页的 emit 签名；
+// 以后新增加购入口只要挂上 .add-fab 或 .js-add-cart 就自动带飞入。
+let lastAddSource = null;
+function onDocClickCapture(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const btn = target.closest('.add-fab, .js-add-cart');
+  if (!btn) return;
+  const card = btn.closest('.product-card');
+  lastAddSource = (card && card.querySelector('.product-image img')) || card || btn;
+}
+function takeAddSource() {
+  const el = lastAddSource;
+  lastAddSource = null;
+  return el;
+}
+
+// 角标数量变化本身就值得弹一下（购物车页加减件也走这里）；
+// 但飞入进行中不弹 —— 那次飞入落地时自己会弹，免得同一秒弹两下。
+watch(cartBadgeCount, (now, prev) => {
+  if (now !== prev && flyingGhosts === 0) popCartBadge();
+});
+
+// 切视图淡入。刻意不重建组件、不动数据流：只播一段一次性动画，
+// 所以不会重新请求、不会重置滚动位置（用 :key 重建就没有这个保障）。
+watch(() => view.value, async () => {
+  if (!motionAllowed()) return;
+  const el = contentEl.value;
+  if (!el || typeof el.animate !== 'function') return;
+  await nextTick();
+  el.animate(
+    [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 260, easing: 'cubic-bezier(.22,.61,.36,1)' },
+  );
+});
+
 async function addToCart(product) {
   if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
   if (!session.user) {
+    const src = takeAddSource();
     const ok = await guestAdd(product, 1);
-    if (ok) navigate('cart');
+    if (ok) { navigate('cart'); flyToCart(src, product.coverUrl); }
     return;
   }
   const stock = Number(product.stock || 0);
@@ -2330,7 +2404,9 @@ async function addToCart(product) {
   await run(async () => {
     await api.post('/cart/items', { productId: product.id, quantity: 1 });
     await loadCart();
+    const src = takeAddSource();
     navigate('cart');
+    flyToCart(src, product.coverUrl);
   }, '已加入购物车');
 
 }
@@ -2826,7 +2902,7 @@ async function addDetailToCart() {
       detailQuantity.value || 1,
       selectedSpecText.value || ''
     );
-    if (ok) navigate('cart');
+    if (ok) { navigate('cart'); flyToCart(takeAddSource(), productDetail.data?.coverUrl); }
     return;
   }
   const stock = Number(productDetail.data?.stock || 0);
@@ -2838,7 +2914,9 @@ async function addDetailToCart() {
     reportDwell();
     await api.post('/cart/items', { productId: productDetail.data.id, quantity: detailQuantity.value, skuSpec: selectedSpecText.value || null });
     await loadCart();
+    const src = takeAddSource();
     navigate('cart');
+    flyToCart(src, productDetail.data?.coverUrl);
   }, `已加入购物车 ${detailQuantity.value} 件${specNote}`);
 
 }
@@ -3287,6 +3365,7 @@ onMounted(async () => {
   startFlashTick();
   window.addEventListener('beforeunload', reportDwell);
   document.addEventListener('click', onDocumentClick);
+  document.addEventListener('click', onDocClickCapture, true);   // 捕获阶段：记录加购来源元素
   document.addEventListener('keydown', onDocumentKeydown);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reportDwell(); });
   await run(async () => {
@@ -3312,11 +3391,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', reportDwell);
   document.removeEventListener('visibilitychange', reportDwell);
   document.removeEventListener('click', onDocumentClick);
+  document.removeEventListener('click', onDocClickCapture, true);
   document.removeEventListener('keydown', onDocumentKeydown);
 
 });
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
-const appCtx = { ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>
