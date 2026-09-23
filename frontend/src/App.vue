@@ -2268,8 +2268,8 @@ function resetFilters() {
 
 // ================= 加购微交互：飞入购物车 + 角标弹跳 =================
 // 三个刻意的设计：
-// · 幽灵元素挂 <body>（position:fixed）—— 完全脱离 Vue 与任何「包含块」。加购后会 navigate('cart')，
-//   但页头是 sticky、胶囊坐标跨视图不变，所以飞入不会被切页打断。
+// · 幽灵元素挂 <body>（position:fixed）—— 完全脱离 Vue 与任何「包含块」，
+//   所以即使期间发生了视图切换（例如详情页加购后跳购物车）也不会把它带走。
 // · 只做视觉且 pointer-events:none —— 绝不能挡住页头或卡片的点击。
 // · 全部尊重 prefers-reduced-motion：关了动效就只剩静默的角标变化，不会退化成"点了没反应"。
 const contentEl = ref(null);      // 视图容器（切视图时淡入）
@@ -2384,7 +2384,9 @@ async function addToCart(product) {
   if (!session.user) {
     const src = takeAddSource();
     const ok = await guestAdd(product, 1);
-    if (ok) { navigate('cart'); flyToCart(src, product.coverUrl); }
+    // 不跳购物车（见下方 run() 里的说明）。⚠️ 游客路径原先**没有**提示条 —— 它是靠"跳页"当反馈的，
+    // 现在不跳了就必须补一句文案，否则点完像没反应。
+    if (ok) { flyToCart(src, product.coverUrl); notice.value = '已加入购物车'; }
     return;
   }
   const stock = Number(product.stock || 0);
@@ -2404,9 +2406,11 @@ async function addToCart(product) {
   await run(async () => {
     await api.post('/cart/items', { productId: product.id, quantity: 1 });
     await loadCart();
-    const src = takeAddSource();
-    navigate('cart');
-    flyToCart(src, product.coverUrl);
+    // 刻意**不** navigate('cart')：首页点「＋」只是"加入"，用户多半还在继续挑。
+    // 反馈交给三样东西 —— 商品图飞进页头购物车、角标数字弹一下、提示条「已加入购物车」；
+    // 想去购物车就点页头那个胶囊（角标刚弹过，本身就是指路）。
+    // 注：详情页的「加入购物车」按钮仍会跳购物车（那是用户明确决定购买的位置），两边故意不同。
+    flyToCart(takeAddSource(), product.coverUrl);
   }, '已加入购物车');
 
 }
