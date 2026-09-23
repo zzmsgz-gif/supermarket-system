@@ -1,5 +1,5 @@
 <template>
-<section class="data-panel product-detail">
+<section class="data-panel product-detail" v-reveal>
         <div class="detail-nav">
           <button class="ghost" @click="backFromProduct">返回商品列表</button>
           <span class="detail-crumb">商品列表 / {{ categoryName(productDetail.data?.categoryId) }} / {{ productDetail.data?.name || '' }}</span>
@@ -115,9 +115,9 @@
             </table>
           </div>
 
-          <div class="detail-section" v-if="relatedProducts.length">
+          <div class="detail-section" v-if="relatedProducts.length" v-reveal>
             <h3>相关推荐</h3>
-              <div class="related-grid">
+              <div class="related-grid" v-reveal.stagger>
                 <ProductCard v-for="p in relatedProducts" :key="p.id" :product="p" mode="compact" @open="openProductDetail" />
               </div>
           </div>

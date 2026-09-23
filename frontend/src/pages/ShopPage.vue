@@ -2,7 +2,7 @@
 <section class="shop-home">
 
   <!-- 头部 hero：左分类 / 中轮播 / 右公告（均为后端真实数据） -->
-  <div class="hero" @mouseleave="closeCatNow">
+  <div class="hero" v-reveal @mouseleave="closeCatNow">
     <aside class="hero-cats" @mouseleave="closeCatSoon">
       <button class="hero-cat" :class="{ on: !filters.categoryId }" @click="chooseCategory('')" @mouseenter="openCatSoon(null)">
         <span class="cat-emoji">🛒</span>全部商品
@@ -108,17 +108,19 @@
         <li v-if="!announcements.length" class="notice-empty">暂无公告</li>
       </ul>
     </aside>
+    <!-- 节日氛围装饰层：纯视觉、pointer-events:none；开关在 src/festive.js（节后改成 null 即撤） -->
+    <FestiveDecor />
   </div>
 
   <!-- ②.5 限时秒杀：进行中的场次优先，倒计时逐秒走，抢完即从列表消失 -->
-  <div v-if="flashSales.length" class="flash-zone">
+  <div v-if="flashSales.length" class="flash-zone" v-reveal>
     <div class="flash-head">
       <span class="flash-badge">限时秒杀</span>
       <small class="muted-note">
         {{ runningFlashSales.length ? '正在抢购中，名额有限先到先得' : '下一场即将开始，先来蹲个点' }}
       </small>
     </div>
-    <div class="flash-row">
+    <div class="flash-row" v-reveal.stagger>
       <article
         v-for="sale in flashSales"
         :key="sale.id"
@@ -185,7 +187,7 @@
       <span class="muted-note">共 {{ products.total }} 件</span>
       <button class="ghost mini" @click="resetFilters">清空筛选</button>
     </div>
-    <div class="product-grid">
+    <div class="product-grid" v-reveal.stagger>
       <ProductCard v-for="product in products.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
     </div>
     <p v-if="!products.items.length" class="empty-hint">没有符合条件的商品，换个条件试试</p>
@@ -199,7 +201,7 @@
         <span class="muted-note">{{ floor.items.length }} 件在售</span>
         <button class="ghost mini" @click="chooseCategory(floor.id)">查看全部 ›</button>
       </div>
-      <div class="product-grid">
+      <div class="product-grid" v-reveal.stagger>
         <ProductCard v-for="product in floor.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
       </div>
     </div>
@@ -225,7 +227,7 @@
         <!-- 候选池不足两屏时按钮不渲染（如「新品上架」全库只有 5 件，换了也还是这 5 件） -->
         <button v-if="channelRotatable(activeChannelKey)" class="ghost mini" @click="refreshActiveChannel">换一批</button>
       </div>
-      <div class="channel-row">
+      <div class="channel-row" v-reveal.stagger>
         <ProductCard
           v-for="item in activeChannelItems"
           :key="item.key"
