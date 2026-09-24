@@ -459,6 +459,11 @@ const guestCartRows = ref([]); // [{ productId, quantity, skuSpec }]
 const guestProductCache = new Map(); // productId -> 商品快照（渲染本地车用）
 const pendingCheckout = ref(false); // 游客点结算 → 登录完成后继续去结算
 const pendingQuickBuy = ref(null); // 游客点「立即购买」→ 登录完成后只结算这件
+// 立即购买的虚拟购物车项 id：只存在于前端 cart.items，不落库、不进购物车表。
+// 结算页与下单金额都基于 cart.items 计算，注入这条虚拟项即可复用整套结算逻辑，
+// 而真实购物车表从头到尾不会被写入（放弃支付也不残留）。
+const QUICKBUY_ITEM_ID = '__quickbuy__';
+const quickBuy = ref(null); // 进行中的「立即购买」会话：{ productId, spec, qty }；非空即走 /orders/quick-buy
 
 function readGuestCart() {
   try { const raw = localStorage.getItem(GUEST_CART_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
@@ -952,8 +957,9 @@ const cartOriginalSave = computed(() => (cart.items || [])
   .filter((item) => item.selected !== false)
   .reduce((sum, item) => sum + itemOriginalSave(item), 0));
 
-// 顶栏购物车角标：购物车内商品总件数（不区分是否勾选）
+// 顶栏购物车角标：购物车内商品总件数（不区分是否勾选）；立即购买的虚拟项不算进角标
 const cartBadgeCount = computed(() => (cart.items || [])
+  .filter((item) => item.id !== QUICKBUY_ITEM_ID)
   .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
 const orderPayPreview = computed(() => {
@@ -2613,8 +2619,48 @@ async function createOrder() {
     fail('请先保存或选择收货地址');
     return;
   }
-  // 只下「已勾选」的项：购物车页没有单选 UI，正常流程全部勾选 → 全量下单；
-  // 「立即购买」会把其他项临时取消勾选、只留当前件，于是这里只下当前件（不污染购物车，回车 loadCart 自动恢复）。
+  // 「立即购买」独立通道：不依赖购物车行，走 /orders/quick-buy；成功后清掉虚拟项（购物车零残留）
+  if (quickBuy.value) {
+    const q = quickBuy.value;
+    const body = { productId: q.productId, quantity: q.qty, skuSpec: q.spec || null, remark: '前端下单' };
+    if (isPickup.value) {
+      body.fulfillmentType = 'PICKUP';
+      body.pickupStoreId = activeStoreId.value;
+    } else {
+      body.fulfillmentType = isExpress.value ? 'EXPRESS' : 'INSTANT';
+      body.addressId = selectedAddressId.value;
+      if (!isExpress.value && fulfillment.slot) body.deliverySlot = fulfillment.slot;
+    }
+    if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
+    if (usePoints.value && memberPreview.value.pointsUsed > 0) {
+      body.usePoints = true;
+      body.pointsToUse = memberPreview.value.pointsUsed;
+    }
+    paying.value = true;
+    try {
+      await new Promise((r) => setTimeout(r, 700));
+      const order = await api.post('/orders/quick-buy', body);
+      await api.post(`/orders/${order.id}/pay`);
+      selectedUserCouponId.value = '';
+      userOptedOutCoupon.value = false;
+      usePoints.value = false;
+      pointsToUse.value = 0;
+      quickBuy.value = null;
+      cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
+      await loadCart();
+      await loadOrders();
+      await loadWallet();
+      await loadMe();
+      await loadMemberProfile();
+      await loadMessageUnread();
+      await loadFlashSales();
+      navigate('orders');
+      return order;
+    } finally {
+      paying.value = false;
+    }
+  }
+  // 购物车结算路径：只下「已勾选」的项；被「立即购买」临时取消勾选的真实项不会进入本单（不污染购物车）。
   const itemIds = (cart.items || []).filter((i) => i.selected !== false).map((i) => i.id);
   if (!itemIds.length) { fail('请先在购物车勾选要购买的商品'); return; }
   paying.value = true;
@@ -2930,60 +2976,110 @@ async function addDetailToCart() {
 
 }
 
+// 用商品快照 + 数量 + 规格，构建一条与后端 CartItemResponse 同形状的「虚拟购物车项」。
+// 价格口径逐字对齐后端 CartItemResponse.from / OrderService.buildOrderItem：
+// 单价取「正常售价 / 会员价 / 秒杀价」三者最低；命中秒杀时按「秒杀段 + 原价段」自动拆分，
+// productPrice 取等价单价保证 productPrice×quantity == subtotalAmount，结算预览与实付不会脱节。
+// 注意：这条项只存在前端 cart.items，不落库、不写购物车表。
+function buildQuickBuyCartItem(product, qty, spec) {
+  const id = Number(product.id);
+  const price = Number(product.price ?? 0);
+  const memberPrice = Number(product.memberPrice ?? price);
+  let regular = price;
+  if (memberPrice > 0 && memberPrice < regular) regular = memberPrice;
+  const sale = flashSaleOfProduct(id);
+  let flashApplies = false;
+  let flashUnit = regular;
+  if (sale && Number(sale.flashPrice) < regular) {
+    flashApplies = true;
+    flashUnit = Number(sale.flashPrice);
+  }
+  const fq = flashApplies ? Math.min(qty, flashLimitOfProduct(id) ?? qty) : 0;
+  const overflow = qty - fq;
+  // 精确小计：秒杀段 + 原价段，避免「平均单价」带来的四舍五入漂移（与后端一致）
+  const subtotal = round2(flashUnit * fq + regular * overflow);
+  const unit = round2(subtotal / qty);
+  const finalSubtotal = round2(unit * qty);
+  const productOriginalPrice = flashApplies ? price : Number(product.originalPrice ?? price);
+  return {
+    id: QUICKBUY_ITEM_ID,
+    productId: id,
+    productName: product.name || '商品',
+    productSku: product.sku || '',
+    productCoverUrl: product.coverUrl || '',
+    skuSpec: spec || '',
+    productPrice: unit,
+    productOriginalPrice,
+    subtotalAmount: finalSubtotal,
+    regularPrice: regular,
+    flashQty: fq,
+    flashPrice: flashApplies ? Number(sale.flashPrice) : 0,
+    flashSaleId: flashApplies ? sale.id : null,
+    stock: Number(product.stock ?? 0),
+    onSale: true,
+    unit: product.unit || '',
+    quantity: qty,
+    selected: true,
+  };
+}
+
 async function buyDetailNow() {
   if (isAdmin.value) { fail('管理员只能查看上架商品，不能下单'); return; }
-  if (!session.user) {
-    // 游客：先加进本地购物车，记下「只买这件」，登录后并库再隔离去结算（见 consumePendingQuickBuy）
-    const ok = await guestAdd(
-      { id: productDetail.data?.id, name: productDetail.data?.name, stock: productDetail.data?.stock,
-        price: productDetail.data?.price, originalPrice: productDetail.data?.originalPrice,
-        coverUrl: productDetail.data?.coverUrl, unit: productDetail.data?.unit },
-      detailQuantity.value || 1,
-      selectedSpecText.value || ''
-    );
-    if (ok) {
-      pendingQuickBuy.value = {
-        productId: productDetail.data?.id,
-        spec: selectedSpecText.value || '',
-        qty: detailQuantity.value || 1,
-      };
-      openAuth('login');
-      notice.value = '登录后即可直接结算';
-    }
-    return;
-  }
   const stock = Number(productDetail.data?.stock || 0);
   const qty = Number(detailQuantity.value || 1);
   if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法购买`); return; }
   if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
-  const specNote = selectedSpecText.value ? `（${selectedSpecText.value}）` : '';
-  await run(async () => {
-    reportDwell();
-    await api.post('/cart/items', { productId: productDetail.data.id, quantity: detailQuantity.value, skuSpec: selectedSpecText.value || null });
-    await loadCart();
-    // 隔离：只勾选刚加的这件，其余取消勾选 → 结算页与下单只认这件（不写后端，回购物车 loadCart 自动恢复全勾选）
-    const items = cart.items || [];
-    const target = items.find((i) => i.productId === productDetail.data.id && (i.skuSpec || '') === (selectedSpecText.value || ''));
-    items.forEach((i) => { i.selected = (i === target); });
-    navigate('checkout');
-    flyToCart(takeAddSource(), productDetail.data?.coverUrl);
-  }, `正在为你结算 ${detailQuantity.value} 件${specNote}`);
+  if (!session.user) {
+    // 游客：只记录「要买这件 + 商品快照」，登录后注入虚拟项去结算（不写本地购物车，见 consumePendingQuickBuy）
+    pendingQuickBuy.value = {
+      productId: productDetail.data?.id,
+      spec: selectedSpecText.value || '',
+      qty,
+      product: productDetail.data,
+    };
+    openAuth('login');
+    notice.value = '登录后即可直接结算';
+    return;
+  }
+  await enterQuickBuy();
 }
 
-// 游客点「立即购买」→ 登录/注册成功后，把本地并过来的购物车里这件隔离出来去结算
+// 「立即购买」：不写购物车。注入一条虚拟购物车项（仅选中它），直达结算页；
+// 下单走 /orders/quick-buy。游客态由 pendingQuickBuy 在登录成功后调用本流程。
+async function enterQuickBuy() {
+  if (isAdmin.value) { fail('管理员只能查看上架商品，不能下单'); return; }
+  const product = productDetail.data;
+  if (!product) return;
+  const qty = Number(detailQuantity.value || 1);
+  const spec = selectedSpecText.value || '';
+  const item = buildQuickBuyCartItem(product, qty, spec);
+  // 移除上一次可能残留的虚拟项，并把真实购物车项全部取消勾选（只结算这一件）
+  cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
+  (cart.items || []).forEach((i) => { i.selected = false; });
+  cart.items.push(item);
+  // 活动优惠只按真实购物车算过；立即购买是单品通道，后端会重新评估，这里保守置 0 避免预览虚高
+  cart.activityDiscount = 0;
+  cart.activityName = null;
+  quickBuy.value = { productId: product.id, spec, qty };
+  navigate('checkout');
+}
+
+// 游客点「立即购买」→ 登录/注册成功后：用记录的快照构建虚拟项，直达结算（不写购物车）
 async function consumePendingQuickBuy() {
   if (!pendingQuickBuy.value) return false;
   const q = pendingQuickBuy.value;
   pendingQuickBuy.value = null;
-  await loadCart();
-  const items = cart.items || [];
-  const target = items.find((i) => i.productId === q.productId && (i.skuSpec || '') === (q.spec || ''));
-  if (target) {
-    items.forEach((i) => { i.selected = (i === target); });
-    navigate('checkout');
-    return true;
-  }
-  return false;
+  if (!session.user) return false;
+  const product = q.product || { id: q.productId, name: '商品', price: 0, originalPrice: 0, coverUrl: '', unit: '', stock: 0, sku: '' };
+  const item = buildQuickBuyCartItem(product, q.qty, q.spec);
+  cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
+  (cart.items || []).forEach((i) => { i.selected = false; });
+  cart.items.push(item);
+  cart.activityDiscount = 0;
+  cart.activityName = null;
+  quickBuy.value = { productId: q.productId, spec: q.spec, qty: q.qty };
+  navigate('checkout');
+  return true;
 }
 
 async function loadCoupons() {
@@ -3414,6 +3510,14 @@ watch(view, async (next) => {
 
 });
 
+// 离开结算页且仍处于「立即购买」会话：放弃本次快速结算，清掉虚拟项（购物车零残留）
+watch(view, (nv, ov) => {
+  if (ov === 'checkout' && nv !== 'checkout' && quickBuy.value) {
+    quickBuy.value = null;
+    cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
+  }
+});
+
 watch(() => session.user?.role, () => {
   ensureAllowedView();
 
@@ -3457,6 +3561,6 @@ onBeforeUnmount(() => {
 });
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
-const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 provide('appCtx', appCtx);
 </script>

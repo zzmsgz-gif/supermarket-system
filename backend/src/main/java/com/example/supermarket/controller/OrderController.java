@@ -4,6 +4,7 @@ import com.example.supermarket.common.ApiResponse;
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
 import com.example.supermarket.dto.OrderResponse;
+import com.example.supermarket.dto.QuickBuyRequest;
 import com.example.supermarket.dto.RefundApplyRequest;
 import com.example.supermarket.dto.ReorderResultResponse;
 import com.example.supermarket.security.CurrentUser;
@@ -45,6 +46,20 @@ public class OrderController {
         // 幂等：相同 Idempotency-Key 在有效期内重复提交直接返回首次结果，避免重复下单
         return idempotencyService.execute(idempotencyKey,
                 () -> ApiResponse.ok(orderService.createOrder(currentUser.getId(), request)));
+    }
+
+    /**
+     * 「立即购买」：单品快速结算，不经过购物车表。复用 buildOrderFromItems 的建单逻辑，
+     * 但下单成功后不删购物车 —— 放弃支付也不会在购物车留下任何东西。
+     */
+    @PostMapping("/quick-buy")
+    public ApiResponse<OrderResponse> quickBuy(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody QuickBuyRequest request
+    ) {
+        return idempotencyService.execute(idempotencyKey,
+                () -> ApiResponse.ok(orderService.quickBuy(currentUser.getId(), request)));
     }
 
     @GetMapping
