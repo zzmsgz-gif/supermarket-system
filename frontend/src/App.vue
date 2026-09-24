@@ -125,25 +125,67 @@
       <AdminPanel v-else :view="view" :categories="categories" :admin-ctx="adminCtx" />
     </section>
 
-    <!-- 页脚：**整条一行**（Logo + 快捷链接 + 版权，≈68px）。
-         2026-09-23 由「4 条服务承诺 + 品牌简介 + 邮箱订阅 + 5 组链接 + 版权」共 510px 收编而来。
-         ⚠️ 用户协议 / 隐私政策入口是合规必需，精简时刻意保留 —— 别再顺手删。 -->
     <footer class="site-footer">
-      <div class="footer-inner">
-        <div class="footer-logo">
-          <span class="brand-mark">S</span>
-          <span>超市购物系统</span>
+      <div class="footer-promise">
+        <div class="footer-promise-inner">
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-3.6 8-10V5l-8-3-8 3v7c0 6.4 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <div><strong>正品保障</strong><small>品牌直供 · 假一赔十</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span>
+            <div><strong>极速配送</strong><small>冷链到家 · 次日必达</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+            <div><strong>7天无理由退换</strong><small>生鲜坏品先行赔付</small></div>
+          </div>
+          <div class="promise-item">
+            <span class="promise-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Z"/><path d="M21 14h-3a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-5Z"/><path d="M3 14v-3a9 9 0 0 1 18 0v3"/></svg></span>
+            <div><strong>售后无忧</strong><small>7×24 小时在线客服</small></div>
+          </div>
         </div>
-        <nav class="footer-links">
-          <a @click="navigate('shop')">首页商品</a>
-          <a @click="navigate('cart')">购物车</a>
-          <a @click="navigate('orders')">我的订单</a>
-          <a @click="navigate('coupons')">优惠券</a>
-          <a @click="openLegal('TERMS')">用户协议</a>
-          <a @click="openLegal('PRIVACY')">隐私政策</a>
-        </nav>
-        <p class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</p>
       </div>
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-logo">
+            <span class="brand-mark">S</span>
+            <span>超市购物系统</span>
+          </div>
+          <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
+          <form class="footer-sub" novalidate @submit.prevent="footerSubscribe">
+            <input v-model="subEmail" type="email" placeholder="输入邮箱，订阅促销情报" aria-label="订阅邮箱" />
+            <button type="button" @click="footerSubscribe">订阅</button>
+          </form>
+          <p v-if="subMsg" class="footer-sub-msg">{{ subMsg }}</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h5>购物指南</h5>
+            <a @click="navigate('shop')">首页商品</a>
+            <a @click="navigate('cart')">购物车</a>
+            <a @click="navigate('orders')">我的订单</a>
+            <a @click="navigate('coupons')">优惠券</a>
+          </div>
+          <div class="footer-col">
+            <h5>配送方式</h5>
+            <a>上门自提</a><a>极速达</a><a>配送范围</a><a>运费标准</a>
+          </div>
+          <div class="footer-col">
+            <h5>支付方式</h5>
+            <a>在线支付</a><a>微信支付</a><a>货到付款</a><a>发票说明</a>
+          </div>
+          <div class="footer-col">
+            <h5>售后服务</h5>
+            <a>售后政策</a><a>退款说明</a><a>取消订单</a><a>投诉建议</a>
+          </div>
+          <div class="footer-col">
+            <h5>法律条款</h5>
+            <a @click="openLegal('TERMS')">用户协议</a><a @click="openLegal('PRIVACY')">隐私政策</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</div>
     </footer>
 
     <div v-if="confirmDialog.open" class="modal-mask modal-mask--float" @click.self="resolveConfirm(false)">
@@ -376,6 +418,16 @@ function quickSearch(kw) {
 const hotSearches = ref([]);
 async function loadHotSearches() {
   try { hotSearches.value = (await api.get('/hot-searches')) || []; } catch { hotSearches.value = []; }
+}
+
+// 页脚订阅
+const subEmail = ref('');
+const subMsg = ref('');
+function footerSubscribe() {
+  const v = (subEmail.value || '').trim();
+  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  subMsg.value = ok ? '订阅成功，优惠情报将第一时间送达' : '请输入有效的邮箱地址';
+  if (ok) subEmail.value = '';
 }
 
 function navigate(name, params) {
