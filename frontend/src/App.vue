@@ -458,6 +458,7 @@ const GUEST_CART_KEY = 'supermarket_guest_cart';
 const guestCartRows = ref([]); // [{ productId, quantity, skuSpec }]
 const guestProductCache = new Map(); // productId -> 商品快照（渲染本地车用）
 const pendingCheckout = ref(false); // 游客点结算 → 登录完成后继续去结算
+const pendingQuickBuy = ref(null); // 游客点「立即购买」→ 登录完成后只结算这件
 
 function readGuestCart() {
   try { const raw = localStorage.getItem(GUEST_CART_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
@@ -1678,6 +1679,7 @@ async function submitLogin() {
       showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
     }
     if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
+    else if (await consumePendingQuickBuy()) { /* 游客「立即购买」→ 已跳结算页 */ }
     // 未登录时点心形收藏 → 登录成功后自动补做
     if (pendingFavorite.value) {
       const pendingProduct = pendingFavorite.value;
@@ -1724,6 +1726,7 @@ async function submitRegister() {
     closeAuth();
     showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
     if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
+    else if (await consumePendingQuickBuy()) { /* 游客「立即购买」→ 已跳结算页 */ }
     // 未登录时点心形收藏 → 注册成功后自动补做
     if (pendingFavorite.value) {
       const pendingProduct = pendingFavorite.value;
@@ -2610,8 +2613,10 @@ async function createOrder() {
     fail('请先保存或选择收货地址');
     return;
   }
-  const itemIds = (cart.items || []).map((item) => item.id);
-  if (!itemIds.length) { fail('购物车为空，请先添加商品'); return; }
+  // 只下「已勾选」的项：购物车页没有单选 UI，正常流程全部勾选 → 全量下单；
+  // 「立即购买」会把其他项临时取消勾选、只留当前件，于是这里只下当前件（不污染购物车，回车 loadCart 自动恢复）。
+  const itemIds = (cart.items || []).filter((i) => i.selected !== false).map((i) => i.id);
+  if (!itemIds.length) { fail('请先在购物车勾选要购买的商品'); return; }
   paying.value = true;
   try {
     // 模拟支付网关受理：先展示加载态，使模拟支付更逼真
@@ -2926,8 +2931,59 @@ async function addDetailToCart() {
 }
 
 async function buyDetailNow() {
-  await addDetailToCart();
+  if (isAdmin.value) { fail('管理员只能查看上架商品，不能下单'); return; }
+  if (!session.user) {
+    // 游客：先加进本地购物车，记下「只买这件」，登录后并库再隔离去结算（见 consumePendingQuickBuy）
+    const ok = await guestAdd(
+      { id: productDetail.data?.id, name: productDetail.data?.name, stock: productDetail.data?.stock,
+        price: productDetail.data?.price, originalPrice: productDetail.data?.originalPrice,
+        coverUrl: productDetail.data?.coverUrl, unit: productDetail.data?.unit },
+      detailQuantity.value || 1,
+      selectedSpecText.value || ''
+    );
+    if (ok) {
+      pendingQuickBuy.value = {
+        productId: productDetail.data?.id,
+        spec: selectedSpecText.value || '',
+        qty: detailQuantity.value || 1,
+      };
+      openAuth('login');
+      notice.value = '登录后即可直接结算';
+    }
+    return;
+  }
+  const stock = Number(productDetail.data?.stock || 0);
+  const qty = Number(detailQuantity.value || 1);
+  if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法购买`); return; }
+  if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
+  const specNote = selectedSpecText.value ? `（${selectedSpecText.value}）` : '';
+  await run(async () => {
+    reportDwell();
+    await api.post('/cart/items', { productId: productDetail.data.id, quantity: detailQuantity.value, skuSpec: selectedSpecText.value || null });
+    await loadCart();
+    // 隔离：只勾选刚加的这件，其余取消勾选 → 结算页与下单只认这件（不写后端，回购物车 loadCart 自动恢复全勾选）
+    const items = cart.items || [];
+    const target = items.find((i) => i.productId === productDetail.data.id && (i.skuSpec || '') === (selectedSpecText.value || ''));
+    items.forEach((i) => { i.selected = (i === target); });
+    navigate('checkout');
+    flyToCart(takeAddSource(), productDetail.data?.coverUrl);
+  }, `正在为你结算 ${detailQuantity.value} 件${specNote}`);
+}
 
+// 游客点「立即购买」→ 登录/注册成功后，把本地并过来的购物车里这件隔离出来去结算
+async function consumePendingQuickBuy() {
+  if (!pendingQuickBuy.value) return false;
+  const q = pendingQuickBuy.value;
+  pendingQuickBuy.value = null;
+  await loadCart();
+  const items = cart.items || [];
+  const target = items.find((i) => i.productId === q.productId && (i.skuSpec || '') === (q.spec || ''));
+  if (target) {
+    items.forEach((i) => { i.selected = (i === target); });
+    navigate('checkout');
+    return true;
+  }
+  return false;
 }
 
 async function loadCoupons() {
