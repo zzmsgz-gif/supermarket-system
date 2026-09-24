@@ -35,7 +35,9 @@
             </small>
           </div>
           <div class="row-actions">
-            <button v-if="order.status === 'PENDING_PAYMENT'" @click="payOrder(order.id)">余额支付</button>
+            <!-- 付款一律先进收银台（/pay/:id）看一眼倒计时再决定，不再这里直接扣款。
+                 订单详情里同样有入口，两条路都不会让人进入「退出后就找不到付款页」的死角。 -->
+            <button v-if="order.status === 'PENDING_PAYMENT'" @click="navigate('pay', { id: order.id })">去付款</button>
             <button v-if="order.status === 'SHIPPED'" @click="confirmReceipt(order.id)">确认收货</button>
             <button
               v-if="['PAID', 'SHIPPED'].includes(order.status) && order.refundStatus !== 'APPLYING'"
