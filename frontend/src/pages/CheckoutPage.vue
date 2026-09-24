@@ -93,7 +93,7 @@
         <div class="checkout-block">
           <h3>商品清单</h3>
           <div v-if="!cart.items?.length" class="empty">购物车为空</div>
-          <div v-for="item in cart.items" :key="item.id" class="list-row">
+          <div v-for="item in checkoutItems" :key="item.id" class="list-row">
             <div>
               <strong>{{ item.productName }}</strong>
               <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
@@ -213,7 +213,9 @@ export default {
     const useMaxPoints = () => { appCtx.pointsToUse.value = appCtx.memberPreview.value.maxRedeemPoints; };
     // 结算页同样要堵住失效行：从购物车过来时可能还是好的，商品在这期间被下架/售罄
     // （或用户在别处改了下架状态）。否则用户填完配送方式＋地址才被打回，白折腾一遍。
-    const cartIssues = computed(() => cartIssueItems(appCtx.cart.items));
+    // 只展示「已勾选」的项：正常流程全部勾选→显示全部；「立即购买」隔离后只显示当前件
+    const checkoutItems = computed(() => (appCtx.cart.items || []).filter((i) => i.selected !== false));
+    const cartIssues = computed(() => cartIssueItems(checkoutItems.value));
     const blockedCount = computed(() => cartIssues.value.filter((it) => it.selected).length);
 
     // 即时配送范围：选定地址后就地问后端能否送达。判定口径以后端为准（唯一真源），
@@ -245,7 +247,7 @@ export default {
     );
 
     return {
-      ...appCtx, clampPoints, useMaxPoints, cartIssues, blockedCount, cartItemIssue,
+      ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
       rangeCheck, outOfRange,
     };
   }
