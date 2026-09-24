@@ -3264,6 +3264,10 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 /* 秒杀「我还能买几件」——登录后才有；买满时转红，别让用户以为还能买 */
 .flash-mine { color: var(--brand-deep); font-weight: 500; }
 .flash-mine.capped { color: var(--danger); }
+/* 「待支付订单占用名额」里的 去支付/取消 入口：必须明确可点，别跟普通文字混在一起 */
+.flash-mine-link { color: var(--brand-deep); cursor: pointer; text-decoration: underline; margin-left: 2px; }
+.flash-mine.capped .flash-mine-link { color: var(--brand-deep); }
+.flash-mine-sep { margin: 0 4px; color: var(--muted, #5a6673); }
 /* 商品卡上「已达限购」的提示：沿用 admin-note 的块状样式，换成警示色 */
 /* .flash-cap-note 已迁到商品卡价格行做行内小字（见 .add-fab 附近的定义），此处旧块样式移除 */
 
