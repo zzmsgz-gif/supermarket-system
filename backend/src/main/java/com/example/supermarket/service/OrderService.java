@@ -1,5 +1,7 @@
 package com.example.supermarket.service;
 
+import org.springframework.beans.factory.annotation.Value;
+
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
 import com.example.supermarket.dto.OrderItemResponse;
@@ -95,6 +97,12 @@ public class OrderService {
     private final ActivityService activityService;
     private final SysUserRepository sysUserRepository;
     private final MemberService memberService;
+
+    /** 支付时限（分钟）。与 OrderTimeoutScheduler 读的是同一个配置项，
+     *  保证「前端倒计时的截止时刻」与「后端真正关单的时刻」严格一致，不会出现两边口径打架。 */
+    @Value("${app.order.pay-timeout-minutes:15}")
+    private int payTimeoutMinutes;
+
     private final StoreRepository storeRepository;
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
@@ -374,7 +382,29 @@ public class OrderService {
         deductStocks(savedOrder.getId(), userId, savedItems, productMap);
         // 秒杀名额在库存扣减之后占用：名额不足会抛 409，整个下单事务回滚（不会留半张单）
         reserveFlashQuotas(savedOrder.getId(), userId, savedItems, flashSales);
-        return OrderResponse.from(savedOrder, toItemResponses(savedItems));
+        // 刚落地的订单：createdAt 是 insertable=false 的 DB 生成列，此刻实体里仍是 null，
+        // 且这时实体已不再被持久化上下文视为 managed（refresh 会抛 "Entity not managed"），
+        // 因此按服务端当前时间推算截止时间即可 —— 与这次 INSERT 同一时刻，误差可忽略。
+        return toResponseJustCreated(savedOrder, toItemResponses(savedItems));
+    }
+
+    /** 支付截止的**绝对时刻**。createdAt 缺失时返回 null —— 前端据此不显示倒计时，而不是抛错。 */
+    private LocalDateTime payDeadlineOf(OrderEntity order) {
+        return order.getCreatedAt() == null ? null : order.getCreatedAt().plusMinutes(payTimeoutMinutes);
+    }
+
+    /** 统一在系统一件事：给响应体补上支付截止时间。用户侧所有返回订单的地方都走这里，避免漏填。 */
+    private OrderResponse toResponse(OrderEntity order, List<OrderItemResponse> items) {
+        OrderResponse response = OrderResponse.from(order, items);
+        response.setPayDeadline(payDeadlineOf(order));
+        return response;
+    }
+
+    /** 刚建好的订单：createdAt 尚未回读，用服务端「现在」推算截止时间（见 buildOrderFromItems 注释）。 */
+    private OrderResponse toResponseJustCreated(OrderEntity order, List<OrderItemResponse> items) {
+        OrderResponse response = OrderResponse.from(order, items);
+        response.setPayDeadline(LocalDateTime.now().plusMinutes(payTimeoutMinutes));
+        return response;
     }
 
     /** 为命中秒杀的订单行占用名额（每人限购 + 名额原子扣减的校验都在 FlashSaleService 里） */
@@ -399,7 +429,7 @@ public class OrderService {
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<OrderEntity> orders = orderRepository.findAll(buildUserOrderSpec(userId, status), pageable);
         List<OrderResponse> items = orders.getContent().stream()
-                .map(order -> OrderResponse.from(order, toItemResponses(
+                .map(order -> toResponse(order, toItemResponses(
                         orderItemRepository.findByOrderIdOrderByIdAsc(order.getId())
                 )))
                 .toList();
@@ -410,7 +440,7 @@ public class OrderService {
     public OrderResponse getOrder(Long userId, Long orderId) {
         OrderEntity order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        return OrderResponse.from(order, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(order.getId())));
+        return toResponse(order, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(order.getId())));
     }
 
     @Transactional
@@ -438,7 +468,7 @@ public class OrderService {
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已支付成功",
                 paidMessageOf(savedOrder),
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:PAID:" + savedOrder.getId());
-        return OrderResponse.from(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
+        return toResponse(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
     }
 
     @Transactional
@@ -467,7 +497,7 @@ public class OrderService {
                 "订单 " + savedOrder.getOrderNo() + " 已取消，占用的库存已释放"
                         + (PAYMENT_REFUNDED.equals(savedOrder.getPaymentStatus()) ? "，支付金额已退回钱包余额。" : "。"),
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:CANCELED:" + savedOrder.getId());
-        return OrderResponse.from(savedOrder, toItemResponses(orderItems));
+        return toResponse(savedOrder, toItemResponses(orderItems));
     }
 
     @Transactional
@@ -480,7 +510,7 @@ public class OrderService {
         order.setStatus(COMPLETED);
         order.setCompletedAt(LocalDateTime.now());
         OrderEntity savedOrder = orderRepository.save(order);
-        return OrderResponse.from(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
+        return toResponse(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
     }
 
     @Transactional
@@ -496,7 +526,7 @@ public class OrderService {
         order.setRefundStatus(REFUND_APPLYING);
         order.setRefundReason(reason);
         OrderEntity savedOrder = orderRepository.save(order);
-        return OrderResponse.from(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
+        return toResponse(savedOrder, toItemResponses(orderItemRepository.findByOrderIdOrderByIdAsc(savedOrder.getId())));
     }
 
     private List<OrderItem> saveOrderItems(Long orderId, List<OrderItem> orderItems) {

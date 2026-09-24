@@ -189,7 +189,7 @@
           <button v-else-if="outOfRange" class="primary" disabled title="该地址超出同城即时配送范围">超出配送范围，无法提交</button>
           <button v-else-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
             <span v-if="paying" class="spinner"></span>
-            <span>{{ paying ? '支付处理中…' : '确认付款 ' + money(memberPreview.finalPay) }}</span>
+            <span>{{ paying ? '提交中…' : '提交订单 ' + money(memberPreview.finalPay) }}</span>
           </button>
           <button v-else class="primary" disabled>余额不足，无法支付</button>
           <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="view = 'recharge'">去充值 ›</a>

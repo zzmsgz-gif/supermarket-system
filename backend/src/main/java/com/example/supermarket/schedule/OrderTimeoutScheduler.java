@@ -20,7 +20,7 @@ public class OrderTimeoutScheduler {
     private final OrderRepository orderRepository;
     private final OrderCloseService orderCloseService;
 
-    @Value("${app.order.pay-timeout-minutes:30}")
+    @Value("${app.order.pay-timeout-minutes:15}")
     private int payTimeoutMinutes;
 
     public OrderTimeoutScheduler(OrderRepository orderRepository, OrderCloseService orderCloseService) {

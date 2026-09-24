@@ -984,6 +984,7 @@ const currentTitle = computed(() => ({
   messages: { eyebrow: '通知', title: '消息中心' },
   terms: { eyebrow: '条款', title: '用户协议' },
   privacy: { eyebrow: '条款', title: '隐私政策' },
+  pay: { eyebrow: '收银台', title: '订单付款' },
   admin: { eyebrow: '后台', title: '后台管理' },
 
 }[view.value] || { eyebrow: '商品', title: '商品选购' }));
@@ -2691,8 +2692,9 @@ async function createOrder() {
     paying.value = true;
     try {
       await new Promise((r) => setTimeout(r, 700));
+      // 这里只「提交订单」，不自动付款 —— 订单一建成就已经锁了库存（后端 deductStocks 在建单时执行），
+      // 若此刻直接扣款，用户根本不知道自己刚才跨过了「下单」这一步。改由收银台显式倒计时后再决定。
       const order = await api.post('/orders/quick-buy', body);
-      await api.post(`/orders/${order.id}/pay`);
       selectedUserCouponId.value = '';
       userOptedOutCoupon.value = false;
       usePoints.value = false;
@@ -2701,12 +2703,9 @@ async function createOrder() {
       cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
       await loadCart();
       await loadOrders();
-      await loadWallet();
-      await loadMe();
-      await loadMemberProfile();
-      await loadMessageUnread();
+      // 下单即占秒杀名额（未付款也占），必须重拉，否则首页「还能买几件」停留在旧值
       await loadFlashSales();
-      navigate('orders');
+      navigate('pay', { id: order.id });
       return order;
     } finally {
       paying.value = false;
@@ -2735,24 +2734,19 @@ async function createOrder() {
         body.usePoints = true;
         body.pointsToUse = memberPreview.value.pointsUsed;
       }
+      // 只提交、不付款：创建即锁定库存，剩下交给收银台倒计时，由用户决定是否真正扣款
       const order = await api.post('/orders', body);
-      // 模拟支付：创建后用钱包余额完成支付
-      await api.post(`/orders/${order.id}/pay`);
       selectedUserCouponId.value = '';
       userOptedOutCoupon.value = false;
       usePoints.value = false;
       pointsToUse.value = 0;
       await loadCart();
       await loadOrders();
-      await loadWallet();
-      await loadMe();
-      await loadMemberProfile();
-      await loadMessageUnread();
       // 下单会占掉秒杀名额（未付款也占），必须重拉，否则「还能买几件」停留在旧值
       await loadFlashSales();
-      navigate('orders');
+      navigate('pay', { id: order.id });
       return order;
-    }, '支付成功，订单已创建');
+    }, '订单已提交，请在限定时间内完成支付');
   } finally {
     paying.value = false;
   }
