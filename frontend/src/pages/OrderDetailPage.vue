@@ -13,6 +13,31 @@
         <div v-if="orderDetail.loading" class="empty">加载中…</div>
         <div v-else-if="orderDetail.error" class="empty error">{{ orderDetail.error }}</div>
         <template v-else-if="orderDetail.data">
+          <!-- ===== 待付款横幅 + 付款/取消入口 =====
+               下单后一旦离开收银台，订单详情就是找回付款的地方
+               （列表页的「去付款」按钮同样会跳回收银台），避免「看得见未付款、却动不了手」。
+               倒计时用后端下发的绝对 payDeadline 算，不用客户端时间反推。 -->
+          <div v-if="isPendingPay" class="pay-state" :class="payExpired ? 'closed' : 'pending'">
+            <span class="pay-state-badge">{{ payExpired ? '已超时' : '待付款' }}</span>
+            <div class="pay-state-main">
+              <h3>{{ payExpired ? '支付超时，订单已失效' : '订单已提交，等待付款' }}</h3>
+              <p v-if="!payExpired" class="pay-timer">
+                还剩 <strong class="countdown" :class="{ urgent: payRemainingSec <= 60 }">{{ payMmss }}</strong>
+                可支付，超时订单会自动关闭。
+              </p>
+              <p class="pay-state-desc">{{ payExpired
+                ? '超过支付时限，订单将自动关闭，占用的库存与优惠券会释放。'
+                : '下单时已为你锁定库存；现在付款才会真正扣款。' }}</p>
+            </div>
+          </div>
+          <div v-if="isPendingPay" class="pay-actions">
+            <button class="primary" :disabled="payExpired || paySubmitting" @click="payNow">
+              <span v-if="paySubmitting" class="spinner"></span>
+              <span>{{ paySubmitting ? '支付处理中…' : '立即支付 ' + money(orderDetail.data.payAmount) }}</span>
+            </button>
+            <button class="ghost" :disabled="paySubmitting" @click="cancelThisOrder">取消订单</button>
+          </div>
+
           <!-- ===== 金额明细：每一项优惠都摊开，且「小计 + 运费 − 优惠合计 = 实付」恒成立 ===== -->
           <div class="amount-block" v-if="amount">
             <h3 class="amount-title">金额明细</h3>
@@ -118,13 +143,74 @@
 </template>
 
 <script>
-import { computed, inject } from 'vue';
+import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
 import { orderOriginalSave } from '../utils/format';
 export default {
   name: 'OrderDetailPage',
   setup() {
     const appCtx = inject('appCtx');
     const num = (value) => Number(value || 0);
+
+    // ---- 待付款倒计时：用后端下发的**绝对** payDeadline 算，不用「客户端 now + 时长」反推 ----
+    const paySubmitting = ref(false);
+    const payRemainingSec = ref(0);
+    const currentOrder = computed(() => appCtx.orderDetail.data || null);
+    const isPendingPay = computed(
+      () => !!currentOrder.value && currentOrder.value.status === 'PENDING_PAYMENT'
+    );
+
+    function recomputePayRemaining() {
+      const o = currentOrder.value;
+      if (!o || o.status !== 'PENDING_PAYMENT' || !o.payDeadline) {
+        payRemainingSec.value = 0;
+        return;
+      }
+      const ms = new Date(String(o.payDeadline).replace(' ', 'T')).getTime();
+      payRemainingSec.value = Number.isNaN(ms) ? 0 : Math.max(0, Math.round((ms - Date.now()) / 1000));
+    }
+    const payExpired = computed(() => isPendingPay.value && payRemainingSec.value <= 0);
+    const payMmss = computed(() => {
+      const s = Math.max(0, payRemainingSec.value);
+      return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    });
+
+    // 就地付款：成功后重拉本页数据，让用户原地看到「已支付」，而不是被甩到别的页面
+    async function payNow() {
+      const o = currentOrder.value;
+      if (!o || paySubmitting.value || payExpired.value) return;
+      paySubmitting.value = true;
+      try {
+        await appCtx.run(async () => {
+          await appCtx.api.post(`/orders/${o.id}/pay`);
+          await Promise.all([
+            appCtx.loadOrders(), appCtx.loadWallet(), appCtx.loadMe(),
+            appCtx.loadMemberProfile(), appCtx.loadFlashSales(),
+          ]);
+          appCtx.orderDetail.data = await appCtx.api.get(`/orders/${o.id}`);
+        }, '支付成功');
+      } finally {
+        paySubmitting.value = false;
+      }
+    }
+
+    // 取消：共用入口只重拉列表与本页无关的额度，详情页要自己再拉一次，
+    // 否则取消后本页仍停留在「待付款」，看起来像没生效。
+    async function cancelThisOrder() {
+      const o = currentOrder.value;
+      if (!o) return;
+      await appCtx.cancelOrder(o.id);
+      const fresh = await appCtx.api.get(`/orders/${o.id}`).catch(() => null);
+      if (fresh) appCtx.orderDetail.data = fresh;
+    }
+
+    let payTick = null;
+    onMounted(() => {
+      recomputePayRemaining();
+      payTick = setInterval(recomputePayRemaining, 1000);
+    });
+    onUnmounted(() => {
+      if (payTick) clearInterval(payTick);
+    });
 
     // 金额明细：把订单每一笔优惠都摊开，确保「商品小计 + 运费 − 优惠合计 = 实付」永远成立。
     // 会员等级折扣与积分抵扣此前没在详情页出现，是「数字加起来对不上」的根因。
@@ -157,7 +243,7 @@ export default {
       };
     });
 
-    return { ...appCtx, amount };
+    return { ...appCtx, amount, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder };
   }
 };
 </script>
