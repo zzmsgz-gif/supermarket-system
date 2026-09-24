@@ -40,7 +40,7 @@
         <!-- 右下角圆形「＋」加购（生鲜电商主流做法）：替代旧的双通栏按钮，卡片更轻盈。
              整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
         <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop="$emit('add', product)">＋</button>
-        <span v-else-if="flashCapped" class="flash-cap-note">已达限购（每人 {{ flashLimitText }} 件）</span>
+        <span v-else-if="flashCapped" class="flash-cap-note">{{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : '已达限购（每人 ' + flashLimitText + ' 件）' }}</span>
         <span v-else-if="isAdmin" class="admin-inline-note">管理员仅查看上架商品</span>
       </div>
       <div class="meta-line">

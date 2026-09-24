@@ -142,10 +142,20 @@
           <div class="flash-meta">
             <span>{{ flashDeadlineText(sale) }}</span>
             <span v-if="sale.perUserLimit > 0">限购 {{ sale.perUserLimit }} 件</span>
-            <!-- 登录后后端会带回「我还能买几件」，提前把额度说清楚，别等结算才拦 -->
+            <!-- 登录后后端会带回「我还能买几件」，提前把额度说清楚，别等结算才拦。
+                 注意 myRemainingQuota 把「未付款订单占用」也算进去了（防超卖必须如此），
+                 所以到顶时要分清：是已付款买满，还是被一笔待支付订单占着 —— 后者用户其实并没买到，
+                 文案必须说实话，否则会让人误以为自己已经买下了。 -->
             <span v-if="sale.myRemainingQuota !== null && sale.myRemainingQuota !== undefined"
                   :class="['flash-mine', { capped: sale.myRemainingQuota === 0 }]">
-              {{ sale.myRemainingQuota > 0 ? '你还能买 ' + sale.myRemainingQuota + ' 件' : '你已买满' }}
+              <template v-if="sale.myRemainingQuota > 0">你还能买 {{ sale.myRemainingQuota }} 件</template>
+              <template v-else-if="sale.myUnpaidOrderId">
+                待支付订单占用名额（{{ sale.myUnpaidQuantity || sale.perUserLimit }} 件）：
+                <a class="flash-mine-link" @click.stop="payOrder(sale.myUnpaidOrderId)">去支付</a>
+                <span class="flash-mine-sep">/</span>
+                <a class="flash-mine-link" @click.stop="cancelOrder(sale.myUnpaidOrderId)">取消</a>
+              </template>
+              <template v-else>你已买满</template>
             </span>
           </div>
           <div class="flash-progress" :title="`已抢 ${sale.soldQuota}/${sale.totalQuota}`">
