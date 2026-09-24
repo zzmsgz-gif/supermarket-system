@@ -1,7 +1,7 @@
 <template>
 <section class="data-panel checkout">
         <div class="panel-head">
-          <button class="ghost" @click="view = 'cart'">返回购物车</button>
+          <button class="ghost" @click="view = 'cart'">{{ quickBuy ? '取消立即购买' : '返回购物车' }}</button>
         </div>
 
         <div class="checkout-block">
@@ -184,7 +184,7 @@
         </div>
 
         <div class="checkout-actions">
-          <button class="ghost" @click="view = 'cart'">返回</button>
+          <button class="ghost" @click="view = 'cart'">{{ quickBuy ? '取消立即购买' : '返回' }}</button>
           <button v-if="blockedCount > 0" class="primary" disabled title="请先移除买不了的商品">有商品买不了，无法提交</button>
           <button v-else-if="outOfRange" class="primary" disabled title="该地址超出同城即时配送范围">超出配送范围，无法提交</button>
           <button v-else-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">

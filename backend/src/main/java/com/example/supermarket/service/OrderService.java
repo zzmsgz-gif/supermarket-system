@@ -3,6 +3,8 @@ package com.example.supermarket.service;
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
 import com.example.supermarket.dto.OrderItemResponse;
+import com.example.supermarket.dto.OrderRequestLike;
+import com.example.supermarket.dto.QuickBuyRequest;
 import com.example.supermarket.dto.OrderResponse;
 import com.example.supermarket.dto.ReorderResultResponse;
 import com.example.supermarket.dto.ReorderSkippedResponse;
@@ -167,6 +169,49 @@ public class OrderService {
 
     @Transactional
     public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
+        List<Long> cartItemIds = request.getCartItemIds().stream().distinct().toList();
+        List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInAndSelected(userId, cartItemIds, SELECTED);
+        if (cartItems.size() != cartItemIds.size()) {
+            throw new ResourceNotFoundException("Selected cart item not found");
+        }
+        // 购物车下单：建单成功后删掉这些购物车行（立即购买走 quickBuy，不删购物车）
+        OrderResponse order = buildOrderFromItems(userId, request, cartItems);
+        cartItemRepository.deleteByUserIdAndIds(userId, cartItemIds);
+        return order;
+    }
+
+    /**
+     * 「立即购买」：只买一件，不经过购物车表（不查、不删 cart_item）。
+     * 用一条「临时 CartItem」承载入参，复用 buildOrderFromItems 的建单逻辑，
+     * 下单成功后购物车零残留 —— 用户放弃支付也不会在购物车留下任何东西。
+     */
+    @Transactional
+    public OrderResponse quickBuy(Long userId, QuickBuyRequest request) {
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException("商品不存在"));
+        // 与 buildOrderFromItems 内 requireAvailableProduct 同口径：必须是可售状态
+        if (!ON_SALE.equals(product.getStatus()) || product.getDeleted() == null
+                || product.getDeleted().byteValue() != NOT_DELETED) {
+            throw new BusinessException(409, "该商品已下架，暂时无法购买");
+        }
+        int qty = request.getQuantity() == null ? 1 : request.getQuantity();
+        CartItem ci = new CartItem();
+        ci.setUserId(userId);
+        ci.setProductId(product.getId());
+        ci.setSkuSpec(request.getSkuSpec() == null ? "" : request.getSkuSpec());
+        ci.setQuantity(qty);
+        ci.setSelected(SELECTED);
+        // 临时对象，不入库、不进购物车；只作为 buildOrderFromItems 的入参
+        return buildOrderFromItems(userId, request, List.of(ci));
+    }
+
+    /**
+     * 围绕一组 CartItem 建单：商品校验、库存 / 秒杀自动拆分、金额、优惠（券 / 活动 / 会员 / 积分）、
+     * 扣库存、占秒杀名额。本方法【不】删除任何购物车行 —— 购物车下单在 createOrder 里删，
+     * 立即购买（quickBuy）不删。这样「查 / 删购物车」与「建单」彻底解耦，立即购买才能不污染购物车。
+     */
+    @Transactional
+    public OrderResponse buildOrderFromItems(Long userId, OrderRequestLike request, List<CartItem> cartItems) {
         String fulfillmentType = resolveFulfillmentType(request.getFulfillmentType());
         boolean pickup = OrderEntity.FULFILLMENT_PICKUP.equals(fulfillmentType);
 
@@ -191,12 +236,6 @@ public class OrderService {
             if (OrderEntity.FULFILLMENT_INSTANT.equals(fulfillmentType)) {
                 deliveryRangeService.assertDeliverable(address.getCity(), address.getDistrict());
             }
-        }
-
-        List<Long> cartItemIds = request.getCartItemIds().stream().distinct().toList();
-        List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInAndSelected(userId, cartItemIds, SELECTED);
-        if (cartItems.size() != cartItemIds.size()) {
-            throw new ResourceNotFoundException("Selected cart item not found");
         }
 
         Map<Long, Product> productMap = productRepository.findAllById(
@@ -335,7 +374,6 @@ public class OrderService {
         deductStocks(savedOrder.getId(), userId, savedItems, productMap);
         // 秒杀名额在库存扣减之后占用：名额不足会抛 409，整个下单事务回滚（不会留半张单）
         reserveFlashQuotas(savedOrder.getId(), userId, savedItems, flashSales);
-        cartItemRepository.deleteByUserIdAndIds(userId, cartItemIds);
         return OrderResponse.from(savedOrder, toItemResponses(savedItems));
     }
 

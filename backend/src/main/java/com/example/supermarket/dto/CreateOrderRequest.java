@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 
-public class CreateOrderRequest {
+public class CreateOrderRequest implements OrderRequestLike {
 
     @NotEmpty(message = "Cart item ids are required")
     private List<Long> cartItemIds;
