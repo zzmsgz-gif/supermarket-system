@@ -46,6 +46,10 @@ public class OrderResponse {
     private LocalDateTime canceledAt;
     private LocalDateTime closedAt;
     private LocalDateTime createdAt;
+    /** 支付截止的**绝对时刻**（服务端按 app.order.pay-timeout-minutes 算出）。
+     *  前端倒计时必须用它，不能用「客户端当前时间 + 时长」推算 —— 浏览器与服务端存在时钟偏差，
+     *  会算出「还剩 31 分钟」或已过期仍可支付这种荒谬结果。 */
+    private LocalDateTime payDeadline;
     private List<OrderItemResponse> items;
 
     public static OrderResponse from(OrderEntity order, List<OrderItemResponse> items) {
@@ -403,6 +407,14 @@ public class OrderResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getPayDeadline() {
+        return payDeadline;
+    }
+
+    public void setPayDeadline(LocalDateTime payDeadline) {
+        this.payDeadline = payDeadline;
     }
 
     public List<OrderItemResponse> getItems() {

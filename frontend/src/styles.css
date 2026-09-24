@@ -4673,3 +4673,77 @@ button.mini.danger:hover {
   .toast-slide-enter-active, .toast-slide-leave-active { transition: opacity 0.18s ease; }
   .toast-slide-enter-from, .toast-slide-leave-to { transform: translate(-50%, 0); }
 }
+
+/* ============ 待付款收银台 ============
+   流程：结算页「提交订单」→ 跳收银台（倒计时）→ 用户点「立即支付」才真正扣款。
+   这一步不是装饰：后端是「建单即锁库存」（deductStocks 在下单瞬间执行），
+   所以订单一诞生就已占用库存与秒杀名额。以前前端自动付款把这个真实状态藏了起来，
+   导致用户看到「名额被占 / 订单存在」却不知所以，这里把它显式出来。 */
+.pay-cashier { gap: 16px; }
+
+.pay-loading, .pay-error {
+  padding: 26px 0; text-align: center; color: var(--muted); font-size: 13.5px;
+}
+.pay-error { display: grid; gap: 12px; justify-items: center; }
+
+/* 状态横幅：待付款（绿）/ 已支付（灰）/ 已关闭·超时（红） */
+.pay-state {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-radius: var(--r-lg);
+  background: var(--brand-soft); border: 1px solid rgba(0, 168, 112, 0.22);
+}
+.pay-state.paid { background: var(--surface-soft); border-color: var(--line); }
+.pay-state.closed { background: #fff5f5; border-color: rgba(229, 72, 77, 0.24); }
+
+.pay-state-badge {
+  flex: none; padding: 3px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #fff; background: var(--brand);
+}
+.pay-state.paid .pay-state-badge { background: var(--muted); }
+.pay-state.closed .pay-state-badge { background: var(--danger); }
+
+.pay-state-main { display: grid; gap: 4px; }
+.pay-state-main h3 { margin: 0; font-size: 15px; color: var(--ink); }
+.pay-state-desc { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* 倒计时：tabular-nums 让数字跳动时宽度不抖 */
+.pay-timer { margin: 2px 0 0; font-size: 13px; color: var(--brand-deep); }
+.pay-timer .countdown {
+  font-size: 17px; font-weight: 800; letter-spacing: .5px;
+  font-variant-numeric: tabular-nums; color: var(--brand-deep);
+}
+.pay-timer .countdown.urgent { color: var(--danger); }
+
+.pay-amount-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 12px 16px; border-radius: var(--r-lg);
+  background: var(--surface-soft); border: 1px solid var(--line);
+}
+.pay-amount-row > span { font-size: 13px; color: var(--muted); }
+.pay-amount { font-size: 24px; font-weight: 800; color: var(--danger); }
+
+.pay-meta { display: grid; gap: 8px; margin: 0; padding: 0; font-size: 12.5px; }
+.pay-meta > div { display: flex; gap: 10px; }
+.pay-meta dt { flex: none; width: 72px; margin: 0; color: var(--muted); }
+.pay-meta dd { margin: 0; color: var(--ink); word-break: break-all; }
+
+.pay-items { display: grid; gap: 8px; }
+.pay-items h4 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.pay-item-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: var(--r-md);
+  background: var(--surface-soft); font-size: 13px;
+}
+.pay-item-name { flex: 1; color: var(--ink); }
+.pay-item-name small { color: var(--muted); font-size: 12px; }
+.pay-item-qty { color: var(--muted); }
+.pay-item-price { font-weight: 600; color: var(--ink); }
+
+.pay-summary { display: grid; gap: 7px; padding-top: 2px; font-size: 12.5px; }
+.pay-summary .row { display: flex; justify-content: space-between; }
+.pay-summary .row span { color: var(--muted); }
+.pay-summary .row strong { color: var(--ink); font-weight: 600; }
+.pay-summary .row strong.minus { color: var(--brand); }
+
+.pay-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.pay-actions-tip { width: 100%; margin: 0; font-size: 12px; color: var(--muted); }
