@@ -18,11 +18,13 @@
         <div class="pay-state-main">
           <h3>{{ stateTitle }}</h3>
           <!-- 倒计时只在「待付款」时显示；金额的锁定期限由后端 payDeadline 给出 -->
-          <p v-if="isPending" class="pay-timer">
+          <p v-if="isPayable" class="pay-timer">
             请在 <strong class="countdown" :class="{ urgent: remainingSec <= 60 }">{{ mmss }}</strong>
             内完成支付，超时未完成将自动关闭订单。
           </p>
-          <p class="pay-state-desc">{{ stateDesc }}</p>
+          <!-- 还有时间付款时不再解释「库存/扣款」这类内部机制 —— 用户只关心还剩多久、
+               要不要付。仅在「已支付 / 已超时 / 已关闭」时才给一句解释，说明为什么动不了。 -->
+          <p v-if="!isPayable" class="pay-state-desc">{{ stateDesc }}</p>
         </div>
       </div>
 
@@ -71,7 +73,6 @@
             <span>{{ paying ? '支付处理中…' : '立即支付 ' + money(order.payAmount) }}</span>
           </button>
           <button class="ghost" :disabled="paying" @click="doCancel">取消订单</button>
-          <p class="pay-actions-tip">未支付期间商品库存为你保留，取消或超时后会自动释放。</p>
         </template>
         <template v-else>
           <button class="primary" @click="navigate('shop')">继续挑选商品</button>
@@ -148,10 +149,10 @@ export default {
     const stateDesc = computed(() => {
       if (!order.value) return '';
       if (order.value.status === 'PAID') return '无需重复支付，可在订单列表查看物流进度。';
+      // 走到这里说明「待付款却已不可支付」：模板只在 !isPayable 时才显示本句，
+      // 所以不再保留「下单时已为你锁定库存…」那个待付款分支（09-25 按用户决定删掉）。
       if (order.value.status === 'PENDING_PAYMENT') {
-        return remainingSec.value > 0
-          ? '下单时已为你锁定库存；现在付款才会真正扣款。'
-          : '超过支付时限，订单已自动关闭，占用的库存与优惠券已释放。';
+        return '超过支付时限，订单已自动关闭，占用的库存与优惠券已释放。';
       }
       return '该订单不再可支付，占用的库存与优惠券已释放。';
     });

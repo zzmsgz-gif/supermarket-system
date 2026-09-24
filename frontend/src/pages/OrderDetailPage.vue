@@ -25,9 +25,10 @@
                 还剩 <strong class="countdown" :class="{ urgent: payRemainingSec <= 60 }">{{ payMmss }}</strong>
                 可支付，超时订单会自动关闭。
               </p>
-              <p class="pay-state-desc">{{ payExpired
-                ? '超过支付时限，订单将自动关闭，占用的库存与优惠券会释放。'
-                : '下单时已为你锁定库存；现在付款才会真正扣款。' }}</p>
+              <!-- 同理：还有时间付款时不解释内部机制，超时后才说明为什么付不了 -->
+              <p v-if="payExpired" class="pay-state-desc">
+                超过支付时限，订单将自动关闭，占用的库存与优惠券会释放。
+              </p>
             </div>
           </div>
           <div v-if="isPendingPay" class="pay-actions">
