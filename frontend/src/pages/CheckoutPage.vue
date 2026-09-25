@@ -200,8 +200,7 @@
         <h3>购物车是空的</h3>
         <p>先去挑几件商品，再来结算吧。</p>
         <div class="empty-actions">
-          <button class="primary" @click="view = 'shop'">去逛逛</button>
-          <button class="ghost" @click="view = 'cart'">查看购物车</button>
+          <button class="primary" @click="navigate('shop')">去逛逛</button>
         </div>
       </div>
 </template>
