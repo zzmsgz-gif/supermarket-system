@@ -1,5 +1,5 @@
 <template>
-<section class="data-panel checkout">
+<section class="data-panel checkout" v-if="hasItems">
         <div class="panel-head">
           <button class="ghost" @click="view = 'cart'">{{ quickBuy ? '取消立即购买' : '返回购物车' }}</button>
         </div>
@@ -195,6 +195,15 @@
           <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="view = 'recharge'">去充值 ›</a>
         </div>
       </section>
+      <div v-else class="checkout-empty">
+        <div class="empty-illu">🛒</div>
+        <h3>购物车是空的</h3>
+        <p>先去挑几件商品，再来结算吧。</p>
+        <div class="empty-actions">
+          <button class="primary" @click="view = 'shop'">去逛逛</button>
+          <button class="ghost" @click="view = 'cart'">查看购物车</button>
+        </div>
+      </div>
 </template>
 
 <script>
@@ -217,6 +226,9 @@ export default {
     const checkoutItems = computed(() => (appCtx.cart.items || []).filter((i) => i.selected !== false));
     const cartIssues = computed(() => cartIssueItems(checkoutItems.value));
     const blockedCount = computed(() => cartIssues.value.filter((it) => it.selected).length);
+    // 购物车（含「立即购买」虚拟项）没有任何可结算项时：整个结算页降级为「购物车是空的」空态，
+    // 不再渲染配送方式/地址/提交按钮 —— 否则用户直接 URL 输入 /checkout 也能看到可下单界面，还能提交 ¥0 订单。
+    const hasItems = computed(() => checkoutItems.value.length > 0);
 
     // 即时配送范围：选定地址后就地问后端能否送达。判定口径以后端为准（唯一真源），
     // 前端只负责**提前提示** —— 与失效行体检同一条原则，真正的强制仍在下单侧。
