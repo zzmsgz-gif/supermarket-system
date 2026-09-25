@@ -93,6 +93,7 @@ mysql -h <mysql-host> -P <mysql-port> -u root -p supermarket_system < deploy/rai
 | `JWT_SECRET` | 强随机串（≥32 字节） | **必须设**，否则用默认弱密钥 |
 | `JWT_EXPIRATION_SECONDS` | `86400` | 可选 |
 | `APP_CACHE_ENABLED` | `false`（或 `true`，需配 Redis） | |
+| `STORAGE_TYPE` | `local`（**强烈建议**，遵循用户「OSS 停用」要求，避免产生费用）；需 OSS 时设 `oss` 并注入 `OSS_*` 凭证 | 文件存储方式 |
 | `SPRING_DATA_REDIS_HOST` | `${{Redis.REDIS_HOST}}` | 仅开缓存时设 |
 | `SPRING_DATA_REDIS_PORT` | `${{Redis.REDIS_PORT}}` | 仅开缓存时设 |
 | `SPRING_DATA_REDIS_PASSWORD` | `${{Redis.REDIS_PASSWORD}}` | 仅开缓存时设 |
@@ -131,3 +132,4 @@ mysql -h <mysql-host> -P <mysql-port> -u root -p supermarket_system < deploy/rai
 - **backend 连不上 MySQL**：多半是 `SPRING_DATASOURCE_URL` 没用 Railway 的 `${{MySQL.MYSQLHOST}}` 等变量拼，写死 `localhost` 会指向 backend 自己。
 - **前端白屏/接口 404**：`BACKEND_URL` 没填或填错；或 frontend 服务 Root Directory 没设 `frontend` 导致 `COPY dist` 找不到构建产物。
 - **首次启动报表不存在**：忘了执行第 6 步导入 `init.sql`（`validate` 模式不会自动建表）。
+- **上传文件/商品图重启后丢失**：backend 服务默认无持久盘，`./uploads`（STORAGE_LOCAL_DIR 默认路径）重启即清空。请在 backend 服务 **Settings → Volumes** 挂一个 Volume 到 `/app/uploads`；前端 `dist/seed-products/`（冲调饮品等种子图）构建时打进镜像，不受影响。

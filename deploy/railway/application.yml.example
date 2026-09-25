@@ -53,7 +53,8 @@ logging:
 # 文件存储配置
 # storage.type: oss = 阿里云 OSS（默认，生产推荐）；local = 本地磁盘（联调用）
 storage:
-  type: ${STORAGE_TYPE:oss}
+  # 默认 local（遵循用户「OSS 停用」要求，避免产生费用）；确需 OSS 时设 STORAGE_TYPE=oss 并注入 OSS_* 凭证
+  type: ${STORAGE_TYPE:local}
   local:
     dir: ${STORAGE_LOCAL_DIR:./uploads}
   oss:
@@ -69,8 +70,10 @@ app:
   jwt:
     secret: ${JWT_SECRET:supermarket-local-dev-secret-change-me-32-bytes}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:86400}
+    remember-expiration-seconds: ${JWT_REMEMBER_EXPIRATION_SECONDS:604800}
   order:
-    pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:30}
+    # 与本地 / 线上逻辑保持一致：建单即锁库存，窗口取 15 分钟（OrderService 与 Scheduler 都读这项）
+    pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:15}
     close-check-interval-ms: ${ORDER_CLOSE_CHECK_INTERVAL_MS:60000}
   new-user-coupon-id: ${APP_NEW_USER_COUPON_ID:5}
   cache:
