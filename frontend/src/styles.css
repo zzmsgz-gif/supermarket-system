@@ -1485,6 +1485,15 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
   .product-card { padding: 9px; }
   .product-card h3 { font-size: 14px; }
   .price-line { align-items: flex-start; flex-direction: column; gap: 4px; }
+  /* 手机：筛选栏换行、输入框自适应，避免固定宽溢出 */
+  .shop-filters { flex-wrap: wrap; gap: 8px; }
+  .filter-group { flex-wrap: wrap; }
+  .filter-group input, .filter-group select { min-width: 0; flex: 1 1 110px; }
+  /* 手机：轮播内边距收敛，给文案留出空间 */
+  .hero-carousel { height: 200px; }
+  .carousel-slide { padding: 0 16px; gap: 12px; }
+  .slide-main h3 { font-size: 22px; }
+  .slide-value { font-size: 15px; }
   .stat-grid { grid-template-columns: 1fr; }
   .data-panel { padding: 14px; }
   .list-row, .row-actions { align-items: stretch; flex-direction: column; }
@@ -4587,6 +4596,15 @@ button.mini.danger:hover {
 /* 月晕 / 金色微光：只占 hero 顶部一条带，**故意压得很淡**。
    ⚠️ 第一版是 940×400、alpha 0.3 的一大片 —— 实测把右侧白色「商城公告」面板整块染黄，看着像脏了。
       改成「窄 + 淡 + 向内收」，只在 hero 上沿造一层暖光。 */
+/* 节日装饰层：纯视觉，固定全屏 + 溢出裁剪，避免内部 820px 光晕在手机上撑大 body 宽 */
+.festive-decor {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .fd-glow {
   position: absolute;
   left: 50%;
