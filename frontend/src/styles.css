@@ -2689,6 +2689,11 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .checkout-actions .primary.loading { background: linear-gradient(180deg, #12c48b, var(--brand-dark)); opacity: 0.88; cursor: progress; }
 .checkout-actions .primary.loading:hover { box-shadow: none; transform: none; }
 .checkout-actions .link { color: var(--brand-deep); cursor: pointer; text-decoration: underline; }
+.checkout-empty { text-align: center; padding: 60px 20px; color: var(--ink); }
+.checkout-empty .empty-illu { font-size: 52px; line-height: 1; }
+.checkout-empty h3 { margin: 14px 0 6px; font-size: 18px; }
+.checkout-empty p { color: var(--muted); margin: 0 0 20px; }
+.checkout-empty .empty-actions { display: flex; gap: 12px; justify-content: center; }
 
 /* 支付加载态：旋转的小圈，使模拟支付更逼真 */
 .spinner {
