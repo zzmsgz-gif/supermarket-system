@@ -99,6 +99,7 @@
           <div class="order-summary">
             <div class="order-row"><span>订单状态</span><b>{{ orderStatusLabel(orderDetail.data) }}</b></div>
             <div class="order-row"><span>支付状态</span><b>{{ formatPaymentStatus(orderDetail.data.paymentStatus) }}</b></div>
+            <div class="order-row" v-for="t in timeRows" :key="t.label"><span>{{ t.label }}</span><b>{{ t.value }}</b></div>
             <div class="order-row"><span>配送方式</span><b>{{ fulfillmentLabel(orderDetail.data)
               + (orderDetail.data.fulfillmentType === 'INSTANT'
                 ? (orderDetail.data.deliverySlot ? ' · ' + orderDetail.data.deliverySlot : ' · 尽快送达')
@@ -145,7 +146,7 @@
 
 <script>
 import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
-import { orderOriginalSave } from '../utils/format';
+import { orderOriginalSave, formatDate } from '../utils/format';
 export default {
   name: 'OrderDetailPage',
   setup() {
@@ -213,6 +214,23 @@ export default {
       if (payTick) clearInterval(payTick);
     });
 
+    // 订单时间线：按订单走过的生命周期节点展示对应时间戳（后端已下发，前端只挑非空的显示）。
+    // 始终是「下单时间」打头，后面依次是支付/发货/完成/取消/关闭/退款 —— 不一次性全列，避免没走过的节点显示一堆「-」。
+    const timeRows = computed(() => {
+      const d = appCtx.orderDetail.data;
+      if (!d) return [];
+      const rows = [];
+      const push = (label, v) => { if (v) rows.push({ label, value: formatDate(v) }); };
+      push('下单时间', d.createdAt);
+      push('支付时间', d.paidAt);
+      push('发货时间', d.shippedAt);
+      push('完成时间', d.completedAt);
+      push('取消时间', d.canceledAt);
+      push('关闭时间', d.closedAt);
+      push('退款时间', d.refundedAt);
+      return rows;
+    });
+
     // 金额明细：把订单每一笔优惠都摊开，确保「商品小计 + 运费 − 优惠合计 = 实付」永远成立。
     // 会员等级折扣与积分抵扣此前没在详情页出现，是「数字加起来对不上」的根因。
     const amount = computed(() => {
@@ -244,7 +262,7 @@ export default {
       };
     });
 
-    return { ...appCtx, amount, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder };
+    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder };
   }
 };
 </script>
