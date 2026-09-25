@@ -1993,7 +1993,10 @@ i.req { color: var(--danger); font-style: normal; }
 }
 
 /* 确认/提示浮层要压在登录注册弹窗之上，否则登录失败时提示被遮住看不见 */
-.modal-mask--float { z-index: 90; }
+/* 用户要求「登录成功背景不变色」：浮层同样透明、不模糊，只让提示卡片浮在页面上（登录成功/注册成功/改密成功等都走这层）。
+   注意：用 blur(0px) 而非 none —— vite 压缩会丢「无前缀 backdrop-filter:none」只留 -webkit-，导致基准 blur(2px) 仍生效；
+   这里 blur(0px) 无 !important、无 -webkit 孪生，且写在 .modal-mask 之后靠层叠覆盖，压缩后保留无前缀 blur(0px)=不模糊。 */
+.modal-mask--float { z-index: 90; background: transparent; backdrop-filter: blur(0px); }
 
 .modal {
   width: 100%;
@@ -2078,7 +2081,11 @@ i.req { color: var(--danger); font-style: normal; }
    所以这里要一起换成绿色系，只把卡片刷成浅绿是不够的。⚠️ 只作用于登录弹窗（`.modal-mask--auth`
    与 `.auth-*` 都是它专属的类名），别顺手改全局 `.modal` / `.modal-mask`，那会连带改掉
    确认框、后台表单等所有弹窗的观感。 */
-.modal-mask--auth { background: rgba(8, 48, 36, 0.34); }
+/* 登录/注册弹窗：用户要求「登录时背景不要变色」→ 遮罩透明、不模糊，仅卡片浮在上层。
+   ⚠️ 压缩坑：vite 的 CSS 压缩对带 !important / 值为 none 的 backdrop-filter 会丢「无前缀」版本、
+   只留 -webkit-，于是基准 .modal-mask 的 blur(2px) 仍生效。这里用 blur(0px)（无 !important、无 -webkit 孪生）
+   且本规则写在 .modal-mask 之后，靠层叠顺序覆盖，压缩后会保留无前缀 blur(0px) = 不模糊。 */
+.modal-mask--auth { background: transparent; backdrop-filter: blur(0px); }
 
 .modal.auth-modal {
   background: #f4fbf8;                    /* 浅绿底 */
@@ -3890,6 +3897,11 @@ button.mini.danger:hover {
   border-radius: 16px;
   background: #fff;
   box-shadow: var(--shadow);
+  /* 分类增多时不再把 hero 拉高、从而避免轮播图下方出现空白带：封顶后内部滚动 */
+  max-height: 360px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 33, 0.22) transparent;
 }
 
 .hero-cat {
@@ -4034,7 +4046,7 @@ button.mini.danger:hover {
   position: relative;
   border-radius: 16px;
   overflow: hidden;
-  min-height: 340px;
+  height: 360px;
   box-shadow: 0 14px 30px rgba(4, 82, 60, 0.22);
 }
 
@@ -4050,7 +4062,7 @@ button.mini.danger:hover {
 .carousel-slide {
   flex: 0 0 100%;
   min-width: 100%;
-  height: 340px;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4147,7 +4159,7 @@ button.mini.danger:hover {
   border-radius: 16px;
   background: #fff;
   box-shadow: var(--shadow);
-  max-height: 340px;
+  max-height: 360px;
   overflow: hidden;
 }
 
@@ -4201,8 +4213,8 @@ button.mini.danger:hover {
 
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
-  .hero-carousel { min-height: 220px; }
-  .carousel-slide { height: 220px; padding: 0 40px; }
+  .hero-carousel { height: 220px; }
+  .carousel-slide { height: 100%; padding: 0 40px; }
   .slide-tag { left: 40px; }
   .slide-main h3 { font-size: 22px; }
   .hero-cats, .hero-notice { max-height: none; }
