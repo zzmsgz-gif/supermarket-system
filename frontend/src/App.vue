@@ -27,7 +27,7 @@
         <!-- 导航条已取消：Logo 承担「回到首页」 -->
         <div class="brand brand-link" role="button" tabindex="0" title="回到首页" aria-label="回到首页"
              @click="navigate('shop')" @keydown.enter.prevent="navigate('shop')">
-          <span class="brand-mark">S</span>
+          <img src="/logo.svg" class="brand-logo" alt="超市购物系统" />
           <div>
             <strong>超市购物系统</strong>
             <small>Supermarket Mall</small>
@@ -149,7 +149,7 @@
       <div class="footer-inner">
         <div class="footer-brand">
           <div class="footer-logo">
-            <span class="brand-mark">S</span>
+            <img src="/logo.svg" class="brand-logo footer-logo-img" alt="超市购物系统" />
             <span>超市购物系统</span>
           </div>
           <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
