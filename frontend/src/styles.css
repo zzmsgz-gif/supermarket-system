@@ -215,6 +215,19 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   box-shadow: 0 8px 20px rgba(0, 168, 112, 0.3);
 }
 
+/* 图形 Logo（public/logo.svg）：替换原 CSS 文字标记 .brand-mark(S) */
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: block;
+  object-fit: contain;
+  flex: none;
+  box-shadow: 0 8px 20px rgba(0, 168, 112, 0.3);
+}
+
+.footer-logo-img { width: 36px; height: 36px; border-radius: 11px; }
+
 .brand strong { display: block; font-size: 18px; line-height: 1.25; letter-spacing: 0.5px; }
 
 .brand small, .account-panel small {
