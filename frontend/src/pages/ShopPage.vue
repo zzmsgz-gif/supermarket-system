@@ -498,8 +498,22 @@ export default {
     const homeLoading = ref(true);
     async function loadAllProducts() {
       try {
-        const data = await api.get('/products?page=1&size=60').catch(() => null);
-        allProducts.value = Array.isArray(data?.items) ? data.items : [];
+        // ⚠️ 楼层是拿 allProducts 现地按 categoryId 分组的，所以这里必须拉到**全量**上架商品。
+        // 原写法只取第一页 size=60：默认排序是 sortNo DESC，超出第一页的是 sortNo 最低（最旧）的商品，
+        // 结果那些分类的楼层只剩 1 件（中秋团圆甚至整层消失）。后端 size 上限 @Max(100)，
+        // 所以用 size=100 按 total 逐页取满，商品继续增加也不会复发。
+        const SIZE = 100;
+        const collected = [];
+        let page = 1;
+        while (page <= 20) {                       // 兜底上限，防止接口异常时死循环
+          const data = await api.get(`/products?page=${page}&size=${SIZE}`).catch(() => null);
+          const items = Array.isArray(data?.items) ? data.items : [];
+          collected.push(...items);
+          const total = Number(data?.total || 0);
+          if (!items.length || collected.length >= total) break;
+          page += 1;
+        }
+        allProducts.value = collected;
       } finally {
         homeLoading.value = false;
       }
