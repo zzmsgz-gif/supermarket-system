@@ -17,8 +17,7 @@
         @focus="openCatNow(category)"
         @blur="closeCatSoon"
       >
-        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon" :alt="category.name" @error="onCatImgError" />
-        <span v-else class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
+        <span class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
       </button>
     </aside>
 
@@ -31,8 +30,7 @@
       @mouseleave="closeCatSoon"
     >
       <div class="hcp-head">
-        <img v-if="hoverCat.iconUrl" :src="hoverCat.iconUrl" class="cat-icon" :alt="hoverCat.name" @error="onCatImgError" />
-        <span v-else class="cat-emoji">{{ catEmoji(hoverCat.name) }}</span>
+        <span class="cat-emoji">{{ catEmoji(hoverCat.name) }}</span>
         <strong>{{ hoverCat.name }}</strong>
         <span class="hcp-count">{{ hoverCatItems.length }} 件在售</span>
       </div>
@@ -570,11 +568,6 @@ export default {
       return CAT_EMOJI[name] || '🛍️';
     }
 
-    // 分类图标图加载失败（极少数分类没配 iconUrl 或图丢了）→ 隐藏破图，名字照常显示
-    function onCatImgError(e) {
-      if (e && e.target) e.target.style.display = 'none';
-    }
-
     // 左侧分类栏的 hover 预览面板（仿京东/淘宝的分类导航）：
     //   · hover 只做「预览」，点击分类仍走 chooseCategory（筛选/切网格）—— 两个动作不抢同一件事
     //   · 进出各留一点迟滞，避免鼠标掠过分类栏时面板闪烁
@@ -671,7 +664,6 @@ export default {
       isFiltering,
       activityText,
       catEmoji,
-      onCatImgError,
       hoverCat,
       hoverCatItems,
       openCatSoon,
