@@ -3934,6 +3934,9 @@ button.mini.danger:hover {
 .hero-cat:hover { background: var(--brand-soft); color: var(--brand); }
 .hero-cat.on { background: var(--brand); color: #fff; }
 .hero-cat .cat-emoji { font-size: 16px; }
+/* 分类图标取自后端 icon_url（cg-*.jpg），无图时回落 emoji（见 ShopPage.vue）。
+   尺寸对齐 emoji 的 16px，圆角小方块，避免方图撑破竖排分类栏。 */
+.hero-cat .cat-icon { width: 18px; height: 18px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; flex: 0 0 auto; }
 
 /* 分类 hover 预览面板 —— 定位在「分类栏右侧 → 公告栏左侧」之间，正好盖住轮播区。
    深色磨砂玻璃（不是不透明白底，也不是白玻璃）：白底会把首页主视觉整块吃掉；
@@ -3991,6 +3994,7 @@ button.mini.danger:hover {
 }
 .hcp-head strong { font-size: 15px; font-weight: 600; color: #fff; }
 .hcp-head .cat-emoji { font-size: 16px; }
+.hcp-head .cat-icon { width: 18px; height: 18px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; flex: 0 0 auto; }
 .hcp-count { margin-left: auto; font-size: 12px; color: var(--glass-ink-soft); }
 .hcp-list {
   flex: 1;
