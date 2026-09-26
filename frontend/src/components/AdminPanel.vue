@@ -234,6 +234,10 @@
                   <span class="field-label">排序号</span>
                   <input v-model.number="categoryForm.sortNo" type="number" min="0" placeholder="数字越小越靠前，如 10" />
                 </label>
+                <label class="field">
+                  <span class="field-label">分类图标</span>
+                  <ImageUpload v-model="categoryForm.iconUrl" :multiple="false" :max="1" type="category" />
+                </label>
                 <div class="field field-action">
                   <button type="submit">新增分类</button>
                 </div>
@@ -252,6 +256,7 @@
                 <table class="admin-table">
                   <thead>
                     <tr>
+                      <th>图标</th>
                       <th>分类名称</th>
                       <th>上级分类</th>
                       <th>排序</th>
@@ -260,6 +265,10 @@
                   </thead>
                   <tbody>
                     <tr v-for="category in categoryPageItems" :key="category.id">
+                      <td>
+                        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name" />
+                        <span v-else class="muted">—</span>
+                      </td>
                       <td><span class="cell-strong">{{ category.name }}</span></td>
                       <td>{{ categoryName(category.parentId) }}</td>
                       <td>{{ category.sortNo }}</td>
@@ -1298,7 +1307,7 @@ function goStockPage() {
   stockPage.value = p;
 }
 
-const categoryForm = reactive({ parentId: 0, name: '', sortNo: 10, status: 1 });
+const categoryForm = reactive({ parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
 
 const couponForm = reactive({ name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
 
@@ -2160,7 +2169,7 @@ async function saveCategory() {
   if (!categoryForm.name.trim()) { fail('请填写分类名称'); return; }
   await run(async () => {
     await api.post('/admin/categories', categoryForm);
-    Object.assign(categoryForm, { parentId: 0, name: '', sortNo: 10, status: 1 });
+    Object.assign(categoryForm, { parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
     await loadCategories();
   }, '分类已新增');
 

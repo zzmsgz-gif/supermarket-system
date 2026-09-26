@@ -52,6 +52,7 @@ public class AdminCategoryService {
         ProductCategory category = new ProductCategory();
         category.setParentId(parentId);
         category.setName(name);
+        category.setIconUrl(normalizeIconUrl(request.getIconUrl()));
         category.setSortNo(request.getSortNo());
         category.setStatus(request.getStatus());
         category.setDeleted(NOT_DELETED);
@@ -69,6 +70,7 @@ public class AdminCategoryService {
 
         category.setParentId(parentId);
         category.setName(name);
+        category.setIconUrl(normalizeIconUrl(request.getIconUrl()));
         category.setSortNo(request.getSortNo());
         category.setStatus(request.getStatus());
         return CategoryResponse.from(categoryRepository.save(category));
@@ -137,5 +139,10 @@ public class AdminCategoryService {
             throw new BusinessException(400, "Category name is required");
         }
         return name.trim();
+    }
+
+    /** 图标可空：留空或全空白都存 NULL（前端按「无图」处理，不要给默认占位图）。 */
+    private String normalizeIconUrl(String iconUrl) {
+        return StringUtils.hasText(iconUrl) ? iconUrl.trim() : null;
     }
 }

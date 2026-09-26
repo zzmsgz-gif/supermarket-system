@@ -9,6 +9,7 @@ import com.example.supermarket.dto.PasswordResetSubmitResponse;
 import com.example.supermarket.dto.ProfileUpdateRequest;
 import com.example.supermarket.dto.RegisterRequest;
 import com.example.supermarket.dto.UserResponse;
+import com.example.supermarket.dto.WechatLoginRequest;
 import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.service.AuthService;
 import com.example.supermarket.service.PasswordResetService;
@@ -74,6 +75,15 @@ public class AuthController {
     ) {
         authService.changePassword(currentUser, request);
         return ApiResponse.ok(null);
+    }
+
+    /**
+     * 微信小程序一键登录：小程序端 wx.login 拿 code → 本接口换 openid → 自动注册/登录 → 返回 JWT。
+     * 游客可调（已在 SecurityConfig permitAll）。返回的 token 与 PC 密码登录完全同款。
+     */
+    @PostMapping("/wechat-login")
+    public ApiResponse<AuthResponse> wechatLogin(@Valid @RequestBody WechatLoginRequest request) {
+        return ApiResponse.ok(authService.wechatLogin(request));
     }
 
 }

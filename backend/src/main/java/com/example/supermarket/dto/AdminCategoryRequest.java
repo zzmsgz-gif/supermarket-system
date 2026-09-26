@@ -16,6 +16,10 @@ public class AdminCategoryRequest {
     @Size(max = 50, message = "Category name must be at most 50 characters")
     private String name;
 
+    /** 分类图标 URL，可空（老分类/不想配图的分类留空即可）。 */
+    @Size(max = 500, message = "Icon url must be at most 500 characters")
+    private String iconUrl;
+
     @NotNull(message = "Sort number is required")
     @Min(value = 0, message = "Sort number must be at least 0")
     private Integer sortNo;
@@ -39,6 +43,14 @@ public class AdminCategoryRequest {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getIconUrl() {
+        return iconUrl;
+    }
+
+    public void setIconUrl(String iconUrl) {
+        this.iconUrl = iconUrl;
     }
 
     public Integer getSortNo() {

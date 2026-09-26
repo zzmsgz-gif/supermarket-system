@@ -1,0 +1,20 @@
+{
+  "name": "supermarket-mini",
+  "appid": "",
+  "description": "超市购物小程序（uni-app）",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx3a6edd169faeba2e",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "minified": true
+    },
+    "usingComponents": true
+  },
+  "h5": {
+    "router": { "mode": "hash" }
+  }
+}
