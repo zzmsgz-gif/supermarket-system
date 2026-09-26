@@ -19,6 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.example.supermarket.dto.WechatLoginRequest;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -32,19 +34,22 @@ public class AuthService {
     private final JwtService jwtService;
     private final CouponService couponService;
     private final MessageService messageService;
+    private final WechatService wechatService;
 
     public AuthService(
             SysUserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             CouponService couponService,
-            MessageService messageService
+            MessageService messageService,
+            WechatService wechatService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.couponService = couponService;
         this.messageService = messageService;
+        this.wechatService = wechatService;
     }
 
     @Transactional
@@ -76,17 +81,7 @@ public class AuthService {
         user.setDeleted(NOT_DELETED);
         SysUser saved = userRepository.save(user);
 
-        // 注册即发新人券（best-effort，券配置缺失或发放失败都不影响注册成功）
-        try {
-            couponService.issueNewUserCoupon(saved.getId());
-        } catch (Exception ignored) {
-            // 发放新人券失败不应阻断注册
-        }
-
-        // 欢迎消息（消息中心的第一条；dedupeKey 保证重复注册调用也只落一条）
-        messageService.push(saved.getId(), UserMessage.TYPE_SYSTEM, "欢迎加入超市购物系统",
-                "新人专享券已发放到你的账户，下单立减。收藏商品后降价还会第一时间提醒你。",
-                "coupons", null, "WELCOME:" + saved.getId());
+        issueWelcome(saved);
 
         CurrentUser currentUser = new CurrentUser(saved);
         return new AuthResponse(jwtService.generateToken(currentUser), UserResponse.from(saved));
@@ -156,6 +151,56 @@ public class AuthService {
             user.setEmail(email);
         }
         return UserResponse.from(userRepository.save(user));
+    }
+
+    /**
+     * 微信小程序登录：用 code 换 openid，按 openid 查账号；没有则自动注册独立账号。
+     * 复用现有 JwtService 签发与 PC 完全一致的 token，因此小程序用户与 PC 用户共享同一套鉴权。
+     */
+    @Transactional
+    public AuthResponse wechatLogin(WechatLoginRequest request) {
+        String openid = wechatService.code2Session(request.getCode());
+        SysUser user = userRepository.findByWxOpenidAndDeleted(openid, NOT_DELETED).orElse(null);
+        if (user == null) {
+            // 首次微信登录：自动注册独立账号（username 用 wx_<openid> 保证唯一；密码随机，仅供 DB 非空约束）
+            SysUser newUser = new SysUser();
+            newUser.setUsername("wx_" + openid);
+            newUser.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+            newUser.setNickname(StringUtils.hasText(request.getNickname()) ? request.getNickname().trim() : "微信用户");
+            newUser.setAvatarUrl(request.getAvatarUrl());
+            newUser.setWxOpenid(openid);
+            newUser.setRole(ROLE_USER);
+            newUser.setStatus(ENABLED);
+            newUser.setBalance(BigDecimal.ZERO);
+            newUser.setDeleted(NOT_DELETED);
+            SysUser saved = userRepository.save(newUser);
+            issueWelcome(saved);
+            user = saved;
+        } else {
+            user.setLastLoginAt(LocalDateTime.now());
+            if (StringUtils.hasText(request.getNickname())) {
+                user.setNickname(request.getNickname().trim());
+            }
+            if (request.getAvatarUrl() != null) {
+                user.setAvatarUrl(request.getAvatarUrl());
+            }
+            user = userRepository.save(user);
+        }
+        CurrentUser currentUser = new CurrentUser(user);
+        return new AuthResponse(jwtService.generateToken(currentUser), UserResponse.from(user));
+    }
+
+    private void issueWelcome(SysUser saved) {
+        // 注册即发新人券（best-effort，券配置缺失或发放失败都不影响注册成功）
+        try {
+            couponService.issueNewUserCoupon(saved.getId());
+        } catch (Exception ignored) {
+            // 发放新人券失败不应阻断注册
+        }
+        // 欢迎消息（消息中心的第一条；dedupeKey 保证重复注册调用也只落一条）
+        messageService.push(saved.getId(), UserMessage.TYPE_SYSTEM, "欢迎加入超市购物系统",
+                "新人专享券已发放到你的账户，下单立减。收藏商品后降价还会第一时间提醒你。",
+                "coupons", null, "WELCOME:" + saved.getId());
     }
 
     private boolean ENABLED_STATUS(SysUser user) {

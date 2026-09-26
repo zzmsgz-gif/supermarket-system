@@ -72,6 +72,9 @@ public class SysUser {
     @Column(nullable = false)
     private Byte deleted;
 
+    @Column(name = "wx_openid", length = 64)
+    private String wxOpenid;
+
     public Long getId() {
         return id;
     }
@@ -214,5 +217,13 @@ public class SysUser {
 
     public void setDeleted(Byte deleted) {
         this.deleted = deleted;
+    }
+
+    public String getWxOpenid() {
+        return wxOpenid;
+    }
+
+    public void setWxOpenid(String wxOpenid) {
+        this.wxOpenid = wxOpenid;
     }
 }

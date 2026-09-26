@@ -21,6 +21,8 @@ public interface SysUserRepository extends JpaRepository<SysUser, Long>, JpaSpec
 
     boolean existsByEmailAndDeleted(String email, Byte deleted);
 
+    Optional<SysUser> findByWxOpenidAndDeleted(String wxOpenid, Byte deleted);
+
     boolean existsByPhoneAndIdNot(String phone, Long id);
 
     boolean existsByEmailAndIdNot(String email, Long id);

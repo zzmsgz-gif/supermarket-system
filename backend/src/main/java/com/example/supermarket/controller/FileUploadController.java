@@ -21,7 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/files")
 public class FileUploadController {
 
-    private static final Set<String> ALLOWED_TYPES = Set.of("product", "avatar", "review", "banner");
+    private static final Set<String> ALLOWED_TYPES = Set.of("product", "category", "avatar", "review", "banner");
     private static final List<String> ALLOWED_CONTENT =
             List.of("image/jpeg", "image/png", "image/webp", "image/gif");
     private static final long MAX_SIZE = 10 * 1024 * 1024;
@@ -50,7 +50,7 @@ public class FileUploadController {
         if (file.getSize() > MAX_SIZE) {
             throw new BusinessException(400, "图片大小不能超过 10MB");
         }
-        if (type.equals("product") && !"ADMIN".equals(currentUser.getRole())) {
+        if ((type.equals("product") || type.equals("category")) && !"ADMIN".equals(currentUser.getRole())) {
             throw new BusinessException(403, "仅管理员可上传商品 / 分类图片");
         }
         try {

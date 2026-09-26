@@ -67,6 +67,8 @@ public class SecurityConfig {
                                 "/v3/api-docs", "/v3/api-docs/", "/v3/api-docs/**",
                                 "/swagger-resources", "/swagger-resources/**", "/webjars/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+                        // 微信小程序登录：游客可调，必须放行；复用现有 JwtService 签发的 token，不影响 PC
+                        .requestMatchers(HttpMethod.POST, "/auth/wechat-login").permitAll()
                         // 忘记密码申请：登录不进去的人才用它，必须放行
                         .requestMatchers(HttpMethod.POST, "/auth/password-reset-request").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")

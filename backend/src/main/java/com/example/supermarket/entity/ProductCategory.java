@@ -22,6 +22,10 @@ public class ProductCategory {
     @Column(nullable = false, length = 50)
     private String name;
 
+    /** 分类图标。可空：老分类没配图时前端按无图处理（不要在这里给默认图，那是展示层的事）。 */
+    @Column(name = "icon_url", length = 500)
+    private String iconUrl;
+
     @Column(name = "sort_no", nullable = false)
     private Integer sortNo;
 
@@ -59,6 +63,14 @@ public class ProductCategory {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getIconUrl() {
+        return iconUrl;
+    }
+
+    public void setIconUrl(String iconUrl) {
+        this.iconUrl = iconUrl;
     }
 
     public Integer getSortNo() {

@@ -7,15 +7,17 @@ public class CategoryResponse {
     private Long id;
     private Long parentId;
     private String name;
+    private String iconUrl;
     private Integer sortNo;
 
     public CategoryResponse() {
     }
 
-    private CategoryResponse(Long id, Long parentId, String name, Integer sortNo) {
+    private CategoryResponse(Long id, Long parentId, String name, String iconUrl, Integer sortNo) {
         this.id = id;
         this.parentId = parentId;
         this.name = name;
+        this.iconUrl = iconUrl;
         this.sortNo = sortNo;
     }
 
@@ -24,6 +26,7 @@ public class CategoryResponse {
                 category.getId(),
                 category.getParentId(),
                 category.getName(),
+                category.getIconUrl(),
                 category.getSortNo()
         );
     }
@@ -50,6 +53,14 @@ public class CategoryResponse {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getIconUrl() {
+        return iconUrl;
+    }
+
+    public void setIconUrl(String iconUrl) {
+        this.iconUrl = iconUrl;
     }
 
     public Integer getSortNo() {
