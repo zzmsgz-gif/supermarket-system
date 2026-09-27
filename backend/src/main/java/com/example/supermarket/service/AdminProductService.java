@@ -248,6 +248,8 @@ public class AdminProductService {
             e.setProductId(productId);
             e.setSpecJson(r.getSpecJson());
             e.setSkuCode(r.getSkuCode());
+            // 规格价可为空：为空即跟随商品基准价
+            e.setPrice(r.getPrice());
             e.setImage(r.getImage());
             e.setSortNo(r.getSortNo() == null ? 0 : r.getSortNo());
             e.setDeleted(NOT_DELETED);

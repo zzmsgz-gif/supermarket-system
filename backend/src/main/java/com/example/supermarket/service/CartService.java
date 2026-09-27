@@ -36,13 +36,15 @@ public class CartService {
     private final ProductRepository productRepository;
     private final ActivityService activityService;
     private final FlashSaleService flashSaleService;
+    private final SkuPriceSupport skuPriceSupport;
 
     public CartService(CartItemRepository cartItemRepository, ProductRepository productRepository,
-            ActivityService activityService, FlashSaleService flashSaleService) {
+            ActivityService activityService, FlashSaleService flashSaleService, SkuPriceSupport skuPriceSupport) {
         this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;
         this.activityService = activityService;
         this.flashSaleService = flashSaleService;
+        this.skuPriceSupport = skuPriceSupport;
     }
 
     @Transactional(readOnly = true)
@@ -153,7 +155,9 @@ public class CartService {
                 flashQty = Math.min(item.getQuantity(), Math.max(rem, 0));
                 flashRemain.put(item.getProductId(), Math.max(rem - flashQty, 0));
             }
-            items.add(CartItemResponse.from(item, product, sale, flashQty));
+            // 规格价：该行选了规格且该规格单独定价时按规格价结算，否则回落商品基准价
+            items.add(CartItemResponse.from(item, product, sale, flashQty,
+                    skuPriceSupport.priceOf(item.getProductId(), item.getSkuSpec())));
         }
         int selectedCount = items.stream()
                 .filter(CartItemResponse::getSelected)

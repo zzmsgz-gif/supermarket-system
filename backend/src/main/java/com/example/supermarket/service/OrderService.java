@@ -110,6 +110,7 @@ public class OrderService {
     private final CartService cartService;
     /** 即时配送范围校验：可送达范围 = 所有营业中门店服务区域的并集 */
     private final DeliveryRangeService deliveryRangeService;
+    private final SkuPriceSupport skuPriceSupport;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -128,7 +129,8 @@ public class OrderService {
             MessageService messageService,
             FlashSaleService flashSaleService,
             CartService cartService,
-            DeliveryRangeService deliveryRangeService
+            DeliveryRangeService deliveryRangeService,
+            SkuPriceSupport skuPriceSupport
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -147,6 +149,7 @@ public class OrderService {
         this.flashSaleService = flashSaleService;
         this.cartService = cartService;
         this.deliveryRangeService = deliveryRangeService;
+        this.skuPriceSupport = skuPriceSupport;
     }
 
     /**
@@ -261,8 +264,12 @@ public class OrderService {
         for (CartItem ci : cartItems) {
             Product product = requireAvailableProduct(productMap, ci.getProductId());
             FlashSale fs = flashSales.get(ci.getProductId());
-            BigDecimal regular = product.getPrice();
-            if (product.getMemberPrice() != null && product.getMemberPrice().compareTo(regular) < 0) {
+            // 规格价：该行选了规格且该规格单独定价时按规格价算，否则回落商品基准价。
+            // 与 CartItemResponse 同口径（会员价仅在未走规格价时参与比较）。
+            BigDecimal skuPrice = skuPriceSupport.priceOf(ci.getProductId(), ci.getSkuSpec());
+            BigDecimal regular = skuPrice != null ? skuPrice : product.getPrice();
+            if (skuPrice == null && product.getMemberPrice() != null
+                    && product.getMemberPrice().compareTo(regular) < 0) {
                 regular = product.getMemberPrice();
             }
             int qty = ci.getQuantity();
@@ -564,8 +571,10 @@ public class OrderService {
         item.setProductCoverUrl(product.getCoverUrl());
         // 结算单价取「正常售价 / 会员价 / 秒杀价」三者最低：这三者都是"替换单价"型优惠、互不叠加，
         // 取最低对用户最公平，也保证购物车/结算预览/实际下单口径一致。
-        BigDecimal unitPrice = product.getPrice();
-        if (product.getMemberPrice() != null && product.getMemberPrice().compareTo(unitPrice) < 0) {
+        BigDecimal skuPrice = skuPriceSupport.priceOf(product.getId(), cartItem.getSkuSpec());
+        BigDecimal unitPrice = skuPrice != null ? skuPrice : product.getPrice();
+        if (skuPrice == null && product.getMemberPrice() != null
+                && product.getMemberPrice().compareTo(unitPrice) < 0) {
             unitPrice = product.getMemberPrice();
         }
         if (flashSale != null && flashSale.getFlashPrice().compareTo(unitPrice) < 0) {
@@ -576,7 +585,10 @@ public class OrderService {
         item.setProductPrice(unitPrice);
         // 划线价的对照价：命中秒杀时用商品正常售价（秒杀前的价），否则用商品自带的划线价。
         // 仅用于订单详情展示「划线优惠（已省）」，不参与实付扣减。
-        item.setOriginalPrice(item.getFlashSaleId() != null ? product.getPrice() : product.getOriginalPrice());
+        // 命中秒杀时的对照价 = 该规格未打折时的价（规格价优先），否则用商品自带划线价
+        item.setOriginalPrice(item.getFlashSaleId() != null
+                ? (skuPrice != null ? skuPrice : product.getPrice())
+                : product.getOriginalPrice());
         item.setQuantity(quantity);
         item.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(quantity)));
         return item;
