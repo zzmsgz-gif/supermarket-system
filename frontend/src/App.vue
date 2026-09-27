@@ -2942,6 +2942,13 @@ async function openProductDetail(product, { fromHistory = false } = {}) {
         api.get(`/activities/active`).catch(() => []),
       ]);
       productDetail.data = detail;
+      // 有 SKU 的商品：进入详情页默认选中第一个规格（sort_no 最小者，对应基准规格价）
+      for (const k in selectedSpec) delete selectedSpec[k];
+      const skusForDefault = detail?.skus || [];
+      if (skusForDefault.length) {
+        const firstSpec = safeParseSpec(skusForDefault[0].specJson);
+        for (const k in firstSpec) selectedSpec[k] = firstSpec[k];
+      }
       productDetail.reviews = reviews?.items || [];
       relatedProducts.value = related || [];
       activeActivities.value = activities || [];
