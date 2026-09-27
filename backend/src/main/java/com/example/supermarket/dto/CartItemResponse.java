@@ -67,6 +67,17 @@ public class CartItemResponse {
     }
 
     public static CartItemResponse from(CartItem item, Product product, FlashSale flashSale, Integer flashQty) {
+        return from(item, product, flashSale, flashQty, null);
+    }
+
+    /**
+     * @param skuPrice 该行所选规格的售价（由 {@code SkuPriceSupport} 解析）；
+     *                 为 null 表示未选规格或该规格未单独定价 → 回落商品基准价。
+     *                 注意：规格价优先，且此时不再叠加会员价 —— 会员价是按商品基准价定的绝对值，
+     *                 拿它去比一个更大规格的价钱会算出更便宜的怪价（如 1.5L 比 350ml 还低）。
+     */
+    public static CartItemResponse from(CartItem item, Product product, FlashSale flashSale, Integer flashQty,
+            BigDecimal skuPrice) {
         CartItemResponse response = new CartItemResponse();
         response.setId(item.getId());
         response.setProductId(product.getId());
@@ -75,8 +86,10 @@ public class CartItemResponse {
         response.setProductCoverUrl(product.getCoverUrl());
         response.setSkuSpec(item.getSkuSpec());
         int qty = item.getQuantity();
-        BigDecimal regular = product.getPrice();
-        if (product.getMemberPrice() != null && product.getMemberPrice().compareTo(regular) < 0) {
+        BigDecimal regular = skuPrice != null ? skuPrice : product.getPrice();
+        // 只有「未走规格价」时才比会员价：会员价是商品级绝对值，与规格价不可直接比大小
+        if (skuPrice == null && product.getMemberPrice() != null
+                && product.getMemberPrice().compareTo(regular) < 0) {
             regular = product.getMemberPrice();
         }
         boolean flashApplies = flashSale != null && flashSale.getFlashPrice().compareTo(regular) < 0;

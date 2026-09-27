@@ -109,6 +109,7 @@ async function saveProduct() {
       specJson: JSON.stringify(Object.fromEntries((s.specItems || []).map((x) => [x.name, x.value]).filter(([n]) => n))),
       skuCode: s.skuCode || '',
       image: s.image || '',
+      price: s.price !== '' && s.price != null ? Number(s.price) : null,
       sortNo: i,
     })),
     attributes: (productForm.attributes || []).map((a, i) => ({
@@ -168,6 +169,7 @@ async function openEditProduct(product) {
       specItems: Object.entries(safeParseSpec(it.specJson)).map(([name, value]) => ({ name, value })),
       skuCode: it.skuCode || '',
       image: it.image || '',
+      price: it.price != null ? String(it.price) : '',
     })) : [],
     attributes: Array.isArray(d.attributes) ? d.attributes.map((it) => ({
       attrName: it.attrName || '',
@@ -325,9 +327,11 @@ async function deleteProduct(product) {
                         </div>
                       </div>
                       <button type="button" class="ghost mini" @click="sku.specItems.push({ name: '', value: '' })">+ 规格项</button>
+                      <span class="sku-price-tag" v-if="sku.price !== '' && sku.price != null">规格价 ¥{{ sku.price }}</span>
                       <div class="sku-meta">
                         <input v-model="sku.skuCode" placeholder="SKU 编码（选填）" />
                         <input v-model="sku.image" placeholder="SKU 图片 URL（选填）" />
+                        <input v-model="sku.price" placeholder="规格价（选填，留空=跟随商品价）" inputmode="decimal" />
                       </div>
                       <button type="button" class="ghost mini danger" @click="productForm.skus.splice(si, 1)">删除该 SKU</button>
                     </div>

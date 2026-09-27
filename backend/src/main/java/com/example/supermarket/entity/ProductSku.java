@@ -1,5 +1,7 @@
 package com.example.supermarket.entity;
 
+import java.math.BigDecimal;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -23,6 +25,10 @@ public class ProductSku {
 
     @Column(name = "sku_code", length = 64)
     private String skuCode;
+
+    // 规格价：为空表示该规格跟随商品基准价（兼容只做规格展示、不分价的场景）
+    @Column(name = "price", precision = 10, scale = 2)
+    private BigDecimal price;
 
     @Column(length = 500)
     private String image;
@@ -63,6 +69,14 @@ public class ProductSku {
 
     public void setSkuCode(String skuCode) {
         this.skuCode = skuCode;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setPrice(BigDecimal price) {
+        this.price = price;
     }
 
     public String getImage() {
