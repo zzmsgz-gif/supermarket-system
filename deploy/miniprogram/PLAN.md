@@ -1,6 +1,6 @@
 # 微信小程序版本落地方案（规划）
 
-> 状态：实施中。后端微信登录模块已实现（2026-09-25，AppID `wx3a6edd169faeba2e` + secret 已配置），小程序前端骨架已用 uni-app 建好；微信支付因无商户号推迟。本文件不含任何密钥——secret 仅存于被 .gitignore 排除的本地 `application.yml`，不在仓库。
+> 状态：实施中。后端微信登录模块已实现（2026-09-25，AppID `wx3a6edd169faeba2e` + secret 已配置）；小程序前端骨架已用 uni-app 建好，**并已按后端真实 DTO 完成 5 个核心页面（购物车/结算/订单列表/订单详情/商品详情）契约对齐 + `npm install` + `build:mp-weixin` 构建验证通过（2026-09-27）**。微信支付因无商户号推迟。本文件不含任何密钥——secret 仅存于被 .gitignore 排除的本地 `application.yml`，不在仓库。
 > 关联：H5 移动端适配（响应式补齐）已先行完成核心回归，见 git 提交 `fd2bd90`。
 
 ## 0. 结论

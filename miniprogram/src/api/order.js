@@ -6,9 +6,9 @@ export function createOrder(payload) {
   return request('/orders', { method: 'POST', data: payload })
 }
 
-// 首期走钱包余额支付（无商户号，不做微信支付 JSAPI）
-export function payOrder(id, channel = 'BALANCE') {
-  return request('/orders/' + id + '/pay', { method: 'POST', data: { channel } })
+// 后端 POST /orders/{id}/pay 无 body，默认走钱包余额 BALANCE（首期未接入微信支付）
+export function payOrder(id) {
+  return request('/orders/' + id + '/pay', { method: 'POST' })
 }
 
 export function listOrders(params = {}) {
