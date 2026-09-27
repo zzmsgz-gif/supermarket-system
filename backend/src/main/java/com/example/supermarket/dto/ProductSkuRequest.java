@@ -16,6 +16,9 @@ public class ProductSkuRequest {
     /** 规格价；为空表示跟随商品基准价。 */
     private BigDecimal price;
 
+    /** 规格吊牌价（划线价）；为空表示跟随商品原价。 */
+    private BigDecimal originalPrice;
+
     @Size(max = 500, message = "SKU image must be at most 500 characters")
     private String image;
 
@@ -43,6 +46,14 @@ public class ProductSkuRequest {
 
     public void setPrice(BigDecimal price) {
         this.price = price;
+    }
+
+    public BigDecimal getOriginalPrice() {
+        return originalPrice;
+    }
+
+    public void setOriginalPrice(BigDecimal originalPrice) {
+        this.originalPrice = originalPrice;
     }
 
     public String getImage() {

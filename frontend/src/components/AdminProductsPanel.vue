@@ -110,6 +110,7 @@ async function saveProduct() {
       skuCode: s.skuCode || '',
       image: s.image || '',
       price: s.price !== '' && s.price != null ? Number(s.price) : null,
+      originalPrice: s.originalPrice !== '' && s.originalPrice != null ? Number(s.originalPrice) : null,
       sortNo: i,
     })),
     attributes: (productForm.attributes || []).map((a, i) => ({
@@ -170,6 +171,7 @@ async function openEditProduct(product) {
       skuCode: it.skuCode || '',
       image: it.image || '',
       price: it.price != null ? String(it.price) : '',
+      originalPrice: it.originalPrice != null ? String(it.originalPrice) : '',
     })) : [],
     attributes: Array.isArray(d.attributes) ? d.attributes.map((it) => ({
       attrName: it.attrName || '',
@@ -332,10 +334,11 @@ async function deleteProduct(product) {
                         <input v-model="sku.skuCode" placeholder="SKU 编码（选填）" />
                         <input v-model="sku.image" placeholder="SKU 图片 URL（选填）" />
                         <input v-model="sku.price" placeholder="规格价（选填，留空=跟随商品价）" inputmode="decimal" />
+                        <input v-model="sku.originalPrice" placeholder="规格原价（选填，留空=跟随商品原价）" inputmode="decimal" />
                       </div>
                       <button type="button" class="ghost mini danger" @click="productForm.skus.splice(si, 1)">删除该 SKU</button>
                     </div>
-                    <button type="button" class="ghost mini" @click="productForm.skus.push({ specItems: [{ name: '', value: '' }], skuCode: '', image: '' })">+ 新增 SKU</button>
+                    <button type="button" class="ghost mini" @click="productForm.skus.push({ specItems: [{ name: '', value: '' }], skuCode: '', image: '', originalPrice: '' })">+ 新增 SKU</button>
                   </div>
                 </label>
                 <label class="field field-wide">

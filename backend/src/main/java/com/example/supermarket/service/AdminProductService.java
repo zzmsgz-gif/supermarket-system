@@ -250,6 +250,8 @@ public class AdminProductService {
             e.setSkuCode(r.getSkuCode());
             // 规格价可为空：为空即跟随商品基准价
             e.setPrice(r.getPrice());
+            // 规格吊牌价可为空：为空即跟随商品原价
+            e.setOriginalPrice(r.getOriginalPrice());
             e.setImage(r.getImage());
             e.setSortNo(r.getSortNo() == null ? 0 : r.getSortNo());
             e.setDeleted(NOT_DELETED);
