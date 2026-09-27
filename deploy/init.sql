@@ -127,6 +127,8 @@ CREATE TABLE product_sku (
     product_id BIGINT UNSIGNED NOT NULL COMMENT 'Owner product id',
     spec_json TEXT COMMENT 'Selected specs, e.g. {"color":"red","size":"M"}',
     sku_code VARCHAR(64) DEFAULT NULL COMMENT 'SKU code',
+    price DECIMAL(10, 2) DEFAULT NULL COMMENT '规格价；NULL=跟随商品基准价',
+    original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '规格吊牌价（划线价）；NULL=跟随商品原价',
     image VARCHAR(500) DEFAULT NULL COMMENT 'SKU image',
     sort_no INT NOT NULL DEFAULT 0 COMMENT 'Display order',
     deleted TINYINT NOT NULL DEFAULT 0,

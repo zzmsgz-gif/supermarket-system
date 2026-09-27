@@ -47,8 +47,8 @@
                   <span class="detail-flash">限时秒杀 · {{ flashDeadlineText(flashSale) }}<template v-if="Number(flashSale.perUserLimit) > 0"> · 每人限购 {{ flashSale.perUserLimit }} 件</template><template v-if="flashSale.remainingQuota <= 10"> · 仅剩 {{ flashSale.remainingQuota }} 件</template></span>
                 </template>
                 <template v-else>
-                  <span v-if="Number(productDetail.data.originalPrice) > Number(productDetail.data.price)" class="detail-origin">原价 {{ money(productDetail.data.originalPrice) }}</span>
-                  <span v-if="discountSave(productDetail.data.originalPrice, productDetail.data.price) > 0" class="detail-discount">省 {{ money(discountSave(productDetail.data.originalPrice, productDetail.data.price)) }} · 约 {{ discountRate(productDetail.data.originalPrice, productDetail.data.price) }} 折</span>
+                  <span v-if="detailOrigin > 0" class="detail-origin">原价 {{ money(detailOrigin) }}</span>
+                  <span v-if="discountSave(detailOrigin, detailPrice) > 0" class="detail-discount">省 {{ money(discountSave(detailOrigin, detailPrice)) }} · 约 {{ discountRate(detailOrigin, detailPrice) }} 折</span>
                 </template>
                 <span v-if="memberPrice" class="detail-member">会员专享价 {{ money(memberPrice) }}</span>
                 <span v-if="selectedSkuPrice" class="detail-spec-price">已选规格价</span>
@@ -204,7 +204,14 @@ export default {
     const favorited = computed(() => (typeof appCtx.isFavorite === 'function'
       ? appCtx.isFavorite(appCtx.productDetail.data?.id)
       : false));
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin };
+    // 当前生效单价（含规格价）：供划线价/折扣率计算对照
+    const detailPrice = computed(() => Number(appCtx.effectiveDetailPrice?.value ?? appCtx.productDetail.data?.price ?? 0));
+    // 当前规格的吊牌价(划线价)：随选中规格变化；无折扣时为 0（不显示划线）
+    const detailOrigin = computed(() => {
+      const orig = Number(appCtx.selectedSkuOriginalPrice?.value ?? appCtx.productDetail.data?.originalPrice ?? 0);
+      return orig > detailPrice.value ? orig : 0;
+    });
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin };
   }
 };
 </script>

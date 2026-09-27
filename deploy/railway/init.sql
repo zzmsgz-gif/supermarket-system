@@ -501,6 +501,8 @@ CREATE TABLE `product_sku` (
   `product_id` bigint unsigned NOT NULL,
   `spec_json` text COLLATE utf8mb4_unicode_ci,
   `sku_code` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `price` decimal(10,2) DEFAULT NULL COMMENT '规格价；NULL=跟随商品基准价',
+  `original_price` decimal(10,2) DEFAULT NULL COMMENT '规格吊牌价（划线价）；NULL=跟随商品原价',
   `image` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `sort_no` int NOT NULL DEFAULT '0',
   `deleted` tinyint NOT NULL DEFAULT '0',

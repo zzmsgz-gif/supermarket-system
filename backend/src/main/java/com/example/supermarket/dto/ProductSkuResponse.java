@@ -10,6 +10,7 @@ public class ProductSkuResponse {
     private String specJson;
     private String skuCode;
     private BigDecimal price;
+    private BigDecimal originalPrice;
     private String image;
     private Integer sortNo;
 
@@ -19,6 +20,7 @@ public class ProductSkuResponse {
         r.setSpecJson(e.getSpecJson());
         r.setSkuCode(e.getSkuCode());
         r.setPrice(e.getPrice());
+        r.setOriginalPrice(e.getOriginalPrice());
         r.setImage(e.getImage());
         r.setSortNo(e.getSortNo());
         return r;
@@ -54,6 +56,14 @@ public class ProductSkuResponse {
 
     public void setPrice(BigDecimal price) {
         this.price = price;
+    }
+
+    public BigDecimal getOriginalPrice() {
+        return originalPrice;
+    }
+
+    public void setOriginalPrice(BigDecimal originalPrice) {
+        this.originalPrice = originalPrice;
     }
 
     public String getImage() {

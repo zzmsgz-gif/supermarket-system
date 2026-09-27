@@ -30,6 +30,10 @@ public class ProductSku {
     @Column(name = "price", precision = 10, scale = 2)
     private BigDecimal price;
 
+    // 规格吊牌价（划线价）：= 规格价 × (商品原价 / 商品基准价)，随规格变化
+    @Column(name = "original_price", precision = 10, scale = 2)
+    private BigDecimal originalPrice;
+
     @Column(length = 500)
     private String image;
 
@@ -77,6 +81,14 @@ public class ProductSku {
 
     public void setPrice(BigDecimal price) {
         this.price = price;
+    }
+
+    public BigDecimal getOriginalPrice() {
+        return originalPrice;
+    }
+
+    public void setOriginalPrice(BigDecimal originalPrice) {
+        this.originalPrice = originalPrice;
     }
 
     public String getImage() {
