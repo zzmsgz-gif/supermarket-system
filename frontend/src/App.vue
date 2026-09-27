@@ -3042,18 +3042,25 @@ async function addDetailToCart() {
 // 单价取「正常售价 / 会员价 / 秒杀价」三者最低；命中秒杀时按「秒杀段 + 原价段」自动拆分，
 // productPrice 取等价单价保证 productPrice×quantity == subtotalAmount，结算预览与实付不会脱节。
 // 注意：这条项只存在前端 cart.items，不落库、不写购物车表。
+// 规格价优先：regular 取「所选规格价」(effectiveDetailPrice)，会员价不与规格价叠加（与后端一致）；
+// 秒杀按折扣率套到规格价上（走规格价时 = 规格价 × (基准秒杀价 / 基准价)），否则用基准秒杀绝对值。
 function buildQuickBuyCartItem(product, qty, spec) {
   const id = Number(product.id);
-  const price = Number(product.price ?? 0);
-  const memberPrice = Number(product.memberPrice ?? price);
-  let regular = price;
-  if (memberPrice > 0 && memberPrice < regular) regular = memberPrice;
+  const basePrice = Number(effectiveDetailPrice.value ?? product.price ?? 0);
+  const usingSkuPrice = selectedSkuPrice.value != null;
+  const memberPrice = Number(product.memberPrice ?? basePrice);
+  let regular = basePrice;
+  // 会员价仅在未走规格价时参与比较（与后端 SkuPriceSupport / CartItemResponse 同口径）
+  if (!usingSkuPrice && memberPrice > 0 && memberPrice < regular) regular = memberPrice;
   const sale = flashSaleOfProduct(id);
+  const baseFlash = sale ? Number(sale.flashPrice) : 0;
+  const rate = Number(product.price) > 0 ? baseFlash / Number(product.price) : 1;
   let flashApplies = false;
   let flashUnit = regular;
-  if (sale && Number(sale.flashPrice) < regular) {
-    flashApplies = true;
-    flashUnit = Number(sale.flashPrice);
+  if (sale) {
+    // 走规格价 → 秒杀价 = 规格价 × 折扣率；未走规格价 → 用基准秒杀绝对值（与后端 flashPriceFor 一致）
+    flashUnit = usingSkuPrice ? round2(regular * rate) : baseFlash;
+    flashApplies = flashUnit < regular;
   }
   const fq = flashApplies ? Math.min(qty, flashLimitOfProduct(id) ?? qty) : 0;
   const overflow = qty - fq;
@@ -3061,7 +3068,10 @@ function buildQuickBuyCartItem(product, qty, spec) {
   const subtotal = round2(flashUnit * fq + regular * overflow);
   const unit = round2(subtotal / qty);
   const finalSubtotal = round2(unit * qty);
-  const productOriginalPrice = flashApplies ? price : Number(product.originalPrice ?? price);
+  // 划线对照价：命中秒杀时用「打折前的价」（走了规格价就是规格价，否则商品基准价）
+  const productOriginalPrice = flashApplies
+    ? (usingSkuPrice ? basePrice : Number(product.price ?? basePrice))
+    : Number(product.originalPrice ?? basePrice);
   return {
     id: QUICKBUY_ITEM_ID,
     productId: id,
@@ -3074,7 +3084,7 @@ function buildQuickBuyCartItem(product, qty, spec) {
     subtotalAmount: finalSubtotal,
     regularPrice: regular,
     flashQty: fq,
-    flashPrice: flashApplies ? Number(sale.flashPrice) : 0,
+    flashPrice: flashApplies ? round2(flashUnit) : 0,
     flashSaleId: flashApplies ? sale.id : null,
     stock: Number(product.stock ?? 0),
     onSale: true,

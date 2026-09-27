@@ -92,13 +92,16 @@ public class CartItemResponse {
                 && product.getMemberPrice().compareTo(regular) < 0) {
             regular = product.getMemberPrice();
         }
-        boolean flashApplies = flashSale != null && flashSale.getFlashPrice().compareTo(regular) < 0;
+        // 秒杀价按「折扣率」套到规格价上：走规格价时 = 规格价 × (基准秒杀价 / 基准价)，否则用基准秒杀绝对值
+        BigDecimal flashUnitPrice = flashSale != null
+                ? flashSale.flashPriceFor(product.getPrice(), skuPrice) : regular;
+        boolean flashApplies = flashSale != null && flashUnitPrice.compareTo(regular) < 0;
         int fq = 0;
         if (flashApplies) {
             fq = (flashQty == null) ? qty : Math.min(flashQty, qty);
         }
         int overflow = qty - fq;
-        BigDecimal flashUnit = flashApplies ? flashSale.getFlashPrice() : regular;
+        BigDecimal flashUnit = flashApplies ? flashUnitPrice : regular;
         // 精确小计：秒杀段 + 原价段，避免「平均单价」带来的四舍五入漂移
         BigDecimal subtotal = flashUnit.multiply(BigDecimal.valueOf(fq))
                 .add(regular.multiply(BigDecimal.valueOf(overflow)));
@@ -110,13 +113,13 @@ public class CartItemResponse {
         response.setRegularPrice(regular);
         if (fq > 0) {
             response.setFlashSaleId(flashSale.getId());
-            response.setFlashPrice(flashSale.getFlashPrice());
+            response.setFlashPrice(flashUnit);
             response.setFlashEndTime(flashSale.getEndTime());
         }
         response.setFlashQty(fq);
-        // 划线对照价：命中秒杀时用商品正常售价（秒杀前的价），与订单行的 original_price 同口径
+        // 划线对照价：命中秒杀时用「秒杀前的价」—— 走了规格价就是规格价，否则商品基准价
         response.setProductOriginalPrice(flashApplies
-                ? product.getPrice() : product.getOriginalPrice());
+                ? regular : product.getOriginalPrice());
         response.setStock(product.getStock());
         response.setOnSale(ON_SALE.equals(product.getStatus())
                 && product.getDeleted() != null && product.getDeleted() == NOT_DELETED);

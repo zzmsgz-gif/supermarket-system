@@ -278,7 +278,9 @@ public class OrderService {
                 throw new BusinessException(409, "商品「" + product.getName() + "」库存不足（仅剩 "
                         + product.getStock() + " 件，购物车中有 " + qty + " 件），请调整数量后重试");
             }
-            if (fs != null && fs.getFlashPrice().compareTo(regular) < 0) {
+            // 走规格价时按折扣率判断：fs.flashPriceFor 返回 规格价×折扣率，必然 < 规格价(regular)；
+            // 未走规格价时回落基准秒杀价，与改动前一致。三处口径必须与 CartItemResponse 一致。
+            if (fs != null && fs.flashPriceFor(product.getPrice(), skuPrice).compareTo(regular) < 0) {
                 Integer rem = flashRemain.computeIfAbsent(fs.getId(),
                         k -> flashSaleService.remainingForUser(userId, fs));
                 int flashQty = (rem == null) ? qty : Math.min(qty, Math.max(rem, 0));
@@ -577,10 +579,14 @@ public class OrderService {
                 && product.getMemberPrice().compareTo(unitPrice) < 0) {
             unitPrice = product.getMemberPrice();
         }
-        if (flashSale != null && flashSale.getFlashPrice().compareTo(unitPrice) < 0) {
-            unitPrice = flashSale.getFlashPrice();
-            // 只有真的按秒杀价成交才占名额（会员价更低时走会员价，不消耗秒杀名额）
-            item.setFlashSaleId(flashSale.getId());
+        // 秒杀价按「折扣率」套到规格价上：与 CartItemResponse.from 同口径，保证预览与实付一致
+        if (flashSale != null) {
+            BigDecimal flashUnit = flashSale.flashPriceFor(product.getPrice(), skuPrice);
+            if (flashUnit.compareTo(unitPrice) < 0) {
+                unitPrice = flashUnit;
+                // 只有真的按秒杀价成交才占名额（会员价更低时走会员价，不消耗秒杀名额）
+                item.setFlashSaleId(flashSale.getId());
+            }
         }
         item.setProductPrice(unitPrice);
         // 划线价的对照价：命中秒杀时用商品正常售价（秒杀前的价），否则用商品自带的划线价。

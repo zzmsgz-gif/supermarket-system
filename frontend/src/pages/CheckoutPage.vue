@@ -259,7 +259,7 @@ export default {
 
     return {
       ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
-      rangeCheck, outOfRange,
+      rangeCheck, outOfRange, hasItems,
     };
   }
 };
