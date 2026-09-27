@@ -1,10 +1,20 @@
 <template>
   <view class="cart">
     <view v-for="it in items" :key="it.id" class="row">
-      <image class="cover" :src="fullUrl(it.product && it.product.coverUrl)" mode="aspectFill" />
+      <image class="cover" :src="fullUrl(it.productCoverUrl)" mode="aspectFill" />
       <view class="info">
-        <view class="name">{{ it.product && it.product.name }}</view>
-        <view class="price">¥{{ it.product && it.product.price }}</view>
+        <view class="name">{{ it.productName }}</view>
+        <view class="spec" v-if="it.skuSpec">规格：{{ it.skuSpec }}</view>
+        <view class="price" v-if="it.flashSaleId">
+          <text class="now">¥{{ it.productPrice }}</text>
+          <text class="origin" v-if="showOrigin(it)">¥{{ it.productOriginalPrice }}</text>
+          <text class="flash">秒杀</text>
+        </view>
+        <view class="price" v-else>
+          <text class="now">¥{{ it.productPrice }}</text>
+          <text class="origin" v-if="showOrigin(it)">¥{{ it.productOriginalPrice }}</text>
+        </view>
+        <view class="off" v-if="!it.onSale">已下架 / 无货</view>
       </view>
       <view class="qty">
         <text class="btn" @click="dec(it)">-</text>
@@ -31,9 +41,19 @@ import { fullUrl } from '@/config'
 
 const items = ref([])
 
+// 后端 CartResponse.items 为扁平字段：productName / productPrice / productOriginalPrice /
+// productCoverUrl / skuSpec / quantity / subtotalAmount / flashSaleId / onSale ...
+// subtotalAmount 已是「按秒杀价拆分后的精确小计」，直接用它与即可
 const total = computed(() =>
-  items.value.reduce((s, it) => s + (it.product ? it.product.price * it.quantity : 0), 0)
+  items.value.reduce(
+    (s, it) => s + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
+    0
+  )
 )
+
+function showOrigin(it) {
+  return it.productOriginalPrice != null && Number(it.productOriginalPrice) > Number(it.productPrice)
+}
 
 async function load() {
   if (!isLoggedIn()) {
@@ -41,7 +61,7 @@ async function load() {
     return
   }
   const res = await getCart()
-  items.value = res || []
+  items.value = (res && res.items) ? res.items : []
 }
 
 function inc(it) {
@@ -62,6 +82,9 @@ onShow(() => load())
 </script>
 
 <style scoped>
+.cart {
+  padding-bottom: 120rpx;
+}
 .row {
   display: flex;
   align-items: center;
@@ -75,21 +98,57 @@ onShow(() => load())
   height: 140rpx;
   background: #eee;
   border-radius: 8rpx;
+  flex-shrink: 0;
 }
 .info {
   flex: 1;
   padding: 0 16rpx;
+  min-width: 0;
 }
 .name {
   font-size: 28rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spec {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 4rpx;
 }
 .price {
-  color: #e4393c;
   margin-top: 12rpx;
+  display: flex;
+  align-items: baseline;
+}
+.now {
+  color: #e4393c;
+  font-weight: bold;
+  font-size: 30rpx;
+}
+.origin {
+  color: #999;
+  font-size: 22rpx;
+  text-decoration: line-through;
+  margin-left: 10rpx;
+}
+.flash {
+  color: #fff;
+  background: #e4393c;
+  font-size: 20rpx;
+  padding: 2rpx 8rpx;
+  border-radius: 6rpx;
+  margin-left: 10rpx;
+}
+.off {
+  color: #999;
+  font-size: 22rpx;
+  margin-top: 8rpx;
 }
 .qty {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 .btn {
   width: 56rpx;
