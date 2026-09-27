@@ -6,7 +6,16 @@
     { "path": "pages/cart/cart", "style": { "navigationBarTitleText": "购物车" } },
     { "path": "pages/checkout/checkout", "style": { "navigationBarTitleText": "结算" } },
     { "path": "pages/orders/orders", "style": { "navigationBarTitleText": "我的订单" } },
-    { "path": "pages/order-detail/order-detail", "style": { "navigationBarTitleText": "订单详情" } }
+    { "path": "pages/order-detail/order-detail", "style": { "navigationBarTitleText": "订单详情" } },
+    { "path": "pages/search/search", "style": { "navigationBarTitleText": "搜索" } },
+    { "path": "pages/mine/mine", "style": { "navigationBarTitleText": "个人中心" } },
+    { "path": "pages/coupons/coupons", "style": { "navigationBarTitleText": "优惠券" } },
+    { "path": "pages/addresses/addresses", "style": { "navigationBarTitleText": "收货地址" } },
+    { "path": "pages/member/member", "style": { "navigationBarTitleText": "会员中心" } },
+    { "path": "pages/messages/messages", "style": { "navigationBarTitleText": "消息中心" } },
+    { "path": "pages/favorites/favorites", "style": { "navigationBarTitleText": "我的收藏" } },
+    { "path": "pages/wallet/wallet", "style": { "navigationBarTitleText": "我的钱包" } },
+    { "path": "pages/legal/legal", "style": { "navigationBarTitleText": "协议" } }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "white",
@@ -21,7 +30,8 @@
     "list": [
       { "pagePath": "pages/index/index", "text": "首页" },
       { "pagePath": "pages/cart/cart", "text": "购物车" },
-      { "pagePath": "pages/orders/orders", "text": "订单" }
+      { "pagePath": "pages/orders/orders", "text": "订单" },
+      { "pagePath": "pages/mine/mine", "text": "我的" }
     ]
   }
 }
