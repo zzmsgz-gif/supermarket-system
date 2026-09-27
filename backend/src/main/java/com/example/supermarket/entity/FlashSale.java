@@ -79,6 +79,25 @@ public class FlashSale {
         return soldQuota != null && totalQuota != null && soldQuota >= totalQuota;
     }
 
+    /**
+     * 计算「按秒杀价成交」的单价。
+     *
+     * <p>秒杀价 {@code flashPrice} 是相对<b>商品基准价</b>的绝对值。当本行走了规格价时，
+     * 秒杀折扣按<b>同样的折扣率</b>套到规格价上 —— 这样「多规格商品参与秒杀」也是「规格价打折」，
+     * 而不是被基准秒杀价一刀切压低（例如基准价 12.80、秒杀 9.60 = 7.5 折；10斤装规格价 23.80
+     * 走秒杀 = 23.80 × 0.75 = 17.85，而不是被压成 9.60）。
+     *
+     * @param basePrice 商品基准价（{@code product.getPrice()}）；为 null 或 0 回落基准秒杀价
+     * @param skuPrice  本行所选规格价；为 null（未选规格 / 该规格未单独定价）回落基准秒杀价
+     */
+    public BigDecimal flashPriceFor(BigDecimal basePrice, BigDecimal skuPrice) {
+        if (skuPrice == null || basePrice == null || basePrice.signum() == 0) {
+            return flashPrice;
+        }
+        BigDecimal rate = flashPrice.divide(basePrice, 6, java.math.RoundingMode.HALF_UP);
+        return skuPrice.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
     /** 在给定时刻是否进行中 */
     public boolean activeAt(LocalDateTime at) {
         return ENABLED == (status == null ? DISABLED : status)

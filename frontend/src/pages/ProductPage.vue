@@ -43,7 +43,7 @@
               <div class="detail-price">
                 <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || effectiveDetailPrice) }}</strong>
                 <template v-if="flashPrice">
-                  <span class="detail-origin">原价 {{ money(productDetail.data.price) }}</span>
+                  <span class="detail-origin">原价 {{ money(flashOrigin) }}</span>
                   <span class="detail-flash">限时秒杀 · {{ flashDeadlineText(flashSale) }}<template v-if="Number(flashSale.perUserLimit) > 0"> · 每人限购 {{ flashSale.perUserLimit }} 件</template><template v-if="flashSale.remainingQuota <= 10"> · 仅剩 {{ flashSale.remainingQuota }} 件</template></span>
                 </template>
                 <template v-else>
@@ -171,12 +171,25 @@ export default {
         && f.state === 'RUNNING') || null;
     });
     // 秒杀价：低于「售价与会员价的较低者」才算数（与后端取 min() 的口径一致）
+    // 走规格价时按折扣率套到规格价上：规格价 × (基准秒杀价 / 基准价)，与后端 flashPriceFor 一致
     const flashPrice = computed(() => {
       const fp = Number((flashSale.value && flashSale.value.flashPrice) || 0);
-      const price = Number(appCtx.effectiveDetailPrice?.value ?? appCtx.productDetail.data?.price ?? 0);
+      const basePrice = Number(appCtx.productDetail.data?.price ?? 0);
+      const effectivePrice = Number(appCtx.effectiveDetailPrice?.value ?? basePrice);
+      const usingSkuPrice = appCtx.selectedSkuPrice?.value != null;
+      const skuFlash = usingSkuPrice && basePrice > 0
+        ? Math.round((effectivePrice * fp / basePrice) * 100) / 100 : fp;
       const mp = Number(appCtx.productDetail.data?.memberPrice || 0);
-      const floor = mp > 0 && mp < price ? mp : price;
-      return fp > 0 && fp < floor ? fp : 0;
+      // 会员价不与规格价叠加：走规格价时 floor 就是规格价，否则取 min(售价, 会员价)
+      const floor = usingSkuPrice ? effectivePrice : (mp > 0 && mp < effectivePrice ? mp : effectivePrice);
+      return skuFlash > 0 && skuFlash < floor ? skuFlash : 0;
+    });
+    // 命中秒杀时的「对照原价」（划线价）：打折前的价 —— 走了规格价就是规格价，否则商品基准价
+    const flashOrigin = computed(() => {
+      if (!flashPrice.value) return 0;
+      return appCtx.selectedSkuPrice?.value != null
+        ? Number(appCtx.effectiveDetailPrice?.value ?? appCtx.productDetail.data?.price ?? 0)
+        : Number(appCtx.productDetail.data?.price ?? 0);
     });
     // 会员价：仅在低于售价时展示；秒杀更低时不展示，避免两个价签互相打架。
     // 选了「单独定价的规格」时按后端口径不叠加会员价（规格价优先）。
@@ -191,7 +204,7 @@ export default {
     const favorited = computed(() => (typeof appCtx.isFavorite === 'function'
       ? appCtx.isFavorite(appCtx.productDetail.data?.id)
       : false));
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice };
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin };
   }
 };
 </script>
