@@ -272,6 +272,8 @@ import { useShopFilters } from './composables/useShopFilters.js';
 import { useGuestCart, QUICKBUY_ITEM_ID } from './composables/useGuestCart.js';
 import { useCartUi } from './composables/useCartUi.js';
 import { useAdminContent } from './composables/useAdminContent.js';
+import { useMemberPoints } from './composables/useMemberPoints.js';
+import { useProductDetail } from './composables/useProductDetail.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
@@ -435,7 +437,6 @@ const stockAlerts = ref([]);
 const adminCoupons = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminMenu = ref('insights');
 const refundForm = reactive({ orderId: null, reason: '' });
-const reviewForm = reactive({ orderId: null, rating: 5, content: '', images: [] });
 const confirmDialog = reactive({
   open: false,
   title: '',
@@ -454,82 +455,9 @@ const alertDialog = reactive({
   timer: null,
   resolver: null,
 });
-const productDetail = reactive({ data: null, reviews: [], loading: false });
 const orderDetail = reactive({ data: null, loading: false, error: '' });
-const detailQuantity = ref(1);
-const currentImageIndex = ref(0);
 const wallet = reactive({ balance: 0, recentTransactions: [] });
 
-function safeParseSpec(str) {
-  try { return JSON.parse(str || '{}') || {}; } catch (e) { return {}; }
-}
-
-// 选中规格的配图：用户端「选规格即换主图」的数据源。无图则为空（回落封面/图集）。
-const selectedSkuImage = computed(() => selectedSku.value?.image || '');
-
-const galleryImages = computed(() => {
-  const d = productDetail.data;
-  if (!d) return [];
-  const imgs = (d.images || []).map((it) => it.url).filter(Boolean);
-  if (d.coverUrl && !imgs.includes(d.coverUrl)) imgs.unshift(d.coverUrl);
-  // 选中带图的规格时，把规格图置顶为主图（缩略图同步置顶）
-  const skuImg = selectedSkuImage.value;
-  if (skuImg && !imgs.includes(skuImg)) imgs.unshift(skuImg);
-  return imgs;
-});
-const currentGalleryImage = computed(() => galleryImages.value[currentImageIndex.value] || '');
-
-const specDimensions = computed(() => {
-  const skus = productDetail.data?.skus || [];
-  const dims = {};
-  for (const sku of skus) {
-    const spec = safeParseSpec(sku.specJson);
-    for (const key of Object.keys(spec)) {
-      if (!dims[key]) dims[key] = [];
-      if (!dims[key].includes(spec[key])) dims[key].push(spec[key]);
-    }
-  }
-  return dims;
-});
-
-const selectedSku = computed(() => {
-  const skus = productDetail.data?.skus || [];
-  if (!Object.keys(selectedSpec).length) return null;
-  return skus.find((sku) => {
-    const spec = safeParseSpec(sku.specJson);
-    return Object.keys(spec).every((k) => String(spec[k]) === String(selectedSpec[k]));
-  }) || null;
-});
-
-const selectedSpecText = computed(() =>
-  Object.keys(selectedSpec).sort().map((k) => `${k}:${selectedSpec[k]}`).join(' '));
-
-// 选中规格的「规格价」：仅当该规格单独定价（price 非 null）时才有值；
-// 与后端 SkuPriceSupport 同口径 —— null 表示该规格跟随商品基准价。
-const selectedSkuPrice = computed(() => {
-  const sku = selectedSku.value;
-  return sku && sku.price != null ? Number(sku.price) : null;
-});
-
-// 选中规格的「吊牌价(划线价)」：选了单独定价且带吊牌价的规格 → 用规格吊牌价；
-// 否则回落商品级 originalPrice（与后端取价口径一致）。无折扣时返回 null（不划线）。
-const selectedSkuOriginalPrice = computed(() => {
-  const sku = selectedSku.value;
-  if (sku && sku.originalPrice != null && Number(sku.originalPrice) > 0) {
-    return Number(sku.originalPrice);
-  }
-  const p = Number(productDetail.data?.originalPrice || 0);
-  const base = Number(productDetail.data?.price || 0);
-  return p > base ? p : null;
-});
-
-// 详情页「当前生效单价」：选了单独定价的规格 → 用规格价；否则回落商品基准价。
-// 前端展示与后端取价（SkuPriceSupport / CartService / OrderService）保持一致。
-const effectiveDetailPrice = computed(() => {
-  const p = selectedSkuPrice.value;
-  if (p != null) return p;
-  return Number(productDetail.data?.price || 0);
-});
 const recharge = reactive({
   step: 'form', // form | paying | success | expired
   amount: 100,
@@ -550,16 +478,6 @@ const session = reactive({
 const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
 const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
-const relatedProducts = ref([]);
-const dwellEnterTs = ref(0);
-const dwellProductId = ref(null);
-const dwellSource = ref('detail');
-const selectedSpec = reactive({});
-
-// 选了带图的规格 → 主图回到置顶的规格图；切换/取消规格 → 回到封面。手动点缩略图不受影响。
-// 必须放在 selectedSpec（定义于上方）之后注册：watch 注册时会立即求值 selectedSkuImage
-// → selectedSku → selectedSpec，若 selectedSpec 尚未初始化会触发 TDZ，整页白屏。
-watch(selectedSkuImage, () => { currentImageIndex.value = 0; });
 // 打开编辑表单时记录当时的库存，仅当管理员改动库存字段时才随表单提交，
 // 避免把打开表单瞬间可能已过期的库存值覆盖真实库存。
 
@@ -706,135 +624,6 @@ const cartListTotal = computed(() => round2(cartLocalTotal.value + cartMemberDis
 
 const selectedAddress = computed(() => addresses.value.find((item) => item.id === selectedAddressId.value) || null);
 
-// ---------------- 会员积分体系（前端状态 + 结算预览） ----------------
-const memberProfile = reactive({
-  points: 0, memberLevel: 0, levelName: '', totalSpent: 0,
-  discountRate: 1, nextLevelThreshold: null, nextLevelName: '', progressToNext: 0, maxRedeemRatio: 0.5,
-});
-const memberLedger = reactive({ items: [], total: 0, page: 1, size: 10, loading: false });
-const memberLevels = ref([]);
-const usePoints = ref(false);
-const pointsToUse = ref(0);
-
-// 等级档位兜底（与后端 MemberService 常量一致）：/member/levels 未就绪时也不漏算会员折扣
-const TIER_NAMES_FALLBACK = ['普通用户', '银卡会员', '金卡会员', '钻石会员', '紫钻会员', '黑卡会员', '至尊会员'];
-const TIER_RATES_FALLBACK = [1, 0.98, 0.95, 0.90, 0.88, 0.85, 0.80];
-
-function tierRateForLevel(level) {
-  const lv = Number(level) || 0;
-  const t = memberLevels.value.find((x) => x.level === lv);
-  if (t) return Number(t.rate);
-  if (Number(memberProfile.memberLevel) === lv && memberProfile.discountRate != null) {
-    return Number(memberProfile.discountRate);
-  }
-  return TIER_RATES_FALLBACK[lv] != null ? TIER_RATES_FALLBACK[lv] : 1;
-}
-function tierNameFor(level) {
-  const lv = Number(level) || 0;
-  const t = memberLevels.value.find((x) => x.level === lv);
-  if (t) return t.name;
-  return TIER_NAMES_FALLBACK[lv] || '普通会员';
-}
-
-// 登录会员在某商品上的实付单价（与后端 unitPriceFor 同口径：会员价 与 等级折扣 取更低、不叠加）。
-// 非会员/游客返回 null —— 浏览页据此把主价切换成会员价并挂「X折会员价」标签，让列表/详情与购物车价格全程一致。
-function productMemberView(product) {
-  const level = effectiveMemberLevel();
-  if (level < 1) return null;
-  const base = Number(product?.price || 0);
-  if (!base) return null;
-  const rate = tierRateForLevel(level);
-  let price = base;
-  let source = 'tier'; // 折扣来源：'member'=商品专属会员价更低，'tier'=等级折扣更低（默认）
-  const mp = Number(product?.memberPrice || 0);
-  if (mp > 0 && mp < price) { price = mp; source = 'member'; }
-  const levelPrice = round2(base * rate);
-  if (levelPrice < price) { price = levelPrice; source = 'tier'; }
-  if (price >= base) return null;
-  // 【单一基准 = 售价】会员视图的对照价一律取「售价」(base)：折率 = 实付 ÷ 售价、省 = 售价 − 实付，
-  // 全系统只有一个基准，用户不会再拿吊牌价去乘折率（那是「银卡会员 7.5折」错觉的根源）。
-  // 吊牌价只在「游客视图」当商品促销的划线出现，且与会员折标互斥不同屏。
-  const original = base;
-  return { price: round2(price), original, rate, name: tierNameFor(level), source };
-}
-// 与后端 unitPriceFor 同口径，作用于「已选规格/单品单价」(unit)：会员价取 min(商品级会员价, 等级折扣价)，
-// 默认规格价格也照常享折扣，保证 浏览(详情/卡片)→购物车 价格一致。
-function memberUnitView(unit, productMemberPrice) {
-  const level = effectiveMemberLevel();
-  if (level < 1) return null;
-  const base = Number(unit || 0);
-  if (!base) return null;
-  const rate = tierRateForLevel(level);
-  let price = base;
-  let source = 'tier';
-  const mp = Number(productMemberPrice || 0);
-  if (mp > 0 && mp < price) { price = mp; source = 'member'; }
-  const levelPrice = round2(base * rate);
-  if (levelPrice < price) { price = levelPrice; source = 'tier'; }
-  if (price >= base) return null;
-  // original 同 productMemberView：【单一基准 = 售价】对照价一律取当前单价 base（含已选规格价），
-  // 详情页「普通价」与折率都据此算，保证 卡片 ↔ 详情 ↔ 购物车 完全同口径。
-  const original = base;
-  return { price: round2(price), original, rate, name: tierNameFor(level), source };
-}
-function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
-
-async function loadMemberLevels() {
-  // 该接口需要登录：未登录时会 401（静默忽略，结算时由 tierRateForLevel 兜底）
-  try { memberLevels.value = (await api.get('/member/levels')) || []; } catch (e) { /* ignore */ }
-}
-async function loadMemberProfile() {
-  if (!session.user || isAdmin.value) return;
-  try { Object.assign(memberProfile, (await api.get('/member/profile')) || {}); } catch (e) { /* ignore */ }
-}
-async function loadMemberLedger(page = 1) {
-  if (!session.user || isAdmin.value) return;
-  memberLedger.loading = true;
-  try {
-    const data = await api.get(`/member/ledger?page=${page}&size=${memberLedger.size}`);
-    if (data) {
-      memberLedger.items = data.items || [];
-      memberLedger.total = data.total || 0;
-      memberLedger.page = page;
-    }
-  } catch (e) { /* ignore */ } finally { memberLedger.loading = false; }
-}
-
-// 结算预览：会员折扣 + 积分抵现（与后端 OrderService 口径一致；当前目录无会员价，cartLocalTotal 即后端 totalAmount）
-const memberPreview = computed(() => {
-  const amountAfterPromo = Number(orderPayPreview.value || 0);
-  const level = session.user?.memberLevel || 0;
-  // 会员等级折扣已下沉到「单品成交价」（后端逐商品取优：会员价 与 等级折扣 取更低、不叠加），
-  // 购物车/预览返回的 regularPrice 已经是折后价。这里不再重复扣，而是把「已省的会员折扣」摊开成一行展示，
-  // 让结算页明确写出「为什么比原价低」——金额口径与后端 Order.memberDiscount 一致（base − 会员净额）。
-  const memberDiscount = round2(cartMemberDiscount.value);
-  const payBeforePoints = Math.max(amountAfterPromo - memberDiscount, 0);
-  const maxRedeemValue = round2(payBeforePoints * 0.5);
-  const maxRedeemPoints = Math.floor(maxRedeemValue * 100);
-  const userPoints = Number(session.user?.points || 0);
-  let pointsUsed = 0;
-  if (usePoints.value && userPoints > 0 && maxRedeemPoints > 0) {
-    const want = Number(pointsToUse.value) > 0 ? Number(pointsToUse.value) : userPoints;
-    pointsUsed = Math.max(0, Math.min(userPoints, want, maxRedeemPoints));
-  }
-  const pointsValue = round2(pointsUsed / 100);
-  // 运费不参与任何折扣（券/活动/会员/积分都只作用于商品小计），最后加上去 ——
-  // 与后端 OrderService 同口径，保证「商品小计 + 运费 − 券 − 活动 − 会员 − 积分 = 应付」成立
-  const freight = expressFreight.value;
-  const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0) + freight;
-  return { amountAfterPromo, memberDiscount, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, freight, finalPay };
-});
-
-const balanceSufficient = computed(() => Number(wallet.balance || 0) >= memberPreview.value.finalPay);
-
-// 勾选「使用积分抵扣」时默认填入本次可用最大积分，保证输入框数值与实际抵扣一致
-watch(usePoints, (on) => {
-  if (on) {
-    pointsToUse.value = Math.min(memberPreview.value.userPoints, memberPreview.value.maxRedeemPoints);
-  } else {
-    pointsToUse.value = 0;
-  }
-});
 
 
 
@@ -924,6 +713,12 @@ const { contentEl, cartPillEl, cartBadgeEl, motionAllowed, bob, popCartBadge, fl
 // ⚠️ 装配点必须在 isAdmin 之后（它是 ref，装配实参里立即求值）；api/run/showAlert/askConfirm/
 // loadHotSearches 只在 composable 的函数体内被调（用户点击时才执行），只需顶层存在。
 const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
+// 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview / cartMemberDiscount /
+// effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
+const { memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK, tierRateForLevel, tierNameFor, productMemberView, memberUnitView, round2, loadMemberLevels, loadMemberProfile, loadMemberLedger, memberPreview, balanceSufficient } = useMemberPoints({ api, session, isAdmin, wallet, effectiveMemberLevel, orderPayPreview, cartMemberDiscount, expressFreight });
+// 商品详情：SKU 规格、图集、停留上报、评价提交。productNavLock 是 App.vue 的 let 变量
+//（syncRoute 也要用）→ 留在原地，这里用读写器操作，避免两个来源各管一半。
+const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadRatingSummary, loadProducts, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getView: () => view.value });
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -1538,82 +1333,6 @@ async function submitRefund(id) {
 
 }
 
-function openReviewForm(orderId) {
-  reviewForm.orderId = orderId;
-  reviewForm.rating = 5;
-  reviewForm.content = '';
-
-}
-
-async function submitReview(id) {
-  await run(async () => {
-    await api.post(`/reviews/orders/${id}`, {
-      rating: reviewForm.rating,
-      content: reviewForm.content.trim(),
-      imageUrls: reviewForm.images,
-    });
-    reviewedMap[id] = true;
-    loadRatingSummary(); // 新评价改变平均分，刷新商品卡/详情的星级聚合
-    reviewForm.orderId = null;
-    reviewForm.images = [];
-    await loadProducts();
-    // 若用户正在查看该订单对应商品的详情页，立即刷新评价列表
-    try {
-      const order = await api.get(`/orders/${id}`).catch(() => null);
-      const pid = order?.items?.[0]?.productId;
-      if (pid && view.value === 'product' && productDetail.data && productDetail.data.id === pid) {
-        const r = await api.get(`/reviews/products/${pid}?page=1&size=20`).catch(() => ({ items: [] }));
-        productDetail.reviews = r?.items || [];
-      }
-    } catch (_) { /* 刷新评价失败不影响主流程 */ }
-  }, '评价提交成功，感谢反馈');
-
-}
-
-async function openProductDetail(product, { fromHistory = false } = {}) {
-  if (productNavLock) return;
-  productNavLock = true;
-  try {
-    reportDwell(); // 离开上一个详情页，先上报停留时长
-    productDetail.data = null;
-    productDetail.reviews = [];
-    relatedProducts.value = [];
-    activeActivities.value = [];
-    currentImageIndex.value = 0;
-    for (const k in selectedSpec) delete selectedSpec[k];
-    productDetail.loading = true;
-    detailQuantity.value = 1;
-    dwellProductId.value = product.id;
-    dwellEnterTs.value = Date.now();
-    dwellSource.value = 'detail';
-    router.push({ name: 'product', params: { id: product.id } });
-    try {
-      const [detail, reviews, related, activities] = await Promise.all([
-        api.get(isAdmin.value ? `/admin/products/${product.id}` : `/products/${product.id}`).catch(() => null),
-        api.get(`/reviews/products/${product.id}?page=1&size=20`).catch(() => ({ items: [] })),
-        api.get(`/products/related/${product.id}?limit=6`).catch(() => []),
-        api.get(`/activities/active`).catch(() => []),
-      ]);
-      productDetail.data = detail;
-      // 有 SKU 的商品：进入详情页默认选中第一个规格（sort_no 最小者，对应基准规格价）
-      for (const k in selectedSpec) delete selectedSpec[k];
-      const skusForDefault = detail?.skus || [];
-      if (skusForDefault.length) {
-        const firstSpec = safeParseSpec(skusForDefault[0].specJson);
-        for (const k in firstSpec) selectedSpec[k] = firstSpec[k];
-      }
-      productDetail.reviews = reviews?.items || [];
-      relatedProducts.value = related || [];
-      activeActivities.value = activities || [];
-    } catch (err) {
-      fail(err?.message || '商品详情加载失败');
-    } finally {
-      productDetail.loading = false;
-    }
-  } finally {
-    productNavLock = false;
-  }
-}
 
 async function openOrderDetail(order) {
   if (orderNavLock) return;
@@ -1640,35 +1359,6 @@ function closeOrderDetail() {
   navigate(isAdmin.value ? 'admin' : 'orders');
 }
 
-function reportDwell() {
-  const pid = dwellProductId.value;
-  const ts = dwellEnterTs.value;
-  if (pid == null || !ts) return;
-  const seconds = Math.round((Date.now() - ts) / 1000);
-  dwellProductId.value = null;
-  dwellEnterTs.value = 0;
-  if (seconds < 3) return; // 太短忽略，避免误触
-  api.post('/dwell', { productId: pid, seconds, source: dwellSource.value || 'detail' }).catch(() => {});
-}
-
-function backFromProduct() {
-  reportDwell();
-  // 站内导航进来的商品页，走路由回退避免重复堆积历史记录；直接打开链接/刷新则回首页
-  if (window.history.length > 1) {
-    router.back();
-    return;
-  }
-  navigate('shop');
-}
-
-// 详情页数量步进：上限 = min(库存, 秒杀还能买几件)。名额用完后 detailFlashCapped 会禁用按钮，这里再夹一道。
-function changeDetailQty(delta) {
-  const stock = Number(productDetail.data?.stock || 0);
-  const left = flashLimitOfProduct(productDetail.data?.id);
-  const max = left === null ? stock : Math.min(stock, left);
-  const next = Number(detailQuantity.value || 1) + delta;
-  detailQuantity.value = Math.min(Math.max(next, 1), Math.max(max, 1));
-}
 
 async function addDetailToCart() {
   if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
