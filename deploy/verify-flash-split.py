@@ -36,6 +36,9 @@ NOLIMIT_PID = 74       # 抽纸（开秒杀、不限购）
 uid = admin_id = None
 created_orders = []
 created_sales = []
+# 秒杀已改「独立商品」：建场时会克隆出一件 FLASH 商品，加购/下单要用它；
+# 这里单独记下克隆品 id，清理时只删它们（绝不碰原商品）。
+created_flash_pids = []
 results = []
 
 
@@ -147,6 +150,12 @@ try:
         "totalQuota": 50, "perUserLimit": 0, "startTime": ts(-1), "endTime": ts(24),
         "status": 1, "sortNo": 9}, admin_tok)
     created_sales.append(sale_nolimit["id"])
+
+    # ⭐ 建场后 productId 变成「克隆出来的秒杀商品」：后续加购/下单一律用它
+    created_flash_pids.append(sale_limit["productId"])
+    created_flash_pids.append(sale_nolimit["productId"])
+    LIMIT_PID = sale_limit["productId"]
+    NOLIMIT_PID = sale_nolimit["productId"]
 
     fp = sale_limit["flashPrice"]
 
@@ -266,6 +275,9 @@ finally:
                 sql(f"DELETE FROM {DB}.payment_record WHERE order_id={oid}")
                 sql(f"DELETE FROM {DB}.stock_log WHERE order_id={oid}")
             sql(f"DELETE FROM {DB}.orders WHERE id IN ({olist})")
+        for pid in created_flash_pids:
+            sql(f"DELETE FROM {DB}.product_sku WHERE product_id={pid}")
+            sql(f"DELETE FROM {DB}.product WHERE id={pid}")
         sql(f"DELETE FROM {DB}.sys_user WHERE id IN ({idlist})")
         print("CLEANUP_OK")
     except Exception as exc:  # noqa: BLE001

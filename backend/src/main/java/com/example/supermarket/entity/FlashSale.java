@@ -38,6 +38,10 @@ public class FlashSale {
     @Column(name = "product_id", nullable = false)
     private Long productId;
 
+    /** 被秒杀「克隆」出来的独立秒杀商品所对应的【原商品】id —— 用于校验「同一原商品不能并存未结束场次」。 */
+    @Column(name = "source_product_id")
+    private Long sourceProductId;
+
     @Column(name = "flash_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal flashPrice;
 
@@ -129,6 +133,14 @@ public class FlashSale {
 
     public void setProductId(Long productId) {
         this.productId = productId;
+    }
+
+    public Long getSourceProductId() {
+        return sourceProductId;
+    }
+
+    public void setSourceProductId(Long sourceProductId) {
+        this.sourceProductId = sourceProductId;
     }
 
     public BigDecimal getFlashPrice() {

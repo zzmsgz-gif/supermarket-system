@@ -190,6 +190,15 @@ public class CouponService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<UserCouponResponse> listMyCoupons(Long userId, int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "id"));
+        Page<UserCoupon> pageResult = userCouponRepository.findByUserId(userId, pageable);
+        return PageResponse.of(toResponses(pageResult.getContent()), safePage, safeSize, pageResult.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
     public List<UserCouponResponse> listUsableCoupons(Long userId, BigDecimal orderAmount) {
         LocalDateTime now = LocalDateTime.now();
         BigDecimal target = orderAmount == null ? BigDecimal.ZERO : orderAmount;

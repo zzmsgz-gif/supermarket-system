@@ -15,7 +15,10 @@ public class FlashSaleResponse {
 
     private Long id;
     private String name;
+    /** 克隆出来的「秒杀独立商品」id（下单/加购用的就是这个） */
     private Long productId;
+    /** 被秒杀的「原商品」id —— 后台编辑表单要回填它，因为商品下拉里没有 FLASH 商品 */
+    private Long sourceProductId;
     private String productName;
     private String productSubtitle;
     private String productCoverUrl;
@@ -63,6 +66,7 @@ public class FlashSaleResponse {
         response.setId(sale.getId());
         response.setName(sale.getName());
         response.setProductId(sale.getProductId());
+        response.setSourceProductId(sale.getSourceProductId());
         response.setFlashPrice(sale.getFlashPrice());
         response.setTotalQuota(sale.getTotalQuota());
         response.setSoldQuota(sale.getSoldQuota());
@@ -181,6 +185,14 @@ public class FlashSaleResponse {
 
     public void setProductId(Long productId) {
         this.productId = productId;
+    }
+
+    public Long getSourceProductId() {
+        return sourceProductId;
+    }
+
+    public void setSourceProductId(Long sourceProductId) {
+        this.sourceProductId = sourceProductId;
     }
 
     public String getProductName() {

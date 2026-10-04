@@ -49,11 +49,11 @@ public interface FlashSaleRepository extends JpaRepository<FlashSale, Long> {
 
     Optional<FlashSale> findByIdAndDeleted(Long id, Byte deleted);
 
-    boolean existsByProductIdAndDeletedAndStatusAndEndTimeAfter(
-            Long productId, Byte deleted, Byte status, LocalDateTime now);
+    boolean existsBySourceProductIdAndDeletedAndStatusAndEndTimeAfter(
+            Long sourceProductId, Byte deleted, Byte status, LocalDateTime now);
 
-    boolean existsByProductIdAndDeletedAndStatusAndEndTimeAfterAndIdNot(
-            Long productId, Byte deleted, Byte status, LocalDateTime now, Long id);
+    boolean existsBySourceProductIdAndDeletedAndStatusAndEndTimeAfterAndIdNot(
+            Long sourceProductId, Byte deleted, Byte status, LocalDateTime now, Long id);
 
     /**
      * 原子占用名额：只有剩余名额足够时才更新成功（返回 1）。

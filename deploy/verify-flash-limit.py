@@ -15,7 +15,7 @@
   D. 用户隔离：每人限购按用户各算各的
   E. 未付款订单占名额：计数正确 + 给出订单号 + 取消后额度与名额同时恢复
   F. 支付后仍占用：限购额度不会被"付掉"洗白，且不再计为「未付款占用」
-  G. 边界与设计决定：库存上限未回归、场次停用后不再受限、
+  G. 边界与设计决定：库存上限未回归、**场次停用后专属秒杀商品随之下架（原商品照常可买）**、
      「只拦每人限购、不拦全站剩余名额」被显式验证（购物车放行、下单兜底）
   H. 对账：接口值 == 手工 SQL；订单金额恒等式未被破坏
 
@@ -45,6 +45,8 @@ CTRL_PID = 74     # 抽纸（开秒杀、不限购）
 uid1 = uid2 = admin_id = None
 created_orders = []
 created_sales = []
+# 秒杀已改「独立商品」：建场克隆出的 FLASH 商品 id，加购/下单要用它们；清理只删这些。
+created_flash_pids = []
 results = []
 
 
@@ -155,6 +157,7 @@ try:
                                 "detailAddress": "限购路 2 号", "isDefault": True}, tok2)
     address2 = call("GET", "/addresses", None, tok2)[0]["id"]
 
+    SRC_PID = PID        # 原商品（建场后 PID 会改成克隆出来的秒杀商品）
     base_price = float(sql(f"SELECT price FROM {DB}.product WHERE id={PID}"))
     ctrl_price = float(sql(f"SELECT price FROM {DB}.product WHERE id={CTRL_PID}"))
 
@@ -169,6 +172,12 @@ try:
         "totalQuota": 20, "perUserLimit": 0, "startTime": ts(-1), "endTime": ts(24),
         "status": 1, "sortNo": 9}, admin_tok)
     created_sales.append(sale2["id"])
+
+    # ⭐ 建场后 productId 变成「克隆出来的秒杀商品」：加购/下单/改数量一律用它
+    created_flash_pids.append(sale1["productId"])
+    created_flash_pids.append(sale2["productId"])
+    PID = sale1["productId"]
+    CTRL_PID = sale2["productId"]
 
     # ============ A. 额度透出 ============
     guest = call("GET", "/flash-sales")
@@ -321,7 +330,11 @@ try:
     # ============ G. 边界与设计决定 ============
     call("PATCH", f"/admin/flash-sales/{sale1['id']}/status", {"status": 0}, admin_tok)
     st = status_of("POST", "/cart/items", {"productId": PID, "quantity": 1}, tok1)
-    check("G1 场次停用后加购不再受该场次限购约束（此时它已不是秒杀商品）", st < 400, f"HTTP {st}")
+    # 秒杀商品是独立商品：场次停用 = 这件专属商品一起下架，不再以原价继续卖
+    check("G1 ⭐ 停用场次后，专属秒杀商品随之下架 → 加购被拒", st == 409, f"HTTP {st}")
+    st_src = status_of("POST", "/cart/items", {"productId": SRC_PID, "quantity": 1}, tok1)
+    check("G1b ⭐ 原商品不受影响，仍可正常加购（两件商品互不影响）", st_src < 400, f"HTTP {st_src}")
+    clear_cart(tok1)
     call("PATCH", f"/admin/flash-sales/{sale1['id']}/status", {"status": 1}, admin_tok)
 
     # 「只拦每人限购、不拦全站剩余名额」是刻意的设计决定：剩余名额所有用户共享且随时在变，
@@ -417,6 +430,9 @@ finally:
                 sql(f"DELETE FROM {DB}.payment_record WHERE order_id={oid}")
                 sql(f"DELETE FROM {DB}.stock_log WHERE order_id={oid}")
             sql(f"DELETE FROM {DB}.orders WHERE id IN ({olist})")
+        for pid in created_flash_pids:
+            sql(f"DELETE FROM {DB}.product_sku WHERE product_id={pid}")
+            sql(f"DELETE FROM {DB}.product WHERE id={pid}")
         sql(f"DELETE FROM {DB}.sys_user WHERE id IN ({idlist})")
         print("CLEANUP_OK")
     except Exception as exc:  # noqa: BLE001

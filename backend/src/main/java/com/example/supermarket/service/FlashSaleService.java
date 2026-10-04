@@ -5,11 +5,14 @@ import com.example.supermarket.dto.FlashSaleResponse;
 import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.OrderItem;
 import com.example.supermarket.entity.Product;
+import com.example.supermarket.entity.ProductSku;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.FlashSaleRepository;
 import com.example.supermarket.repository.OrderItemRepository;
 import com.example.supermarket.repository.ProductRepository;
+import com.example.supermarket.repository.ProductSkuRepository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
@@ -63,13 +66,16 @@ public class FlashSaleService {
     private final FlashSaleRepository flashSaleRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
+    private final ProductSkuRepository skuRepository;
 
     public FlashSaleService(FlashSaleRepository flashSaleRepository,
                             OrderItemRepository orderItemRepository,
-                            ProductRepository productRepository) {
+                            ProductRepository productRepository,
+                            ProductSkuRepository skuRepository) {
         this.flashSaleRepository = flashSaleRepository;
         this.orderItemRepository = orderItemRepository;
         this.productRepository = productRepository;
+        this.skuRepository = skuRepository;
     }
 
     // ==================== 前台 ====================
@@ -223,32 +229,108 @@ public class FlashSaleService {
 
     @Transactional
     public FlashSaleResponse create(FlashSaleRequest request) {
-        Product product = requireProduct(request.getProductId());
-        validate(request, product, null);
+        // 秒杀商品有两种来源：① 基于现有商品克隆 ② 不依赖原商品、从零新建一件独立商品
+        Product source = request.getProductId() != null ? requireProduct(request.getProductId()) : null;
+        Product flashProduct;
+        Long sourceId = null;
+        BigDecimal basePrice;
+        if (source != null) {
+            // 克隆出一件「秒杀独立商品」：与原商品是两件不同的商品，后续计价 / 库存 / 名额只动这件，
+            // 原商品完全不受影响（库存、售价、列表都不动）。
+            flashProduct = cloneFlashProduct(source, request);
+            sourceId = source.getId();
+            basePrice = source.getPrice();
+        } else {
+            basePrice = standaloneBasePrice(request);
+            flashProduct = buildStandaloneProduct(request);
+        }
+        validate(request, source, basePrice, null);
+        flashProduct.setStock(Math.max(request.getTotalQuota() == null ? 0 : request.getTotalQuota(), 0));
+        flashProduct.setSales(0);
+        Product savedFlash = productRepository.saveAndFlush(flashProduct);
+        if (source != null) {
+            cloneFlashSkus(source.getId(), savedFlash.getId());
+        }
+
         FlashSale sale = new FlashSale();
-        apply(sale, request, product);
+        sale.setProductId(savedFlash.getId());
+        sale.setSourceProductId(sourceId);
+        sale.setName(request.getName() == null || request.getName().isBlank()
+                ? savedFlash.getName() : request.getName().trim());
+        sale.setFlashPrice(request.getFlashPrice());
+        sale.setTotalQuota(request.getTotalQuota());
+        sale.setPerUserLimit(request.getPerUserLimit() == null ? 0 : request.getPerUserLimit());
+        sale.setStartTime(request.getStartTime());
+        sale.setEndTime(request.getEndTime());
+        sale.setSortNo(request.getSortNo() == null ? 0 : request.getSortNo());
+        sale.setStatus(request.getStatus() == null ? FlashSale.ENABLED : (byte) (int) request.getStatus());
         sale.setSoldQuota(0);
         sale.setDeleted(NOT_DELETED);
-        if (sale.getStatus() == null) {
-            sale.setStatus(FlashSale.ENABLED);
-        }
         FlashSale saved = flashSaleRepository.saveAndFlush(sale);
-        return FlashSaleResponse.from(saved, product, LocalDateTime.now());
+        return FlashSaleResponse.from(saved, savedFlash, LocalDateTime.now());
     }
 
     @Transactional
     public FlashSaleResponse update(Long id, FlashSaleRequest request) {
         FlashSale sale = flashSaleRepository.findByIdAndDeleted(id, NOT_DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("秒杀场次不存在"));
-        Product product = requireProduct(request.getProductId());
-        validate(request, product, id);
+        // 原商品可能为空（独立新建的秒杀商品），此时以秒杀商品自身的售价作为比对基准
+        Product source = sale.getSourceProductId() != null
+                ? requireProduct(sale.getSourceProductId()) : null;
+        Product flashProduct = productRepository.findById(sale.getProductId()).orElse(null);
+        BigDecimal basePrice = source != null ? source.getPrice()
+                : (flashProduct != null ? flashProduct.getPrice() : null);
+        // 独立商品允许在编辑里改售价，改完按新售价校验秒杀价（否则会出现「改完售价反而低于秒杀价」）
+        if (source == null && request.getPrice() != null && flashProduct != null) {
+            flashProduct.setPrice(request.getPrice());
+            basePrice = request.getPrice();
+        }
+        validate(request, source, basePrice, id);
         int sold = sale.getSoldQuota() == null ? 0 : sale.getSoldQuota();
         if (request.getTotalQuota() < sold) {
             throw new BusinessException(400, "秒杀名额不能小于已抢数量（已抢 " + sold + " 件）");
         }
-        apply(sale, request, product);
+        // 同步秒杀商品的「库存」与名额保持一致：库存同方向调整、不为负。
+        if (flashProduct != null && Product.KIND_FLASH.equals(flashProduct.getKind())) {
+            int oldTotal = sale.getTotalQuota() == null ? 0 : sale.getTotalQuota();
+            int newTotal = request.getTotalQuota() == null ? 0 : request.getTotalQuota();
+            int delta = newTotal - oldTotal;
+            if (delta != 0) {
+                int stockAfter = Math.max((flashProduct.getStock() == null ? 0 : flashProduct.getStock()) + delta, 0);
+                flashProduct.setStock(stockAfter);
+            }
+            // 商品名：独立商品优先取「商品名称」，其余沿用场次名
+            String newName = request.getProductName() != null && !request.getProductName().isBlank()
+                    ? request.getProductName().trim()
+                    : (request.getName() != null && !request.getName().isBlank() ? request.getName().trim() : null);
+            if (newName != null) {
+                flashProduct.setName(newName);
+            }
+            if (source == null) {
+                // 独立商品：划线价与主图一并跟随表单
+                if (request.getOriginalPrice() != null) {
+                    flashProduct.setOriginalPrice(request.getOriginalPrice());
+                }
+                if (request.getCoverUrl() != null) {
+                    flashProduct.setCoverUrl(request.getCoverUrl().trim());
+                }
+            }
+            productRepository.saveAndFlush(flashProduct);
+        }
+        sale.setName(request.getName() == null || request.getName().isBlank()
+                ? (flashProduct != null ? flashProduct.getName() : "限时秒杀商品")
+                : request.getName().trim());
+        sale.setFlashPrice(request.getFlashPrice());
+        sale.setTotalQuota(request.getTotalQuota());
+        sale.setPerUserLimit(request.getPerUserLimit() == null ? 0 : request.getPerUserLimit());
+        sale.setStartTime(request.getStartTime());
+        sale.setEndTime(request.getEndTime());
+        sale.setSortNo(request.getSortNo() == null ? 0 : request.getSortNo());
+        if (request.getStatus() != null) {
+            sale.setStatus((byte) (int) request.getStatus());
+        }
         FlashSale saved = flashSaleRepository.saveAndFlush(sale);
-        return FlashSaleResponse.from(saved, product, LocalDateTime.now());
+        return FlashSaleResponse.from(saved, flashProduct != null ? flashProduct : source, LocalDateTime.now());
     }
 
     @Transactional
@@ -260,8 +342,13 @@ public class FlashSaleService {
                 .orElseThrow(() -> new ResourceNotFoundException("秒杀场次不存在"));
         sale.setStatus((byte) (int) status);
         FlashSale saved = flashSaleRepository.saveAndFlush(sale);
-        Product product = productRepository.findById(saved.getProductId()).orElse(null);
-        return FlashSaleResponse.from(saved, product, LocalDateTime.now());
+        // 停用秒杀时把克隆商品一并下架，避免它还能当普通商品被加购；启用时恢复上架。
+        Product flashProduct = productRepository.findById(saved.getProductId()).orElse(null);
+        if (flashProduct != null && Product.KIND_FLASH.equals(flashProduct.getKind())) {
+            flashProduct.setStatus(status == 1 ? ON_SALE : "OFF_SALE");
+            productRepository.saveAndFlush(flashProduct);
+        }
+        return FlashSaleResponse.from(saved, flashProduct, LocalDateTime.now());
     }
 
     @Transactional
@@ -270,6 +357,13 @@ public class FlashSaleService {
                 .orElseThrow(() -> new ResourceNotFoundException("秒杀场次不存在"));
         sale.setDeleted((byte) 1);
         flashSaleRepository.saveAndFlush(sale);
+        // 一并软删克隆出来的秒杀商品：它只为这场秒杀存在，随场次下架一起从商品目录消失。
+        Product flashProduct = productRepository.findById(sale.getProductId()).orElse(null);
+        if (flashProduct != null && Product.KIND_FLASH.equals(flashProduct.getKind())) {
+            flashProduct.setDeleted((byte) 1);
+            flashProduct.setStatus("OFF_SALE");
+            productRepository.saveAndFlush(flashProduct);
+        }
     }
 
     // ==================== 下单接入 ====================
@@ -332,36 +426,123 @@ public class FlashSaleService {
         return product;
     }
 
-    private void validate(FlashSaleRequest request, Product product, Long excludeId) {
+    /**
+     * 校验场次：时间区间、秒杀价必须低于售价，以及「同一原商品不允许有时间重叠的场次」。
+     *
+     * @param source    原商品；<b>为 null 表示这是一件独立新建的秒杀商品</b>，没有原商品可比对，跳过重叠校验
+     * @param basePrice 比对秒杀价用的售价：克隆模式＝原商品售价，独立模式＝管理员填的售价
+     */
+    private void validate(FlashSaleRequest request, Product source, BigDecimal basePrice, Long excludeId) {
         if (!request.getStartTime().isBefore(request.getEndTime())) {
             throw new BusinessException(400, "开始时间必须早于结束时间");
         }
-        if (request.getFlashPrice().compareTo(product.getPrice()) >= 0) {
-            throw new BusinessException(400, "秒杀价必须低于商品售价 " + product.getPrice());
+        if (basePrice != null && request.getFlashPrice().compareTo(basePrice) >= 0) {
+            throw new BusinessException(400, "秒杀价必须低于商品售价 " + basePrice);
         }
-        // 同一商品不允许存在时间上重叠的场次，否则价格口径与名额归属都会含糊
+        // 独立新建的秒杀商品没有原商品，不存在「同一商品已有场次」的问题
+        if (source == null) {
+            return;
+        }
+        // 同一【原商品】不允许存在时间上重叠的场次，否则价格口径与名额归属都会含糊
         boolean overlap = excludeId == null
-                ? flashSaleRepository.existsByProductIdAndDeletedAndStatusAndEndTimeAfter(
-                        product.getId(), NOT_DELETED, FlashSale.ENABLED, LocalDateTime.now())
-                : flashSaleRepository.existsByProductIdAndDeletedAndStatusAndEndTimeAfterAndIdNot(
-                        product.getId(), NOT_DELETED, FlashSale.ENABLED, LocalDateTime.now(), excludeId);
+                ? flashSaleRepository.existsBySourceProductIdAndDeletedAndStatusAndEndTimeAfter(
+                        source.getId(), NOT_DELETED, FlashSale.ENABLED, LocalDateTime.now())
+                : flashSaleRepository.existsBySourceProductIdAndDeletedAndStatusAndEndTimeAfterAndIdNot(
+                        source.getId(), NOT_DELETED, FlashSale.ENABLED, LocalDateTime.now(), excludeId);
         if (overlap) {
             throw new BusinessException(409, "该商品已有未结束的秒杀场次，请先结束或停用原场次");
         }
     }
 
-    private void apply(FlashSale sale, FlashSaleRequest request, Product product) {
-        sale.setProductId(product.getId());
-        sale.setName(request.getName() == null || request.getName().isBlank()
-                ? product.getName() + " 限时秒杀" : request.getName().trim());
-        sale.setFlashPrice(request.getFlashPrice());
-        sale.setTotalQuota(request.getTotalQuota());
-        sale.setPerUserLimit(request.getPerUserLimit() == null ? 0 : request.getPerUserLimit());
-        sale.setStartTime(request.getStartTime());
-        sale.setEndTime(request.getEndTime());
-        sale.setSortNo(request.getSortNo() == null ? 0 : request.getSortNo());
-        if (request.getStatus() != null) {
-            sale.setStatus((byte) (int) request.getStatus());
+    /** 独立秒杀商品的售价必填（秒杀价要低于它），且必须选分类 —— 商品表 category_id 非空。 */
+    private BigDecimal standaloneBasePrice(FlashSaleRequest request) {
+        if (request.getPrice() == null) {
+            throw new BusinessException(400, "请填写商品售价（秒杀价必须低于它）");
+        }
+        if (request.getCategoryId() == null) {
+            throw new BusinessException(400, "请选择商品分类");
+        }
+        return request.getPrice();
+    }
+
+    /** 取秒杀场次对应的【原商品】（用于校验秒杀价 / 校验同原商品重叠）。兼容迁移前的老数据：source_product_id 为空时退回 product_id。 */
+    private Product sourceProductOf(FlashSale sale) {
+        Long sourceId = sale.getSourceProductId() != null ? sale.getSourceProductId() : sale.getProductId();
+        return requireProduct(sourceId);
+    }
+
+    /** 克隆原商品成一件「秒杀独立商品」：只复制展示/计价所需字段，库存/销量/类型单独设定。 */
+    private Product cloneFlashProduct(Product source, FlashSaleRequest request) {
+        Product p = new Product();
+        p.setCategoryId(source.getCategoryId());
+        p.setSku(source.getSku() + "-FS" + (System.nanoTime() % 1000000));
+        p.setName(source.getName() + " 限时秒杀");
+        p.setSubtitle(source.getSubtitle());
+        p.setDescription(source.getDescription());
+        p.setCoverUrl(source.getCoverUrl());
+        p.setPrice(source.getPrice());
+        p.setOriginalPrice(source.getOriginalPrice());
+        // 秒杀商品不单独享会员价：秒杀价在下单时按 min() 取最优，会员价留空避免与秒杀价口径打架
+        p.setMemberPrice(null);
+        p.setUnit(source.getUnit());
+        p.setStatus(ON_SALE);
+        p.setBrand(source.getBrand());
+        p.setTags(source.getTags());
+        p.setLowStockThreshold(source.getLowStockThreshold());
+        p.setSales(0);
+        p.setIsHot((byte) 0);
+        p.setIsNew((byte) 0);
+        p.setSortNo(0);
+        p.setDeleted(NOT_DELETED);
+        p.setKind(Product.KIND_FLASH);
+        return p;
+    }
+
+    /**
+     * 从零建一件「秒杀独立商品」：<b>不依赖任何原商品</b>，所有展示/计价字段都由后台表单定义。
+     * 与克隆品一样打上 {@code kind=FLASH}（公开列表与后台商品列表都会排除它，只在秒杀区出现）。
+     */
+    private Product buildStandaloneProduct(FlashSaleRequest request) {
+        String productName = request.getProductName() != null && !request.getProductName().isBlank()
+                ? request.getProductName().trim()
+                : (request.getName() != null && !request.getName().isBlank()
+                        ? request.getName().trim() : "限时秒杀商品");
+        Product p = new Product();
+        p.setCategoryId(request.getCategoryId());
+        p.setSku("FS-" + (System.nanoTime() % 100000000L));
+        p.setName(productName);
+        p.setSubtitle(request.getSubtitle());
+        p.setCoverUrl(request.getCoverUrl());
+        p.setPrice(request.getPrice());
+        p.setOriginalPrice(request.getOriginalPrice());
+        // 秒杀商品不单独享会员价：秒杀价在下单时按 min() 取最优，留空避免与秒杀价口径打架
+        p.setMemberPrice(null);
+        p.setUnit(request.getUnit() == null || request.getUnit().isBlank() ? "件" : request.getUnit().trim());
+        p.setStatus(ON_SALE);
+        p.setBrand(request.getBrand());
+        p.setLowStockThreshold(0);
+        p.setSales(0);
+        p.setIsHot((byte) 0);
+        p.setIsNew((byte) 0);
+        p.setSortNo(0);
+        p.setDeleted(NOT_DELETED);
+        p.setKind(Product.KIND_FLASH);
+        return p;
+    }
+
+    /** 把原商品的规格价复制到秒杀商品，保证多规格商品走秒杀时按「规格价 × 折扣率」计算。 */
+    private void cloneFlashSkus(Long sourceId, Long flashId) {
+        for (ProductSku s : skuRepository.findByProductIdAndDeletedOrderBySortNoAscIdAsc(sourceId, NOT_DELETED)) {
+            ProductSku t = new ProductSku();
+            t.setProductId(flashId);
+            t.setSpecJson(s.getSpecJson());
+            t.setSkuCode(s.getSkuCode());
+            t.setPrice(s.getPrice());
+            t.setOriginalPrice(s.getOriginalPrice());
+            t.setImage(s.getImage());
+            t.setSortNo(s.getSortNo());
+            t.setDeleted(NOT_DELETED);
+            skuRepository.save(t);
         }
     }
 

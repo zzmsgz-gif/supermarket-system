@@ -1,10 +1,13 @@
 package com.example.supermarket.controller;
 
 import com.example.supermarket.common.ApiResponse;
+import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CouponResponse;
 import com.example.supermarket.dto.UserCouponResponse;
 import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.service.CouponService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -41,10 +44,12 @@ public class CouponController {
     }
 
     @GetMapping("/mine")
-    public ApiResponse<List<UserCouponResponse>> listMyCoupons(
-            @AuthenticationPrincipal CurrentUser currentUser
+    public ApiResponse<PageResponse<UserCouponResponse>> listMyCoupons(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size
     ) {
-        return ApiResponse.ok(couponService.listMyCoupons(currentUser.getId()));
+        return ApiResponse.ok(couponService.listMyCoupons(currentUser.getId(), page, size));
     }
 
     @GetMapping("/usable")

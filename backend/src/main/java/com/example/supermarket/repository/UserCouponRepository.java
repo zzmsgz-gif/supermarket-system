@@ -3,6 +3,8 @@ package com.example.supermarket.repository;
 import com.example.supermarket.entity.UserCoupon;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -17,6 +19,8 @@ public interface UserCouponRepository extends JpaRepository<UserCoupon, Long>, J
     Optional<UserCoupon> findByUserIdAndCouponId(Long userId, Long couponId);
 
     List<UserCoupon> findByUserIdOrderByIdDesc(Long userId);
+
+    Page<UserCoupon> findByUserId(Long userId, Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select uc from UserCoupon uc where uc.id = :id and uc.userId = :userId")
