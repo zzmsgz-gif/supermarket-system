@@ -1217,6 +1217,8 @@ import { useAdminStores } from '../composables/useAdminStores.js';
 import { useAdminFlash } from '../composables/useAdminFlash.js';
 import { useAdminActivities } from '../composables/useAdminActivities.js';
 import { useAdminPasswordResets } from '../composables/useAdminPasswordResets.js';
+import { useAdminMemberDays } from '../composables/useAdminMemberDays.js';
+import { useAdminReviews } from '../composables/useAdminReviews.js';
 import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
 import AdminPager from './AdminPager.vue';
@@ -1808,15 +1810,6 @@ async function toggleUser(user) {
 }
 
 // 进后台就拉一次待处理数：否则菜单角标要等点进「找回密码」才显示，等于没提醒
-// 侧边菜单角标：未回复评价数（"有人等你回话"）。拉失败就不显示角标，不打扰页面。
-async function loadAdminReviewUnreplied() {
-  try {
-    adminReviewSummary.value = await api.get('/admin/reviews/summary');
-  } catch (err) {
-    adminReviewSummary.value = null;
-  }
-}
-
 onMounted(() => {
   loadPasswordResetPendingCount();
   loadAdminReviewUnreplied();
@@ -1825,274 +1818,7 @@ onMounted(() => {
   refreshCurrentAdminMenu();
 });
 
-// ===== 评价管理 =====
-// 补的是一条断掉的闭环：此前评价只能写（前台晒图评价），后台没有任何入口、也没有查询接口，
-// 评价只在商品详情页出现 —— 商家看不到、回不了差评，等于用户说了话没人接。
-// 只做三件商家真会做的事：看（含按星级/未回复筛选）、回（公开回复）、藏（违规隐藏）。
-const adminReviews = reactive({ items: [], total: 0, page: 1, size: 10 });
-const adminReviewSummary = ref(null);
-const adminReviewRating = ref('');
-const adminReviewReplied = ref('');
-const adminReviewKeyword = ref('');
-const reviewReplyDraft = reactive({});
-
-const adminReviewTotalPages = computed(
-  () => Math.max(1, Math.ceil(Number(adminReviews.total || 0) / Number(adminReviews.size || 10)))
-);
-
-async function loadAdminReviews() {
-  const query = [`page=${adminReviews.page}`, `size=${adminReviews.size}`];
-  if (adminReviewRating.value) query.push(`rating=${adminReviewRating.value}`);
-  // 只有"未回复"才是待办，所以筛选值直接映射成后端的 replied 布尔
-  if (adminReviewReplied.value) query.push(`replied=${adminReviewReplied.value === 'yes'}`);
-  if (adminReviewKeyword.value.trim()) {
-    query.push(`keyword=${encodeURIComponent(adminReviewKeyword.value.trim())}`);
-  }
-  const [data, summary] = await Promise.all([
-    api.get(`/admin/reviews?${query.join('&')}`),
-    api.get('/admin/reviews/summary'),
-  ]);
-  adminReviews.items = data?.items || [];
-  adminReviews.total = Number(data?.total || 0);
-  adminReviewSummary.value = summary || null;
-  // 草稿用服务端已存的回复回填，便于"看现状再改"，而不是每次都从空开始
-  adminReviews.items.forEach((row) => { reviewReplyDraft[row.id] = row.replyContent || ''; });
-}
-
-function searchAdminReviews() {
-  adminReviews.page = 1;
-  run(loadAdminReviews);
-}
-
-function changeAdminReviewPage(delta) {
-  const next = Number(adminReviews.page) + delta;
-  if (next < 1 || next > adminReviewTotalPages.value) return;
-  adminReviews.page = next;
-  run(loadAdminReviews);
-}
-
-async function saveReviewReply(review) {
-  const content = (reviewReplyDraft[review.id] || '').trim();
-  await run(async () => {
-    await api.post(`/admin/reviews/${review.id}/reply`, { replyContent: content });
-    await loadAdminReviews();
-    showAlert({
-      type: 'success',
-      title: content ? '回复已发布' : '已撤回回复',
-      message: content ? '该回复会立刻显示在商品详情页。' : '前台不再展示这条回复。',
-    });
-  });
-}
-
-async function toggleReviewHidden(review) {
-  const hide = !review.hidden;
-  const ok = await askConfirm({
-    title: hide ? '隐藏这条评价？' : '恢复展示这条评价？',
-    message: hide
-      ? '隐藏后前台不再展示，但该订单仍算已评价（不会让用户重复评价）。'
-      : '恢复后该评价会重新出现在商品详情页。',
-    confirmText: hide ? '隐藏' : '恢复展示',
-    danger: hide,
-    details: [{ label: '商品', value: review.productName }, { label: '评价', value: review.content || '（无文字）' }],
-  });
-  if (!ok) return;
-  await run(async () => {
-    await api.post(`/admin/reviews/${review.id}/hidden`, { hidden: hide });
-    await loadAdminReviews();
-  });
-}
-
 const insightsPanelRef = ref(null);
-// ===== 会员日（指定日期消费积分翻倍）=====
-// 这个模块只有本面板在用，所以状态与函数直接放**本地** —— 不去动 App.vue 里那条 60+ 字段的
-// adminCtx（那条是「一整行」，漏一个字段就是后台白屏，09-20 踩过）。
-const memberDays = ref([]);
-const memberDayFormOpen = ref(false);
-const memberDayForm = reactive({ id: null, memberDate: '', multiplier: 2, remark: '', enabled: true });
-// 日历当前显示的月份（可翻月挑未来的日期）
-const memberDayCalendarCursor = ref(new Date());
-const memberDayEnabledCount = computed(
-  () => memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired).length,
-);
-const memberDaySlogan = computed(() => {
-  const active = memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired);
-  if (!active.length) return '当前没有生效中的会员日';
-  const labels = active.slice(0, 3).map((d) => memberDayShortLabel(d.memberDate)).join('、');
-  const more = active.length > 3 ? ` 等 ${active.length} 天` : '';
-  const mult = Math.max(...active.map((d) => Number(d.multiplier) || 2));
-  return labels + more + ' 消费积分 ' + (mult === 2 ? '双倍' : '×' + mult);
-});
-
-// ===== 日历（挑具体日期）=====
-const MDC_WEEK = ['日', '一', '二', '三', '四', '五', '六'];
-
-/** 本地时区的 YYYY-MM-DD（⚠️ 不能用 toISOString：它按 UTC 算，东八区会差一天） */
-function isoDateOf(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-const memberDayTodayIso = computed(() => isoDateOf(new Date()));
-const memberDayCalendarMonthText = computed(() => {
-  const cursor = memberDayCalendarCursor.value;
-  return `${cursor.getFullYear()} 年 ${cursor.getMonth() + 1} 月`;
-});
-
-/** 该日期是否已被**别的**会员日占用（编辑自己时不算）。 */
-function memberDayDateTaken(iso) {
-  return !!iso && memberDays.value.some((row) => row.memberDate === iso && row.id !== memberDayForm.id);
-}
-
-/** 展示用：「10 月 1 日（周四）」 */
-function memberDayDateLabel(iso) {
-  if (!iso) return '未设置';
-  const [y, m, d] = iso.split('-').map(Number);
-  const weekday = MDC_WEEK[new Date(y, m - 1, d).getDay()];
-  const thisYear = new Date().getFullYear();
-  return `${y === thisYear ? '' : `${y} 年 `}${m} 月 ${d} 日（周${weekday}）`;
-}
-
-/** 列表/Toolbar 里用的短标签：「10月1日」 */
-function memberDayShortLabel(iso) {
-  if (!iso) return '';
-  const [, m, d] = iso.split('-').map(Number);
-  return `${m}月${d}日`;
-}
-
-/** 新增时默认落在今天（今天已被占用就往后找第一个空闲日期） */
-function firstFreeMemberDayDate() {
-  const base = new Date();
-  for (let i = 0; i < 90; i += 1) {
-    const candidate = isoDateOf(new Date(base.getFullYear(), base.getMonth(), base.getDate() + i));
-    if (!memberDayDateTaken(candidate)) return candidate;
-  }
-  return isoDateOf(base);
-}
-
-function shiftMemberDayCalendar(delta) {
-  const cursor = memberDayCalendarCursor.value;
-  memberDayCalendarCursor.value = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
-}
-
-function resetMemberDayCalendar() {
-  memberDayCalendarCursor.value = new Date();
-}
-
-/**
- * 当前显示月份的全部格子。
- * ⚠️ 这里必须只放**该月真实存在**的日子（日历嘛）—— 与上一版「每月几号」不同：
- * 那时格子要覆盖 1-31（因为 2 月也得能配 31 号），现在挑的是具体日期，多出来的号没有意义。
- * 已过去的日期（`past`）与已配置的日期（`taken`）都禁用。
- */
-const memberDayCalendarCells = computed(() => {
-  const cursor = memberDayCalendarCursor.value;
-  const year = cursor.getFullYear();
-  const month = cursor.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const todayIso = memberDayTodayIso.value;
-  const cells = [];
-  for (let i = 0; i < new Date(year, month, 1).getDay(); i += 1) {
-    cells.push({ day: null });
-  }
-  for (let d = 1; d <= daysInMonth; d += 1) {
-    const iso = isoDateOf(new Date(year, month, d));
-    cells.push({
-      day: d,
-      iso,
-      label: `${month + 1} 月 ${d} 日`,
-      today: iso === todayIso,
-      past: iso < todayIso,
-      taken: memberDayDateTaken(iso),
-    });
-  }
-  return cells;
-});
-
-async function loadMemberDays() {
-  if (!isAdmin.value) return;
-  try {
-    memberDays.value = (await api.get('/admin/member-days')) || [];
-  } catch (err) {
-    fail(err?.message || '会员日加载失败');
-  }
-}
-
-function openMemberDayForm(row) {
-  memberDayForm.id = row ? row.id : null;
-  memberDayForm.memberDate = row ? row.memberDate : firstFreeMemberDayDate();
-  memberDayForm.multiplier = row ? Number(row.multiplier) : 2;
-  memberDayForm.remark = row ? (row.remark || '') : '';
-  memberDayForm.enabled = row ? Number(row.enabled) === 1 : true;
-  if (row && row.memberDate) {
-    const [y, m] = row.memberDate.split('-').map(Number);
-    memberDayCalendarCursor.value = new Date(y, m - 1, 1);   // 编辑时把日历翻到那个月
-  } else {
-    memberDayCalendarCursor.value = new Date();
-  }
-  memberDayFormOpen.value = true;
-}
-
-function closeMemberDayForm() {
-  memberDayFormOpen.value = false;
-}
-
-async function saveMemberDay() {
-  const form = memberDayForm;
-  const date = form.memberDate;
-  if (!date) {
-    showAlert('请在日历上挑一个日期');
-    return;
-  }
-  if (date < memberDayTodayIso.value) {
-    showAlert('会员日不能设在今天之前，请在日历上另选一天');
-    return;
-  }
-  if (memberDayDateTaken(date)) {
-    showAlert(`${memberDayDateLabel(date)} 已经配置过了，请在日历上另选一天`);
-    return;
-  }
-  await run(async () => {
-    const payload = {
-      memberDate: date,
-      multiplier: Number(form.multiplier) || 2,
-      remark: (form.remark || '').trim(),
-      enabled: !!form.enabled,
-    };
-    if (form.id) await api.put(`/admin/member-days/${form.id}`, payload);
-    else await api.post('/admin/member-days', payload);
-    closeMemberDayForm();
-    await loadMemberDays();
-  }, '会员日已保存');
-}
-
-async function toggleMemberDay(row) {
-  const enabled = Number(row.enabled) !== 1;
-  await run(async () => {
-    await api.put(`/admin/member-days/${row.id}`, {
-      memberDate: row.memberDate,
-      multiplier: Number(row.multiplier),
-      remark: row.remark || '',
-      enabled,
-    });
-    await loadMemberDays();
-  }, enabled ? '已启用' : '已停用');
-}
-
-async function deleteMemberDay(row) {
-  const confirmed = await askConfirm({
-    title: '删除会员日',
-    message: `删除后 ${memberDayDateLabel(row.memberDate)} 当天消费不再翻倍积分。`,
-    confirmText: '确认删除',
-  });
-  if (!confirmed) return;
-  await run(async () => {
-    await api.delete(`/admin/member-days/${row.id}`);
-    await loadMemberDays();
-  }, '已删除');
-}
-
 /* ---------------- 门店 / 秒杀：已抽为 composable ---------------- */
 // 装配点必须在 isAdmin / fail / run / askConfirm 之后（adminCtx 已解构出它们）。
 const { adminStores, storeFormOpen, storeEditingId, storeForm, loadAdminStores, resetStoreForm, openStoreForm, closeStoreForm, storePayload, saveStore, toggleStoreStatus, deleteStore } = useAdminStores({ isAdmin, fail, run, askConfirm });
@@ -2102,6 +1828,10 @@ const { adminFlashSales, flashFormOpen, flashEditingId, flashProductOptions, fla
 const { adminActivities, adminActivityKeyword, adminActivityJumpPage, adminActivityTotalPages, activityProducts, activityProductsLoaded, activityForm, loadActivityProducts, loadAdminActivities, searchAdminActivities, changeAdminActivityPage, changeAdminActivityPageSize, goAdminActivityPage, resetAdminActivitySearch, resetActivityForm, onActivityScopeChange, fillActivityPeriod, activityTypeLabel, activityScopeLabel, activityDiscountLabel, editActivity, saveActivity, toggleActivity, deleteActivity } = useAdminActivities({ isAdmin, fail, run, askConfirm, categories });
 
 const { passwordResets, passwordResetStatus, passwordResetJumpPage, passwordResetResult, passwordResetTotalPages, PASSWORD_RESET_STATUS_LABELS, passwordResetStatusLabel, passwordResetStatusClass, loadPasswordResets, loadPasswordResetPendingCount, searchPasswordResets, changePasswordResetPage, changePasswordResetPageSize, goPasswordResetPage, confirmResetPassword, confirmRejectPasswordReset, copyTempPassword } = useAdminPasswordResets({ run, fail, askConfirm, notice });
+
+const { memberDays, memberDayFormOpen, memberDayForm, memberDayCalendarCursor, memberDayEnabledCount, memberDaySlogan, MDC_WEEK, isoDateOf, memberDayTodayIso, memberDayCalendarMonthText, memberDayCalendarCells, memberDayDateTaken, memberDayDateLabel, memberDayShortLabel, firstFreeMemberDayDate, shiftMemberDayCalendar, resetMemberDayCalendar, loadMemberDays, openMemberDayForm, closeMemberDayForm, saveMemberDay, toggleMemberDay, deleteMemberDay } = useAdminMemberDays({ isAdmin, fail, run, askConfirm, showAlert });
+
+const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages, loadAdminReviews, searchAdminReviews, changeAdminReviewPage, loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden } = useAdminReviews({ run, askConfirm, showAlert });
 
 const adminMenuLoaders = {
   insights: () => insightsPanelRef.value?.load(),
