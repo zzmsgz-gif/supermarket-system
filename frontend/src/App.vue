@@ -271,6 +271,7 @@ import { useShopFilters } from './composables/useShopFilters.js';
 // QUICKBUY_ITEM_ID 随 useGuestCart 一起搬走了（立即购买虚拟项的 id），这里仍要用它过滤虚拟项
 import { useGuestCart, QUICKBUY_ITEM_ID } from './composables/useGuestCart.js';
 import { useCartUi } from './composables/useCartUi.js';
+import { useAdminContent } from './composables/useAdminContent.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
@@ -414,17 +415,6 @@ const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminStatsOverview = ref(null);
 const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
-const adminAnnouncements = ref([]);
-const announcementForm = reactive({ id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
-const announcementFormOpen = ref(false);
-// 后台「热搜词」：首页头部那排词由这里维护（原先写死在模板里）
-const adminHotSearches = ref([]);
-const hotSearchForm = reactive({ id: null, keyword: '', label: '', sortOrder: 0, enabled: true });
-const hotSearchFormOpen = ref(false);
-const adminBanners = ref([]);
-const bannerForm = reactive({ id: null, imageUrl: '', linkProductId: null, sortOrder: 0, enabled: true });
-const bannerFormOpen = ref(false);
-const bannerUploading = ref(false);
 const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
 // 商品星级聚合：{ productId: { avg, count } }，商品卡/详情展示平均星级
 const ratingSummaryMap = ref({});
@@ -930,6 +920,10 @@ const { SHOP_FILTER_KEYS, ADMIN_TAB_DEFAULT, filterQueryFromFilters, sameShopQue
 const { guestCartRows, guestProductCache, pendingCheckout, pendingQuickBuy, quickBuy, readGuestCart, writeGuestCart, persistGuestFromItems, estimateGuestActivity, recomputeCartTotals, refreshGuestCartView, guestAdd, guestRemoveItem, guestClear, mergeGuestCartToServer } = useGuestCart({ cart, getSession: () => session, activeActivities, loadCart, fail, notice });
 
 const { contentEl, cartPillEl, cartBadgeEl, motionAllowed, bob, popCartBadge, flyToCart, onDocClickCapture, takeAddSource } = useCartUi({ cartBadgeCount, getView: () => view.value });
+// 公告 / 热搜词 / 轮播位：后台三个配置型模块。
+// ⚠️ 装配点必须在 isAdmin 之后（它是 ref，装配实参里立即求值）；api/run/showAlert/askConfirm/
+// loadHotSearches 只在 composable 的函数体内被调（用户点击时才执行），只需顶层存在。
+const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -1883,181 +1877,6 @@ async function loadAdminProducts() {
 }
 
 // 仪表盘「商品库存排行」需要全量商品，与分页后的表格数据解耦，避免只统计当前页
-/* ===== 公告管理（后台） + 首页公告详情弹层 ===== */
-async function loadAdminAnnouncements() {
-  if (!isAdmin.value) return;
-  try {
-    adminAnnouncements.value = await api.get('/admin/announcements');
-  } catch (e) {
-    adminAnnouncements.value = [];
-  }
-}
-
-function openAnnouncementForm(a) {
-  Object.assign(announcementForm, a
-    ? { id: a.id, title: a.title, content: a.content, type: a.type || 'NOTICE', sortOrder: a.sortOrder || 0, enabled: Number(a.enabled) === 1 }
-    : { id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
-  announcementFormOpen.value = true;
-}
-function closeAnnouncementForm() {
-  announcementFormOpen.value = false;
-  announcementForm.id = null;
-}
-
-async function saveAnnouncement() {
-  const form = announcementForm;
-  if (!form.title.trim() || !form.content.trim()) { showAlert('标题和内容都要填写'); return; }
-  await run(async () => {
-    const payload = { title: form.title.trim(), content: form.content.trim(), type: form.type, sortOrder: Number(form.sortOrder) || 0, enabled: !!form.enabled };
-    if (form.id) await api.put(`/admin/announcements/${form.id}`, payload);
-    else await api.post('/admin/announcements', payload);
-    closeAnnouncementForm();
-    await loadAdminAnnouncements();
-  }, '公告已保存');
-}
-
-async function toggleAnnouncement(a) {
-  await run(async () => {
-    await api.put(`/admin/announcements/${a.id}`, {
-      title: a.title, content: a.content, type: a.type, sortOrder: a.sortOrder || 0,
-      enabled: Number(a.enabled) !== 1,
-    });
-    await loadAdminAnnouncements();
-  }, Number(a.enabled) === 1 ? '公告已停用' : '公告已启用');
-}
-
-async function deleteAnnouncement(a) {
-  const ok = await askConfirm(`确定删除公告「${a.title}」？删除后前台立即消失。`);
-  if (!ok) return;
-  await run(async () => {
-    await api.delete(`/admin/announcements/${a.id}`);
-    await loadAdminAnnouncements();
-  }, '公告已删除');
-}
-
-/* ===== 后台「热搜词管理」：首页头部那排「热搜」词 ===== */
-
-async function loadAdminHotSearches() {
-  if (!isAdmin.value) return;
-  try {
-    adminHotSearches.value = await api.get('/admin/hot-searches');
-  } catch (e) {
-    adminHotSearches.value = [];
-  }
-}
-
-function openHotSearchForm(h) {
-  Object.assign(hotSearchForm, h
-    ? { id: h.id, keyword: h.keyword, label: h.label || '', sortOrder: h.sortOrder || 0, enabled: Number(h.enabled) === 1 }
-    : { id: null, keyword: '', label: '', sortOrder: 0, enabled: true });
-  hotSearchFormOpen.value = true;
-}
-
-function closeHotSearchForm() {
-  hotSearchFormOpen.value = false;
-  hotSearchForm.id = null;
-}
-
-async function saveHotSearch() {
-  const form = hotSearchForm;
-  if (!form.keyword.trim()) { showAlert('搜索词要填写'); return; }
-  await run(async () => {
-    const payload = {
-      keyword: form.keyword.trim(),
-      // 留空就传 null → 前台回落成关键词本身（展示词与搜索词允许不同，如显示「纯牛奶」搜「牛奶」）
-      label: (form.label || '').trim() || null,
-      sortOrder: Number(form.sortOrder) || 0,
-      enabled: !!form.enabled,
-    };
-    if (form.id) await api.put(`/admin/hot-searches/${form.id}`, payload);
-    else await api.post('/admin/hot-searches', payload);
-    closeHotSearchForm();
-    // 同时刷新前台那份，改完立刻能在头部看到（不用等刷新页面）
-    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
-  }, '热搜词已保存');
-}
-
-async function toggleHotSearch(h) {
-  await run(async () => {
-    await api.put(`/admin/hot-searches/${h.id}`, {
-      keyword: h.keyword, label: h.label, sortOrder: h.sortOrder || 0,
-      enabled: Number(h.enabled) !== 1,
-    });
-    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
-  }, Number(h.enabled) === 1 ? '热搜词已停用' : '热搜词已启用');
-}
-
-async function deleteHotSearch(h) {
-  const ok = await askConfirm(`确定删除热搜词「${h.label || h.keyword}」？删除后前台立即消失。`);
-  if (!ok) return;
-  await run(async () => {
-    await api.delete(`/admin/hot-searches/${h.id}`);
-    await Promise.all([loadAdminHotSearches(), loadHotSearches()]);
-  }, '热搜词已删除');
-}
-
-/* ===== 轮播位管理（后台） ===== */
-async function loadAdminBanners() {
-  if (!isAdmin.value) return;
-  try {
-    adminBanners.value = await api.get('/admin/banners');
-  } catch (e) {
-    adminBanners.value = [];
-  }
-}
-
-function openBannerForm(b) {
-  // 新建时默认排在最后（当前最大排序 + 1），避免多条都是 0 导致播放顺序随机
-  const nextSort = (adminBanners.value || []).reduce((max, item) => Math.max(max, Number(item.sortOrder) || 0), 0) + 1;
-  Object.assign(bannerForm, b
-    ? { id: b.id, imageUrl: b.imageUrl || '', linkProductId: b.linkProductId || null, sortOrder: b.sortOrder || 0, enabled: Number(b.enabled) === 1 }
-    : { id: null, imageUrl: '', linkProductId: null, sortOrder: nextSort, enabled: true });
-  bannerFormOpen.value = true;
-}
-function closeBannerForm() {
-  bannerFormOpen.value = false;
-  bannerForm.id = null;
-}
-
-async function saveBanner() {
-  const form = bannerForm;
-  if (bannerUploading.value) { showAlert('图片还在上传中，请稍候 1-2 秒再保存'); return; }
-  if (!form.imageUrl) { showAlert('请先上传轮播图片'); return; }
-  await run(async () => {
-    const payload = {
-      imageUrl: form.imageUrl,
-      linkProductId: form.linkProductId || null,
-      sortOrder: Number(form.sortOrder) || 0,
-      enabled: !!form.enabled,
-    };
-    if (form.id) await api.put(`/admin/banners/${form.id}`, payload);
-    else await api.post('/admin/banners', payload);
-    closeBannerForm();
-    await loadAdminBanners();
-  }, '轮播位已保存');
-}
-
-async function toggleBanner(b) {
-  await run(async () => {
-    await api.put(`/admin/banners/${b.id}`, {
-      imageUrl: b.imageUrl,
-      linkProductId: b.linkProductId,
-      sortOrder: b.sortOrder || 0,
-      enabled: Number(b.enabled) !== 1,
-    });
-    await loadAdminBanners();
-  }, Number(b.enabled) === 1 ? '轮播位已停用' : '轮播位已启用');
-}
-
-async function deleteBanner(b) {
-  const ok = await askConfirm('确定删除这个轮播位？删除后前台立即不再展示。');
-  if (!ok) return;
-  await run(async () => {
-    await api.delete(`/admin/banners/${b.id}`);
-    await loadAdminBanners();
-  }, '轮播位已删除');
-}
-
 // 公开接口：全量商品星级聚合（有评价的商品才会出现）
 async function loadRatingSummary() {
   try {
