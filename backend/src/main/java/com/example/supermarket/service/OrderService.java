@@ -42,6 +42,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -254,24 +255,28 @@ public class OrderService {
                 )
                 .stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity(), (left, right) -> left, HashMap::new));
-        // 限时秒杀：命中「此刻进行中」的场次就参与结算，但按「自动拆分」规则 ——
-        // 只有前 min(本行数量, 用户剩余秒杀名额) 件走秒杀价并占名额，超出部分按原价（不占名额）。
+        // 限时秒杀：命中「此刻进行中」的场次就参与结算。秒杀品是纯折扣通道，整行走秒杀价、
+        // 且必须落在每人限购名额内（不再把超出部分按原价成交 —— 名额用完后这件秒杀品彻底禁买）。
         Map<Long, FlashSale> flashSales = flashSaleService.runningByProductIds(
                 cartItems.stream().map(CartItem::getProductId).distinct().toList());
         // 每个限购场次在本订单内「还能分给秒杀价的件数」（随逐行拆解递减，跨同商品多规格行共享）
         Map<Long, Integer> flashRemain = new HashMap<>();
+        // 会员等级决定「能否享商品会员价」与「等级折扣」——二者在单品层取优、不叠加（见 unitPriceFor）。
+        // 这里提前取出，后面 366 行附近的会员折扣计算复用同一个 buyer，不重复查库。
+        SysUser buyer = sysUserRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Integer memberLevel = buyer.getMemberLevel();
         List<OrderItem> orderItems = new ArrayList<>();
         for (CartItem ci : cartItems) {
             Product product = requireAvailableProduct(productMap, ci.getProductId());
             FlashSale fs = flashSales.get(ci.getProductId());
             // 规格价：该行选了规格且该规格单独定价时按规格价算，否则回落商品基准价。
             // 与 CartItemResponse 同口径（会员价仅在未走规格价时参与比较）。
+            // 逐商品取优：会员价（level>=1 才享）与 等级折扣价 取更低，两者不叠加。
             BigDecimal skuPrice = skuPriceSupport.priceOf(ci.getProductId(), ci.getSkuSpec());
-            BigDecimal regular = skuPrice != null ? skuPrice : product.getPrice();
-            if (skuPrice == null && product.getMemberPrice() != null
-                    && product.getMemberPrice().compareTo(regular) < 0) {
-                regular = product.getMemberPrice();
-            }
+            BigDecimal regular = MemberService.unitPriceFor(memberLevel,
+                    skuPrice != null ? skuPrice : product.getPrice(),
+                    skuPrice == null ? product.getMemberPrice() : null);
             int qty = ci.getQuantity();
             // 整行库存校验必须在拆分之前：拆成「秒杀段 + 原价段」后各自 ≤ 数量，但两段合计不能超过库存
             if (product.getStock() < qty) {
@@ -281,21 +286,30 @@ public class OrderService {
             // 走规格价时按折扣率判断：fs.flashPriceFor 返回 规格价×折扣率，必然 < 规格价(regular)；
             // 未走规格价时回落基准秒杀价，与改动前一致。三处口径必须与 CartItemResponse 一致。
             if (fs != null && fs.flashPriceFor(product.getPrice(), skuPrice).compareTo(regular) < 0) {
+                // 秒杀品是纯折扣通道：只按秒杀价、且必须落在每人限购名额内。
+                // 名额用完后这件秒杀品彻底不能再下单（连原价都不行）；
+                // 想按原价买，请去普通列表里那条独立的原商品（sourceProductId）。
                 Integer rem = flashRemain.computeIfAbsent(fs.getId(),
                         k -> flashSaleService.remainingForUser(userId, fs));
-                int flashQty = (rem == null) ? qty : Math.min(qty, Math.max(rem, 0));
-                if (rem != null) {
+                if (rem == null) {
+                    // 不限购场次：整行走秒杀价
+                    orderItems.add(buildOrderItem(memberLevel, ci, product, fs, qty));
+                } else {
+                    int flashQty = Math.min(qty, Math.max(rem, 0));
                     flashRemain.put(fs.getId(), Math.max(rem - flashQty, 0));
-                }
-                if (flashQty > 0) {
-                    orderItems.add(buildOrderItem(ci, product, fs, flashQty));
-                }
-                int overflow = qty - flashQty;
-                if (overflow > 0) {
-                    orderItems.add(buildOrderItem(ci, product, null, overflow));
+                    if (flashQty <= 0) {
+                        throw new BusinessException(409,
+                                "该秒杀商品你已买满 " + fs.getPerUserLimit() + " 件（每人限购），请前往原商品按原价购买");
+                    }
+                    if (flashQty < qty) {
+                        // 正常 UI 已按名额夹量，不会到这；同名额被并发/后台调小时兜底拒绝
+                        throw new BusinessException(409,
+                                "该秒杀商品每人限购 " + fs.getPerUserLimit() + " 件，你最多还能买 " + flashQty + " 件");
+                    }
+                    orderItems.add(buildOrderItem(memberLevel, ci, product, fs, flashQty));
                 }
             } else {
-                orderItems.add(buildOrderItem(ci, product, null, qty));
+                orderItems.add(buildOrderItem(memberLevel, ci, product, null, qty));
             }
         }
         BigDecimal totalAmount = orderItems.stream()
@@ -359,11 +373,11 @@ public class OrderService {
         savedOrder.setPayAmount(totalAmount.subtract(couponDiscount).subtract(activityDiscount).max(ZERO));
         savedOrder = orderRepository.save(savedOrder);
 
-        // 会员等级折扣 + 积分抵扣（在优惠券/活动优惠之后继续叠加，避免重复计算）
-        SysUser buyer = sysUserRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        // 积分抵扣（在优惠券/活动优惠之后继续叠加，避免重复计算）。
+        // 会员等级折扣已下沉到「单品成交价」逐商品取优（见 buildOrderItem / memberService.unitPriceFor），
+        // 这里不再按百分比二次扣减 —— 否则同一件商品会同时吃到「会员价 + 等级折扣」两道会员优惠。
         BigDecimal amountAfterPromo = savedOrder.getPayAmount();
-        BigDecimal memberDiscount = memberService.memberDiscount(buyer.getMemberLevel(), amountAfterPromo);
+        BigDecimal memberDiscount = ZERO;
         BigDecimal payBeforePoints = amountAfterPromo.subtract(memberDiscount).max(ZERO);
         BigDecimal maxRedeem = memberService.maxRedeemValue(payBeforePoints);
         Long pointsUsed = 0L;
@@ -437,10 +451,14 @@ public class OrderService {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<OrderEntity> orders = orderRepository.findAll(buildUserOrderSpec(userId, status), pageable);
-        List<OrderResponse> items = orders.getContent().stream()
-                .map(order -> toResponse(order, toItemResponses(
-                        orderItemRepository.findByOrderIdOrderByIdAsc(order.getId())
-                )))
+        List<OrderEntity> orderList = orders.getContent();
+        // 批量取本页所有订单的明细，按 orderId 分组，避免「每订单各查一次」的 N+1
+        Map<Long, List<OrderItem>> itemMap = orderItemRepository
+                .findByOrderIdInOrderByIdAsc(orderList.stream().map(OrderEntity::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(OrderItem::getOrderId, LinkedHashMap::new, Collectors.toList()));
+        List<OrderResponse> items = orderList.stream()
+                .map(order -> toResponse(order, toItemResponses(itemMap.getOrDefault(order.getId(), List.of()))))
                 .toList();
         return PageResponse.of(items, safePage, safeSize, orders.getTotalElements());
     }
@@ -561,24 +579,24 @@ public class OrderService {
     /**
      * 构造一个订单行。
      *
-     * @param quantity 本行件数（秒杀自动拆分时，可能是「秒杀段」或「原价段」的件数，不再等于购物车行数量）
+     * @param quantity 本行件数（秒杀品整行都在名额内，等于购物车行数量）
      * @param flashSale 不为 null 且秒杀价更低时，本行按秒杀价并占名额；为 null 则按常规价（不占名额）
      */
-    private OrderItem buildOrderItem(CartItem cartItem, Product product, FlashSale flashSale, int quantity) {
+    private OrderItem buildOrderItem(Integer memberLevel, CartItem cartItem, Product product,
+                                     FlashSale flashSale, int quantity) {
         OrderItem item = new OrderItem();
         item.setProductId(product.getId());
         item.setProductName(product.getName());
         item.setProductSku(product.getSku());
         item.setSkuSpec(cartItem.getSkuSpec());
         item.setProductCoverUrl(product.getCoverUrl());
-        // 结算单价取「正常售价 / 会员价 / 秒杀价」三者最低：这三者都是"替换单价"型优惠、互不叠加，
+        // 结算单价取「正常售价 / 会员价 / 等级折扣价 / 秒杀价」中最低：这几种都是"替换单价"型优惠、互不叠加，
         // 取最低对用户最公平，也保证购物车/结算预览/实际下单口径一致。
+        // 会员价仅 level>=1 可享（普通用户按原价，否则原价失去意义）；会员价与等级折扣取优、不叠加。
         BigDecimal skuPrice = skuPriceSupport.priceOf(product.getId(), cartItem.getSkuSpec());
-        BigDecimal unitPrice = skuPrice != null ? skuPrice : product.getPrice();
-        if (skuPrice == null && product.getMemberPrice() != null
-                && product.getMemberPrice().compareTo(unitPrice) < 0) {
-            unitPrice = product.getMemberPrice();
-        }
+        BigDecimal unitPrice = MemberService.unitPriceFor(memberLevel,
+                skuPrice != null ? skuPrice : product.getPrice(),
+                skuPrice == null ? product.getMemberPrice() : null);
         // 秒杀价按「折扣率」套到规格价上：与 CartItemResponse.from 同口径，保证预览与实付一致
         if (flashSale != null) {
             BigDecimal flashUnit = flashSale.flashPriceFor(product.getPrice(), skuPrice);

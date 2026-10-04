@@ -1,5 +1,7 @@
 package com.example.supermarket.service;
 
+import com.example.supermarket.repository.SysUserRepository;
+
 import com.example.supermarket.dto.AddCartItemRequest;
 import com.example.supermarket.dto.CartItemResponse;
 import com.example.supermarket.dto.CartResponse;
@@ -8,12 +10,14 @@ import com.example.supermarket.dto.UpdateCartItemRequest;
 import com.example.supermarket.entity.CartItem;
 import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.Product;
+import com.example.supermarket.entity.ProductSku;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.service.ActivityEvaluation;
 import com.example.supermarket.service.ActivityService;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.CartItemRepository;
 import com.example.supermarket.repository.ProductRepository;
+import com.example.supermarket.repository.ProductSkuRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,14 +41,19 @@ public class CartService {
     private final ActivityService activityService;
     private final FlashSaleService flashSaleService;
     private final SkuPriceSupport skuPriceSupport;
+    private final SysUserRepository sysUserRepository;
+    private final ProductSkuRepository skuRepository;
 
     public CartService(CartItemRepository cartItemRepository, ProductRepository productRepository,
-            ActivityService activityService, FlashSaleService flashSaleService, SkuPriceSupport skuPriceSupport) {
+            ActivityService activityService, FlashSaleService flashSaleService, SkuPriceSupport skuPriceSupport,
+            SysUserRepository sysUserRepository, ProductSkuRepository skuRepository) {
         this.cartItemRepository = cartItemRepository;
         this.productRepository = productRepository;
         this.activityService = activityService;
         this.flashSaleService = flashSaleService;
         this.skuPriceSupport = skuPriceSupport;
+        this.sysUserRepository = sysUserRepository;
+        this.skuRepository = skuRepository;
     }
 
     @Transactional(readOnly = true)
@@ -136,6 +145,11 @@ public class CartService {
                 .collect(Collectors.toMap(Product::getId, Function.identity(), (left, right) -> left, HashMap::new));
         // 限时秒杀：按「此刻进行中」的场次定价，与 OrderService.buildOrderItem 用同一套 min() 规则
         Map<Long, FlashSale> flashSales = flashSaleService.runningByProductIds(productIds);
+        // SKU 规格价：批量取出本购物车所有商品的 SKU，避免循环里每行各查一次 SKU 表（N+1）
+        Map<Long, List<ProductSku>> skuMap = skuRepository
+                .findByProductIdInAndDeletedOrderBySortNoAscIdAsc(productIds, NOT_DELETED)
+                .stream()
+                .collect(Collectors.groupingBy(ProductSku::getProductId));
         // 每个限购场次：用户剩余秒杀名额（= 每人限购 − 历史已购，不含本购物车），不限购为 null。
         // 用于把「超出限购」的件数从秒杀价降级为原价，而不是拒绝加购。
         Map<Long, Integer> flashRemain = new HashMap<>();
@@ -146,6 +160,8 @@ public class CartService {
             }
         }
         List<CartItemResponse> items = new ArrayList<>();
+        // 会员等级决定购物车预览的成交单价（能否享商品会员价 / 等级折扣），必须与下单同口径
+        Integer memberLevel = sysUserRepository.findById(userId).map(u -> u.getMemberLevel()).orElse(0);
         for (CartItem item : cartItems) {
             Product product = requireProduct(productMap, item.getProductId());
             FlashSale sale = flashSales.get(item.getProductId());
@@ -157,7 +173,8 @@ public class CartService {
             }
             // 规格价：该行选了规格且该规格单独定价时按规格价结算，否则回落商品基准价
             items.add(CartItemResponse.from(item, product, sale, flashQty,
-                    skuPriceSupport.priceOf(item.getProductId(), item.getSkuSpec())));
+                    skuPriceSupport.priceOf(item.getProductId(), item.getSkuSpec(),
+                            skuMap.getOrDefault(item.getProductId(), List.of())), memberLevel));
         }
         int selectedCount = items.stream()
                 .filter(CartItemResponse::getSelected)

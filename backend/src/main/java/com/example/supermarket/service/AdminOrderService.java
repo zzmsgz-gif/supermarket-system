@@ -19,8 +19,11 @@ import com.example.supermarket.repository.StockLogRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -94,8 +97,14 @@ public class AdminOrderService {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<OrderEntity> orders = orderRepository.findAll(buildOrderSpec(status, userId, orderNo, refundStatus), pageable);
-        List<OrderResponse> items = orders.getContent().stream()
-                .map(order -> OrderResponse.from(order, toItemResponses(order.getId())))
+        List<OrderEntity> orderList = orders.getContent();
+        // 批量取本页所有订单的明细，按 orderId 分组，避免「每订单各查一次」的 N+1
+        Map<Long, List<OrderItem>> itemMap = orderItemRepository
+                .findByOrderIdInOrderByIdAsc(orderList.stream().map(OrderEntity::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(OrderItem::getOrderId, LinkedHashMap::new, Collectors.toList()));
+        List<OrderResponse> items = orderList.stream()
+                .map(order -> OrderResponse.from(order, toItemResponses(itemMap.getOrDefault(order.getId(), List.of()))))
                 .toList();
         return PageResponse.of(items, safePage, safeSize, orders.getTotalElements());
     }

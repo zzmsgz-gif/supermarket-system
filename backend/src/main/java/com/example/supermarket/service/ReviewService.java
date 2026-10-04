@@ -5,6 +5,7 @@ import com.example.supermarket.dto.ReviewCreateRequest;
 import com.example.supermarket.dto.ReviewResponse;
 import com.example.supermarket.entity.OrderEntity;
 import com.example.supermarket.entity.OrderItem;
+import com.example.supermarket.entity.Product;
 import com.example.supermarket.entity.ProductReview;
 import com.example.supermarket.entity.SysUser;
 import com.example.supermarket.exception.BusinessException;
@@ -74,8 +75,11 @@ public class ReviewService {
                 .toList();
         List<ProductReview> saved = reviewRepository.saveAll(reviews);
         SysUser user = userRepository.findById(userId).orElse(null);
+        // 一笔订单可能含多个商品：按去重 productId 批量取名称，避免逐条查（N+1）
+        Map<Long, String> nameMap = productNameMap(saved.stream().map(ProductReview::getProductId).toList());
         return saved.stream()
-                .map(review -> ReviewResponse.from(review, user, productName(review.getProductId())))
+                .map(review -> ReviewResponse.from(review, user,
+                        nameMap.getOrDefault(review.getProductId(), "已下架商品")))
                 .toList();
     }
 
@@ -92,8 +96,12 @@ public class ReviewService {
                 )
                 .stream()
                 .collect(Collectors.toMap(SysUser::getId, Function.identity(), (left, right) -> left));
+        // 一个订单可能含多个商品：按去重 productId 批量取名称，避免循环内逐条查（N+1）
+        Map<Long, String> nameMap = productNameMap(
+                reviews.stream().map(ProductReview::getProductId).toList());
         return reviews.stream()
-                .map(review -> ReviewResponse.from(review, userMap.get(review.getUserId()), productName(review.getProductId())))
+                .map(review -> ReviewResponse.from(review, userMap.get(review.getUserId()),
+                        nameMap.getOrDefault(review.getProductId(), "已下架商品")))
                 .toList();
     }
 
@@ -113,8 +121,10 @@ public class ReviewService {
                 )
                 .stream()
                 .collect(Collectors.toMap(SysUser::getId, Function.identity(), (left, right) -> left));
+        // 同一 productId 的评价列表：商品名只查一次（原循环内逐条查，N+1）
+        String productName = productName(productId);
         List<ReviewResponse> items = reviews.getContent().stream()
-                .map(review -> ReviewResponse.from(review, userMap.get(review.getUserId()), productName(productId)))
+                .map(review -> ReviewResponse.from(review, userMap.get(review.getUserId()), productName))
                 .toList();
         return PageResponse.of(items, safePage, safeSize, reviews.getTotalElements());
     }
@@ -136,5 +146,15 @@ public class ReviewService {
         return productRepository.findById(productId)
                 .map(product -> product.getName())
                 .orElse("已下架商品");
+    }
+
+    /** 按去重 productId 批量取商品名（列表/写后返回用，避免循环内逐条查的 N+1） */
+    private Map<Long, String> productNameMap(java.util.Collection<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        return productRepository.findAllById(productIds.stream().distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(Product::getId, Product::getName, (left, right) -> left));
     }
 }

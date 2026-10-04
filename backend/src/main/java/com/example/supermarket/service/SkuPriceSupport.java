@@ -43,6 +43,21 @@ public class SkuPriceSupport {
             return null;
         }
         List<ProductSku> skus = skuRepository.findByProductIdAndDeletedOrderBySortNoAscIdAsc(productId, NOT_DELETED);
+        return matchPrice(skus, wanted);
+    }
+
+    /**
+     * 重载：调用方已批量取好该商品的 SKU 列表时直接复用，避免购物车每行各查一次 SKU 表（N+1）。
+     */
+    public BigDecimal priceOf(Long productId, String skuSpec, List<ProductSku> skus) {
+        Map<String, String> wanted = parseSpecText(skuSpec);
+        if (wanted.isEmpty()) {
+            return null;
+        }
+        return matchPrice(skus, wanted);
+    }
+
+    private BigDecimal matchPrice(List<ProductSku> skus, Map<String, String> wanted) {
         for (ProductSku sku : skus) {
             if (sku.getPrice() == null) {
                 continue;

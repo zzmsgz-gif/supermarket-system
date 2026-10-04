@@ -13,6 +13,9 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     List<OrderItem> findByOrderIdOrderByIdAsc(Long orderId);
 
+    /** 批量取多订单的明细（订单列表分页用，避免 N+1：原每订单各查一次） */
+    List<OrderItem> findByOrderIdInOrderByIdAsc(Collection<Long> orderIds);
+
     /**
      * 某用户在某秒杀场次里「已占用名额」的件数。
      * 只统计仍占着名额的订单（已取消/已关闭的单会回退名额，因此排除），用于校验每人限购。
