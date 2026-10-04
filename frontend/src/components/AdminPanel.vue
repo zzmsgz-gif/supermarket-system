@@ -1215,6 +1215,8 @@ import { ref, reactive, computed, onMounted, toRef, nextTick, watch, defineAsync
 import { api } from '../api/client';
 import { useAdminStores } from '../composables/useAdminStores.js';
 import { useAdminFlash } from '../composables/useAdminFlash.js';
+import { useAdminActivities } from '../composables/useAdminActivities.js';
+import { useAdminPasswordResets } from '../composables/useAdminPasswordResets.js';
 import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
 import AdminPager from './AdminPager.vue';
@@ -1242,18 +1244,6 @@ const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupon
 // 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
 const MEMBER_LEVEL_NAMES = ['普通用户', '银卡会员', '金卡会员', '钻石会员', '紫钻会员', '黑卡会员', '至尊会员'];
 const memberLevelName = (level) => MEMBER_LEVEL_NAMES[Number(level) || 0] || '普通用户';
-
-const adminActivities = reactive({ items: [], page: 1, size: 10, total: 0 });
-
-const adminActivityKeyword = ref('');
-
-const adminActivityJumpPage = ref(1);
-
-const adminActivityTotalPages = computed(() => Math.max(1, Math.ceil((adminActivities.total || 0) / (adminActivities.size || 10))));
-
-const activityProducts = ref([]);
-
-const activityProductsLoaded = ref(false);
 
 const shipForm = reactive({ orderId: null, shipCompany: '', shipNo: '' });
 
@@ -1352,8 +1342,6 @@ function goStockPage() {
 const categoryForm = reactive({ parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
 
 const couponForm = reactive({ name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
-
-const activityForm = reactive({ id: null, name: '', type: 'FULL_REDUCTION', scope: 'ALL', categoryId: 0, productId: 0, threshold: 0, discount: 0, startTime: '', endTime: '', priority: 0 });
 
 const adminIcon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 
@@ -1712,209 +1700,6 @@ async function toggleCoupon(coupon) {
 
 }
 
-async function loadActivityProducts() {
-  if (activityProductsLoaded.value) return;
-  try {
-    const data = await api.get('/products?page=1&size=500');
-    activityProducts.value = (data && data.items) || [];
-    activityProductsLoaded.value = true;
-  } catch (e) {
-    activityProducts.value = [];
-  }
-}
-
-async function loadAdminActivities() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(adminActivities.page),
-    size: String(adminActivities.size),
-  });
-  if (adminActivityKeyword.value.trim()) params.set('keyword', adminActivityKeyword.value.trim());
-  const data = await api.get(`/admin/activities?${params}`);
-  Object.assign(adminActivities, data);
-  if (adminActivities.items.length === 0 && adminActivities.page > 1) {
-    adminActivities.page -= 1;
-    await loadAdminActivities();
-    return;
-  }
-  adminActivityJumpPage.value = adminActivities.page;
-}
-
-async function searchAdminActivities() {
-  adminActivities.page = 1;
-  await loadAdminActivities();
-}
-
-async function changeAdminActivityPage(delta) {
-  const next = adminActivities.page + delta;
-  if (next < 1 || next > adminActivityTotalPages.value) return;
-  adminActivities.page = next;
-  await loadAdminActivities();
-}
-
-async function changeAdminActivityPageSize() {
-  adminActivities.page = 1;
-  await loadAdminActivities();
-}
-
-async function goAdminActivityPage() {
-  const p = Number(adminActivityJumpPage.value);
-  if (!Number.isInteger(p) || p < 1 || p > adminActivityTotalPages.value) {
-    adminActivityJumpPage.value = adminActivities.page;
-    return;
-  }
-  adminActivities.page = p;
-  await loadAdminActivities();
-}
-
-function resetAdminActivitySearch() {
-  adminActivityKeyword.value = '';
-  adminActivities.page = 1;
-  loadAdminActivities();
-}
-
-function resetActivityForm() {
-  Object.assign(activityForm, { id: null, name: '', type: 'FULL_REDUCTION', scope: 'ALL', categoryId: 0, productId: 0, threshold: 0, discount: 0, startTime: '', endTime: '', priority: 0 });
-}
-
-function onActivityScopeChange() {
-  activityForm.categoryId = 0;
-  activityForm.productId = 0;
-  if (activityForm.scope === 'PRODUCT') loadActivityProducts();
-}
-
-function fillActivityPeriod(days) {
-  const pad = (num) => String(num).padStart(2, '0');
-  const toLocalInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  const start = new Date();
-  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
-  activityForm.startTime = toLocalInput(start);
-  activityForm.endTime = toLocalInput(end);
-}
-
-function activityTypeLabel(type) {
-  if (type === 'DISCOUNT') return '折扣';
-  if (type === 'PROMOTION') return '促销文案';
-  return '满减';
-}
-
-function activityScopeLabel(scope) {
-  if (scope === 'CATEGORY') return '指定类目';
-  if (scope === 'PRODUCT') return '指定商品';
-  return '全场';
-}
-
-function activityDiscountLabel(act) {
-  // 纯文案活动：只占首页顶栏一个展示位，没有门槛/优惠值
-  if (act.type === 'PROMOTION') return '首页顶栏文案（不参与计价）';
-  const threshold = Number(act.threshold || 0);
-  if (act.type === 'DISCOUNT') {
-    const rate = Number(act.discount || 0);
-    const zhe = Math.round(rate * 100) / 10;
-    const zheStr = Number.isInteger(zhe) ? String(zhe) : zhe.toFixed(1);
-    return threshold > 0 ? `${zheStr}折（满${money(threshold)}）` : `${zheStr}折`;
-  }
-  return `满 ${money(threshold)} 减 ${money(act.discount)}`;
-}
-
-function editActivity(act) {
-  const toLocal = (value) => {
-    if (!value) return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-  Object.assign(activityForm, {
-    id: act.id,
-    name: act.name,
-    type: act.type,
-    scope: act.scope,
-    categoryId: act.categoryId || 0,
-    productId: act.productId || 0,
-    threshold: Number(act.threshold || 0),
-    discount: Number(act.discount || 0),
-    startTime: toLocal(act.startTime),
-    endTime: toLocal(act.endTime),
-    priority: Number(act.priority || 0),
-  });
-  if (act.scope === 'PRODUCT') loadActivityProducts();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-async function saveActivity() {
-  const promotion = activityForm.type === 'PROMOTION';
-  if (!activityForm.name.trim()) { fail('请填写活动名称'); return; }
-  if (!activityForm.startTime || !activityForm.endTime) { fail('请选择有效起止时间'); return; }
-  if (new Date(activityForm.startTime) >= new Date(activityForm.endTime)) { fail('结束时间必须晚于开始时间'); return; }
-  if (!promotion && activityForm.scope === 'CATEGORY' && !activityForm.categoryId) { fail('请选择适用类目'); return; }
-  if (!promotion && activityForm.scope === 'PRODUCT' && !activityForm.productId) { fail('请选择适用商品'); return; }
-  // 纯文案活动没有门槛/优惠值（不参与计价），跳过这些校验
-  if (!promotion) {
-    if (activityForm.type === 'FULL_REDUCTION') {
-      if (!(activityForm.threshold > 0)) { fail('满减门槛必须大于 0'); return; }
-      if (!(activityForm.discount > 0)) { fail('优惠金额必须大于 0'); return; }
-      if (Number(activityForm.discount) > Number(activityForm.threshold)) { fail('优惠金额不能超过门槛金额'); return; }
-    } else {
-      if (!(activityForm.discount > 0) || !(activityForm.discount < 1)) { fail('折扣率需在 0~1 之间，例如 0.9 表示 9 折'); return; }
-    }
-  }
-  const payload = {
-    name: activityForm.name.trim(),
-    type: activityForm.type,
-    scope: promotion ? 'ALL' : activityForm.scope,
-    categoryId: !promotion && activityForm.scope === 'CATEGORY' ? Number(activityForm.categoryId) : null,
-    productId: !promotion && activityForm.scope === 'PRODUCT' ? Number(activityForm.productId) : null,
-    threshold: promotion ? null : Number(activityForm.threshold || 0),
-    discount: promotion ? null : Number(activityForm.discount),
-    startTime: activityForm.startTime,
-    endTime: activityForm.endTime,
-    priority: Number(activityForm.priority || 0),
-  };
-  await run(async () => {
-    if (activityForm.id) {
-      await api.put(`/admin/activities/${activityForm.id}`, payload);
-    } else {
-      await api.post('/admin/activities', payload);
-    }
-    resetActivityForm();
-    await loadAdminActivities();
-  }, activityForm.id ? '活动已更新' : '活动已创建');
-}
-
-async function toggleActivity(act) {
-  const disabling = act.status === 1;
-  const confirmed = await askConfirm({
-    title: disabling ? '停用活动' : '启用活动',
-    message: disabling
-      ? '停用后该活动不再参与订单优惠计算，已下单的订单不受影响。'
-      : '启用后该活动将重新参与订单优惠计算。',
-    confirmText: disabling ? '确认停用' : '确认启用',
-    danger: disabling,
-    details: [
-      { label: '活动', value: act.name },
-      { label: '优惠力度', value: activityDiscountLabel(act) },
-    ],
-  });
-  if (!confirmed) return;
-  await run(() => api.patch(`/admin/activities/${act.id}/status`, { status: disabling ? 0 : 1 }).then(loadAdminActivities), disabling ? '活动已停用' : '活动已启用');
-}
-
-async function deleteActivity(act) {
-  const confirmed = await askConfirm({
-    title: '删除活动',
-    message: '删除后该活动立即失效且不可恢复，已下单的订单不受影响。',
-    confirmText: '确认删除',
-    danger: true,
-    details: [
-      { label: '活动', value: act.name },
-      { label: '优惠力度', value: activityDiscountLabel(act) },
-    ],
-  });
-  if (!confirmed) return;
-  await run(() => api.delete(`/admin/activities/${act.id}`).then(loadAdminActivities), '活动已删除');
-}
-
 async function completeAdminOrder(id) {
   const order = (adminOrders.items || []).find((item) => item.id === id);
   const confirmed = await askConfirm({
@@ -2022,47 +1807,6 @@ async function toggleUser(user) {
 
 }
 
-/* ===== 找回密码申请（忘记密码的人工处理入口） =====
-   状态全部本地化在 AdminPanel 内，不去动 App.vue 里那行超长的 adminCtx。 */
-const passwordResets = reactive({ items: [], page: 1, size: 10, total: 0, pending: 0 });
-const passwordResetStatus = ref('PENDING');
-const passwordResetJumpPage = ref(1);
-// 重置成功后拿到的临时密码：只存在于这一次响应里，关闭即销毁（库里只有 BCrypt 哈希）
-const passwordResetResult = ref(null);
-
-const passwordResetTotalPages = computed(() => Math.max(1, Math.ceil((passwordResets.total || 0) / (passwordResets.size || 10))));
-
-const PASSWORD_RESET_STATUS_LABELS = { PENDING: '待处理', DONE: '已重置', REJECTED: '已驳回' };
-
-function passwordResetStatusLabel(status) {
-  return PASSWORD_RESET_STATUS_LABELS[status] || status || '-';
-}
-
-function passwordResetStatusClass(status) {
-  if (status === 'PENDING') return 'warn';
-  if (status === 'DONE') return 'ok';
-  return 'muted';
-}
-
-async function loadPasswordResets() {
-  const query = [`page=${passwordResets.page}`, `size=${passwordResets.size}`];
-  if (passwordResetStatus.value) query.push(`status=${passwordResetStatus.value}`);
-  const data = await api.get(`/admin/password-reset-requests?${query.join('&')}`);
-  passwordResets.items = data?.items || [];
-  passwordResets.total = Number(data?.total || 0);
-  await loadPasswordResetPendingCount();
-}
-
-// 侧边菜单角标：待处理数量（拉失败不影响列表本身）
-async function loadPasswordResetPendingCount() {
-  try {
-    const count = await api.get('/admin/password-reset-requests/pending-count');
-    passwordResets.pending = Number(count || 0);
-  } catch (err) {
-    passwordResets.pending = 0;
-  }
-}
-
 // 进后台就拉一次待处理数：否则菜单角标要等点进「找回密码」才显示，等于没提醒
 // 侧边菜单角标：未回复评价数（"有人等你回话"）。拉失败就不显示角标，不打扰页面。
 async function loadAdminReviewUnreplied() {
@@ -2080,87 +1824,6 @@ onMounted(() => {
   // 深链 /admin?tab=notices 同理。挂载时兜住，保证「进来就有数据」。
   refreshCurrentAdminMenu();
 });
-
-async function searchPasswordResets() {
-  passwordResets.page = 1;
-  passwordResetJumpPage.value = 1;
-  await run(() => loadPasswordResets());
-}
-
-async function changePasswordResetPage(delta) {
-  const next = passwordResets.page + delta;
-  if (next < 1 || next > passwordResetTotalPages.value) return;
-  passwordResets.page = next;
-  await run(() => loadPasswordResets());
-}
-
-async function changePasswordResetPageSize() {
-  passwordResets.page = 1;
-  await run(() => loadPasswordResets());
-}
-
-async function goPasswordResetPage() {
-  const p = Number(passwordResetJumpPage.value);
-  if (!Number.isInteger(p) || p < 1 || p > passwordResetTotalPages.value) {
-    passwordResetJumpPage.value = passwordResets.page;
-    return;
-  }
-  passwordResets.page = p;
-  await run(() => loadPasswordResets());
-}
-
-async function confirmResetPassword(item) {
-  const confirmed = await askConfirm({
-    title: '重置该账号密码',
-    message: `将为「${item.username}」生成一次性临时密码，并把该账号标记为「首次登录必须改密」。`
-      + '临时密码只显示这一次，请当场电话告知用户，不要截图外发。',
-    details: [
-      { label: '账号', value: item.username },
-      { label: '昵称', value: item.nickname || '-' },
-      { label: '账号预留手机号', value: item.phone || '未填写' },
-      { label: '申请人联系方式', value: item.contact || '未填写' },
-    ],
-    confirmText: '确认重置',
-  });
-  if (!confirmed) return;
-  try {
-    await run(async () => {
-      passwordResetResult.value = await api.post(`/admin/password-reset-requests/${item.id}/reset`, {});
-      await loadPasswordResets();
-    }, '临时密码已生成，请立即转告用户');
-  } catch (err) {
-    fail(err?.message || '重置失败，请稍后重试');
-  }
-}
-
-async function confirmRejectPasswordReset(item) {
-  const confirmed = await askConfirm({
-    title: '驳回找回申请',
-    message: `确定驳回「${item.username}」的找回密码申请吗？驳回后用户可重新提交。`,
-    confirmText: '确认驳回',
-    danger: true,
-  });
-  if (!confirmed) return;
-  try {
-    await run(async () => {
-      await api.post(`/admin/password-reset-requests/${item.id}/reject`, { remark: '身份核对未通过' });
-      await loadPasswordResets();
-    }, '申请已驳回');
-  } catch (err) {
-    fail(err?.message || '驳回失败，请稍后重试');
-  }
-}
-
-async function copyTempPassword() {
-  const text = passwordResetResult.value?.tempPassword;
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    notice.value = '临时密码已复制到剪贴板';
-  } catch (err) {
-    fail('复制失败，请手动选中复制');
-  }
-}
 
 // ===== 评价管理 =====
 // 补的是一条断掉的闭环：此前评价只能写（前台晒图评价），后台没有任何入口、也没有查询接口，
@@ -2435,6 +2098,10 @@ async function deleteMemberDay(row) {
 const { adminStores, storeFormOpen, storeEditingId, storeForm, loadAdminStores, resetStoreForm, openStoreForm, closeStoreForm, storePayload, saveStore, toggleStoreStatus, deleteStore } = useAdminStores({ isAdmin, fail, run, askConfirm });
 
 const { adminFlashSales, flashFormOpen, flashEditingId, flashProductOptions, flashForm, loadAdminFlashSales, loadFlashProductOptions, flashStateLabel, flashStateClass, toDateTimeInput, openFlashForm, closeFlashForm, saveFlashSale, toggleFlashStatus, deleteFlashSale } = useAdminFlash({ isAdmin, fail, run, askConfirm });
+
+const { adminActivities, adminActivityKeyword, adminActivityJumpPage, adminActivityTotalPages, activityProducts, activityProductsLoaded, activityForm, loadActivityProducts, loadAdminActivities, searchAdminActivities, changeAdminActivityPage, changeAdminActivityPageSize, goAdminActivityPage, resetAdminActivitySearch, resetActivityForm, onActivityScopeChange, fillActivityPeriod, activityTypeLabel, activityScopeLabel, activityDiscountLabel, editActivity, saveActivity, toggleActivity, deleteActivity } = useAdminActivities({ isAdmin, fail, run, askConfirm, categories });
+
+const { passwordResets, passwordResetStatus, passwordResetJumpPage, passwordResetResult, passwordResetTotalPages, PASSWORD_RESET_STATUS_LABELS, passwordResetStatusLabel, passwordResetStatusClass, loadPasswordResets, loadPasswordResetPendingCount, searchPasswordResets, changePasswordResetPage, changePasswordResetPageSize, goPasswordResetPage, confirmResetPassword, confirmRejectPasswordReset, copyTempPassword } = useAdminPasswordResets({ run, fail, askConfirm, notice });
 
 const adminMenuLoaders = {
   insights: () => insightsPanelRef.value?.load(),
