@@ -266,6 +266,8 @@ import { useRecharge } from './composables/useRecharge';
 import { useActivity } from './composables/useActivity.js';
 import { useFavorites } from './composables/useFavorites.js';
 import { useFlashSale } from './composables/useFlashSale.js';
+import { useChannels } from './composables/useChannels.js';
+import { useShopFilters } from './composables/useShopFilters.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
@@ -300,7 +302,7 @@ async function goSearch() {
     await scrollToResultsIfNeeded();
     return;
   }
-  scrollToResultsAfterLoad = true;   // 由紧随其后的 loadProducts() 消费（它比在这里猜时机更准）
+  markScrollToResults();   // 由紧随其后的 loadProducts() 消费（它比在这里猜时机更准）
   await router.push({ name: 'shop', query });
 }
 
@@ -702,40 +704,7 @@ const session = reactive({
 const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
 const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
-const hotProducts = ref([]);
-const newProducts = ref([]);
 const relatedProducts = ref([]);
-const guessProducts = ref([]);
-const dwellRankProducts = ref([]);
-// ===== 4 个运营频道的候选池与游标（供「换一批」真正轮换）=====
-// ⚠️ 这 4 个端点都是「稳定的 top-N」：listHot / listNew 直接带 @Cacheable，dwell 按浏览量排序，
-// guess 也是按分数排序 —— 参数相同则结果完全相同。所以原来「换一批」只是把同一个请求再发一次，
-// 点了什么都不会变（死按钮）。改为：一次取 30 条入池（三个端点 @Max 均为 50，安全），
-// 前端按 6 条一屏切片轮换；池子不足两屏时按钮直接不渲染（别给一个点了没反应的控件）。
-const CHANNEL_PAGE = 6;
-const channelPool = reactive({ hot: [], new: [], guess: [], dwell: [] });
-const channelCursor = reactive({ hot: 0, new: 0, guess: 0, dwell: 0 });
-const channelRefs = { hot: hotProducts, new: newProducts, guess: guessProducts, dwell: dwellRankProducts };
-
-// 从池中取下一屏（环形推进，到底自动回绕）
-function channelPage(key) {
-  const pool = channelPool[key] || [];
-  if (!pool.length) return [];
-  const start = channelCursor[key] % pool.length;
-  const size = Math.min(CHANNEL_PAGE, pool.length);
-  const out = [];
-  for (let i = 0; i < size; i += 1) out.push(pool[(start + i) % pool.length]);
-  channelCursor[key] = (start + size) % pool.length;
-  return out;
-}
-async function loadChannel(key, url) {
-  try { channelPool[key] = (await api.get(url)) || []; } catch { channelPool[key] = []; }
-  channelCursor[key] = 0;
-  channelRefs[key].value = channelPage(key);
-}
-function rotateChannel(key) { channelRefs[key].value = channelPage(key); }
-// 池子够两屏才值得给「换一批」按钮（新品在售可能只有 5 个，那种情况按钮是骗人的）
-function channelRotatable(key) { return (channelPool[key] || []).length > CHANNEL_PAGE; }
 const dwellEnterTs = ref(0);
 const dwellProductId = ref(null);
 const dwellSource = ref('detail');
@@ -1085,8 +1054,17 @@ const { favoriteIds, favorites, priceAlerts, alertUnread, pendingFavorite, isFav
 
 const { flashSales, nowTick, runningFlashSales, FLASH_TICK_WINDOW_SECONDS, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, startFlashTick, stopFlashTick, flashSaleOfProduct, flashLimitOfProduct, cartQtyMax, cartQtyCapped, flashSplitNote, isFlashSplit, flashLimitMessage } = useFlashSale();
 
+/* ---------------- 运营频道 / 筛选↔URL：已抽为 composable ---------------- */
+// 装配点必须在 filters / products / productsLoading / adminMenu / ADMIN_MENU_KEYS 之后。
+// scrollToResultsAfterLoad 变成 composable 私有标记，goSearch 改用 markScrollToResults() 置位。
+const { hotProducts, newProducts, guessProducts, dwellRankProducts, CHANNEL_PAGE, channelPool, channelCursor, channelRefs, channelPage, loadChannel, rotateChannel, channelRotatable, loadHot, loadNew, loadGuess, loadDwellRank, loadHomeChannels } = useChannels();
+
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
 const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'stores', 'banners', 'users', 'passwordResets'];
+
+// ⚠️ 装配点必须在 ADMIN_MENU_KEYS 定义之后（要用它做 tab 白名单校验）——
+// 放它前面会 TDZ: Cannot access 'ADMIN_MENU_KEYS' before initialization，整页白屏。
+const { SHOP_FILTER_KEYS, ADMIN_TAB_DEFAULT, filterQueryFromFilters, sameShopQuery, syncShopQuery, applyShopQueryFromRoute, syncAdminQuery, applyAdminQueryFromRoute, scrollToResultsIfNeeded, loadProducts, fetchProducts, chooseCategory, applyFilters, resetFilters, markScrollToResults } = useShopFilters({ filters, products, productsLoading, adminMenu, adminMenuKeys: ADMIN_MENU_KEYS, getRoute: () => route, router });
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -1214,197 +1192,6 @@ async function loadCategories() {
   categories.value = await api.get('/categories');
   if (!productForm.categoryId && categories.value[0]) productForm.categoryId = categories.value[0].id;
 
-}
-
-// ===== 首页筛选状态 ↔ URL query（09-20）=====
-// 起因：点分类原先只改 filters + 重拉商品，URL 一直是 /shop → 不能分享/收藏、刷新即丢；
-// 返回键也拿不到「取消筛选」的语义（实测按返回视图毫无变化）。现在把筛选写进 URL：
-//   /shop?category=3&kw=牛奶&min=10&max=50&sort=price_asc
-// ⚠️ 关键词沿用既有的 `kw` 键（头部搜索 goSearch 已在用），别改成 q。
-const SHOP_FILTER_KEYS = ['category', 'kw', 'min', 'max', 'sort'];
-
-// 「这次筛选变更之后要把结果区带进视野」的一次性标记。
-// ⚠️ 不要在 goSearch 里直接调 scrollToResultsIfNeeded —— 那时导航还没落地、商品还没重新渲染，
-// 只能靠猜时机（setTimeout/轮询）；交给紧随其后的 loadProducts() 末尾消费最准。
-let scrollToResultsAfterLoad = false;
-
-function filterQueryFromFilters() {
-  const q = {};
-  if (filters.categoryId) q.category = String(filters.categoryId);
-  if (filters.keyword) q.kw = String(filters.keyword);
-  if (filters.minPrice !== '' && filters.minPrice != null) q.min = String(filters.minPrice);
-  if (filters.maxPrice !== '' && filters.maxPrice != null) q.max = String(filters.maxPrice);
-  if (filters.sort) q.sort = String(filters.sort);
-  return q;
-}
-
-function sameShopQuery(a, b) {
-  return SHOP_FILTER_KEYS.every((k) => String(a[k] ?? '') === String(b[k] ?? ''));
-}
-
-// filters → URL。push / replace 的取舍：
-//   push —— ① 筛选的"有无"发生变化（楼层 → 分类、清空筛选），或 ② **分类变了**
-//           （「搜牛奶 → 点分类酒水饮料」、「分类A → 分类B」按返回键都应退回上一步，而不是直接跳回楼层）
-//   replace —— 其余（改排序/价格），避免改一次排序就多一条历史
-function syncShopQuery() {
-  if (route.name !== 'shop') return;              // 别在别的页面把用户拽回 /shop
-  const next = filterQueryFromFilters();
-  if (sameShopQuery(next, route.query)) return;   // 已是这个 URL → 不重复导航（也避免与 watcher 打环）
-  const hadFilters = SHOP_FILTER_KEYS.some((k) => route.query[k]);
-  const hasFilters = SHOP_FILTER_KEYS.some((k) => next[k]);
-  const categoryChanged = String(next.category ?? '') !== String(route.query.category ?? '');
-  const target = { name: 'shop', query: next };
-  if (hadFilters !== hasFilters || categoryChanged) router.push(target); else router.replace(target);
-}
-
-// URL → filters（刷新、分享链接、前进/后退都靠它）。返回 true 表示 filters 真的变了（调用方据此决定是否重拉）。
-function applyShopQueryFromRoute() {
-  const q = route.query || {};
-  const next = {
-    categoryId: (q.category || '').toString(),
-    keyword: (q.kw || '').toString(),
-    minPrice: q.min != null ? String(q.min) : '',
-    maxPrice: q.max != null ? String(q.max) : '',
-    sort: (q.sort || '').toString(),
-  };
-  const changed = String(filters.categoryId || '') !== next.categoryId
-    || String(filters.keyword || '') !== next.keyword
-    || String(filters.minPrice ?? '') !== next.minPrice
-    || String(filters.maxPrice ?? '') !== next.maxPrice
-    || String(filters.sort || '') !== next.sort;
-  if (!changed) return false;
-  Object.assign(filters, next);
-  return true;
-}
-
-// 后台当前模块也进 URL：/admin?tab=orders
-// 目的与前台筛选一致 —— 可深链、可收藏、刷新保持、返回键语义正确（回到上一个模块而不是直接退出后台）。
-// ⚠️ 只在这两处管（syncAdminQuery 写出 / applyAdminQueryFromRoute 读入），AdminPanel 内不碰路由，避免两份状态各管一半。
-const ADMIN_TAB_DEFAULT = 'insights';   // 经营看板：与 adminMenu 初值一致，默认不写进 URL
-function syncAdminQuery() {
-  if (route.name !== 'admin') return;             // 别在别的页面把用户拽回后台
-  const nextTab = adminMenu.value === ADMIN_TAB_DEFAULT ? '' : adminMenu.value;
-  const curTab = (route.query.tab || '').toString();
-  if (curTab === nextTab) return;                 // 已一致 → 不重复导航（也避免与 watch 打环）
-  const query = { ...route.query };
-  if (nextTab) query.tab = nextTab; else delete query.tab;
-  const target = { name: 'admin', query };
-  // 切模块用 push：返回键才会「回到上一个模块」，而不是直接退出后台。
-  // （实测用 replace 时切模块不占历史，按返回键会一路退回进入后台之前那一页。）
-  // 纯清洗非法/失效参数（目标是没有 tab）用 replace：纠错不该占一条历史。
-  if (nextTab) router.push(target); else router.replace(target);
-}
-
-// URL → adminMenu：URL 是唯一真相（与前台筛选同一套语义）——带合法 tab 就用它，没带 / 非法即默认看板。
-// 末尾再跑一次 syncAdminQuery 是为了把非法 tab 从地址栏洗掉，保证地址栏与界面一致。
-function applyAdminQueryFromRoute() {
-  const raw = (route.query.tab || '').toString();
-  const valid = ADMIN_MENU_KEYS.includes(raw);
-  const tab = valid ? raw : ADMIN_TAB_DEFAULT;
-  if (adminMenu.value !== tab) adminMenu.value = tab;   // 改值 → watch 去写 URL；若值本就一致则完全不导航
-  // 非法 tab（?tab=hacker）直接洗掉：replace 不占历史，也不进 watch 那条路径（避免两次导航）。
-  if (raw && !valid) {
-    const query = { ...route.query };
-    delete query.tab;
-    router.replace({ name: 'admin', query });
-  }
-}
-
-// adminMenu 一变就同步 URL（唯一出口）。数据加载交给 AdminPanel 里的 watch 处理。
-watch(adminMenu, () => { syncAdminQuery(); });
-
-// 点分类后把结果区带进视野。**这是必须的**：从 hero 左侧分类栏点（页面顶部）时，
-// 结果区在视口下方 900+px（视口只有 627px），屏幕上什么都不会变，用户以为点了没反应。
-// 已经在上半屏内就不打扰 —— 从楼层「查看全部」进时结果区正好落在视口顶部，再滚一下反而莫名。
-async function scrollToResultsIfNeeded() {
-  await nextTick();
-  const el = document.querySelector('.product-area');
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  if (rect.top >= 0 && rect.top <= window.innerHeight * 0.5) return;
-  const sticky = document.querySelector('.site-header');   // 吸顶头部会盖住结果区首行，要减掉它的高度
-  const offset = (sticky ? sticky.getBoundingClientRect().height : 0) + 12;
-  window.scrollTo({ top: Math.max(0, window.scrollY + rect.top - offset), behavior: 'smooth' });
-}
-
-async function loadProducts() {
-  productsLoading.value = true;
-  try {
-    await fetchProducts();
-  } finally {
-    productsLoading.value = false;   // 用 finally：请求失败也要收骨架屏，否则骨架一直转
-  }
-}
-
-async function fetchProducts() {
-  const params = new URLSearchParams({ page: '1', size: String(products.size) });
-  if (filters.categoryId) params.set('categoryId', filters.categoryId);
-  if (filters.keyword) params.set('keyword', filters.keyword);
-  if (filters.minPrice !== '' && filters.minPrice != null) params.set('minPrice', String(filters.minPrice));
-  if (filters.maxPrice !== '' && filters.maxPrice != null) params.set('maxPrice', String(filters.maxPrice));
-  if (filters.sort) params.set('sort', filters.sort);
-  const data = await api.get(`/products?${params}`);
-  Object.assign(products, data);
-  syncShopQuery();   // 所有筛选变更都从这里汇集出口，一处同步 URL 即可
-  // 头部搜索/热搜留下的标记：等这一批商品渲染完再滚（nextTick 在 scrollToResultsIfNeeded 里）
-  if (scrollToResultsAfterLoad) {
-    scrollToResultsAfterLoad = false;
-    await scrollToResultsIfNeeded();
-  }
-}
-
-// 点分类 = 「导航」，不是「在当前结果里再收窄」→ 先把搜索类条件（关键词/品牌/价格）清掉。
-// ⚠️ 不清就会叠加成 0 条：实测「先搜牛奶 → 再点酒水饮料」= `?category=2&kw=牛奶` → 共 0 件 +
-// 「没有符合条件的商品，换个条件试试」，用户看到的就是"点了分类不显示商品"。
-// （价格框是 v-model 直连 filters 的，随手输个数字不回车也会被带进去。）
-// 排序刻意保留：它是展示偏好，不是筛选条件。
-async function chooseCategory(categoryId) {
-  filters.categoryId = categoryId;
-  filters.keyword = '';
-  filters.minPrice = '';
-  filters.maxPrice = '';
-  await loadProducts();
-  await scrollToResultsIfNeeded();
-}
-
-// 四个运营频道：合并成一个标签区块、一次只显示一行（ShopPage 的 .channel-row 是单行横滑），
-// 所以每屏取 6 件 —— 正好铺满一行，不出现横向滚动条也不留末行空洞（原先取 8 件配 6 列，右侧空 4 格）。
-// 池子取 30：这 4 个端点都是稳定 top-N（hot/new 还带 @Cacheable），取多少都只有那几条、
-// 固定顺序；多取一些才能让「换一批」在池内轮换（见 channelPage / rotateChannel）。
-async function loadHot() {
-  await loadChannel('hot', '/products/hot?limit=30');
-}
-
-async function loadNew() {
-  await loadChannel('new', '/products/new?limit=30');
-}
-
-async function loadHomeChannels() {
-  await Promise.all([loadHot(), loadNew(), loadGuess(), loadDwellRank()]);
-}
-
-async function loadGuess() {
-  await loadChannel('guess', '/recommendations/guess?limit=30');
-}
-
-async function loadDwellRank() {
-  await loadChannel('dwell', '/dwell/rank?limit=30');
-}
-
-function applyFilters() {
-  loadProducts();
-}
-
-// ⚠️ 必须连 categoryId / keyword 一起清：isFiltering 把 categoryId 也算作筛选条件，
-// 只清价格/排序会**清不掉分类** → 用户卡在「筛选结果」视图回不去楼层。
-// （价格/排序工具条已于 10-01 移除，「清空筛选」按钮是 resetFilters 仅剩的入口。）
-function resetFilters() {
-  filters.categoryId = '';
-  filters.keyword = '';
-  filters.minPrice = '';
-  filters.maxPrice = '';
-  filters.sort = '';
-  loadProducts();
 }
 
 // ================= 加购微交互：飞入购物车 + 角标弹跳 =================
