@@ -4,7 +4,7 @@ import { reactive, ref, computed, watch } from 'vue';
 
 export function useProductDetail({
   api, run, fail, isAdmin, router, navigate,
-  activeActivities, reviewedMap, loadRatingSummary, loadProducts,
+  activeActivities, reviewedMap, loadProducts, ratingSummaryMap,
   // productNavLock 是 App.vue 里的 let 变量，syncRoute 也要用 → 留在原地，这里用读写器操作
   isProductNavLocked, setProductNavLock,
   getFlashLimitOfProduct, getView,
@@ -95,6 +95,21 @@ export function useProductDetail({
   // selectedSkuImage → selectedSku → selectedSpec，顺序反了就是 TDZ 整页白屏。
   watch(selectedSkuImage, () => { currentImageIndex.value = 0; });
 
+  // 公开接口：全量商品星级聚合（有评价的商品才会出现）。
+  // 仪表盘「商品库存排行」与商品卡/详情都用它，与分页后的表格数据解耦。
+  async function loadRatingSummary() {
+    try {
+      const list = await api.get('/products/rating-summary');
+      const map = {};
+      for (const item of list || []) {
+        map[item.productId] = { avg: Number(item.avgRating || 0), count: Number(item.reviewCount || 0) };
+      }
+      ratingSummaryMap.value = map;
+    } catch (e) {
+      ratingSummaryMap.value = {};
+    }
+  }
+
   function openReviewForm(orderId) {
     reviewForm.orderId = orderId;
     reviewForm.rating = 5;
@@ -109,7 +124,7 @@ export function useProductDetail({
         imageUrls: reviewForm.images,
       });
       reviewedMap[id] = true;
-      loadRatingSummary(); // 新评价改变平均分，刷新商品卡/详情的星级聚合
+      await loadRatingSummary(); // 新评价改变平均分，刷新商品卡/详情的星级聚合
       reviewForm.orderId = null;
       reviewForm.images = [];
       await loadProducts();
@@ -207,5 +222,6 @@ export function useProductDetail({
     specDimensions, selectedSku, selectedSpecText,
     selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice,
     openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty,
+    loadRatingSummary,
   };
 }

@@ -278,6 +278,9 @@ import { useMemberPoints } from './composables/useMemberPoints.js';
 import { useOrders } from './composables/useOrders.js';
 import { useQuickBuy } from './composables/useQuickBuy.js';
 import { useCoupons } from './composables/useCoupons.js';
+import { useHeaderSearch } from './composables/useHeaderSearch.js';
+import { useCheckout } from './composables/useCheckout.js';
+import { useAdminLoaders } from './composables/useAdminLoaders.js';
 import { useProductDetail } from './composables/useProductDetail.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
@@ -298,47 +301,6 @@ const route = useRoute();
 const cartStore = useCartStore();
 const userStore = useUserStore();
 
-// 头部搜索框的输入（仅承载"用户刚敲的字"，筛选的真相在 filters + URL）
-const headerKeyword = ref('');
-
-// 头部搜索：跳转到商城并把关键词写入路由 query，其余条件一律丢掉（搜 = 一次全新查询，
-// 与「点分类会清掉关键词」正好对称）。⚠️ 光改 URL 不够 —— 结果区在首屏下方 900+px
-// （视口才 627px），不滚屏的话用户看到的就是"点了热搜/搜索没反应"。见 scrollToResultsIfNeeded。
-async function goSearch() {
-  const kw = (headerKeyword.value || '').trim();
-  const query = kw ? { kw } : {};
-  // 重复点同一个热搜词：路由对相同 query 的 push 会判为重复导航直接中止 → 数据不动是对的，
-  // 但不能连一点反应都没有，至少把用户带到结果区。
-  if (route.name === 'shop' && sameShopQuery(query, route.query)) {
-    await scrollToResultsIfNeeded();
-    return;
-  }
-  markScrollToResults();   // 由紧随其后的 loadProducts() 消费（它比在这里猜时机更准）
-  await router.push({ name: 'shop', query });
-}
-
-// 头部热词：一键填充并搜索
-function quickSearch(kw) {
-  headerKeyword.value = kw;
-  return goSearch();
-}
-
-// 头部「热搜」词条：原先是前端写死的 5 条（既没有"怎么才算热"的规则，后台也改不了），
-// 现由后台「热搜词管理」维护，前台只读启用项。无数据时整块隐藏（别只剩一个「热搜」空标签）。
-const hotSearches = ref([]);
-async function loadHotSearches() {
-  try { hotSearches.value = (await api.get('/hot-searches')) || []; } catch { hotSearches.value = []; }
-}
-
-// 页脚订阅
-const subEmail = ref('');
-const subMsg = ref('');
-function footerSubscribe() {
-  const v = (subEmail.value || '').trim();
-  const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  subMsg.value = ok ? '订阅成功，优惠情报将第一时间送达' : '请输入有效的邮箱地址';
-  if (ok) subEmail.value = '';
-}
 
 function navigate(name, params) {
   closeAccountMenu();
@@ -661,13 +623,16 @@ const cartBadgeCount = computed(() => (cart.items || [])
   .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
 const { contentEl, cartPillEl, cartBadgeEl, motionAllowed, bob, popCartBadge, flyToCart, onDocClickCapture, takeAddSource } = useCartUi({ cartBadgeCount, getView: () => view.value });
+// 页头搜索 / 热搜词 / 页脚订阅。⚠️ 必须早于 useAdminContent —— 后者的实参里立即求值 loadHotSearches。
+const { headerKeyword, hotSearches, subEmail, subMsg, goSearch, quickSearch, loadHotSearches, footerSubscribe } = useHeaderSearch({ api, router, route, sameShopQuery, scrollToResultsIfNeeded, markScrollToResults });
+
 // 公告 / 热搜词 / 轮播位：后台三个配置型模块。
 // ⚠️ 装配点必须在 isAdmin 之后（它是 ref，装配实参里立即求值）；api/run/showAlert/askConfirm/
 // loadHotSearches 只在 composable 的函数体内被调（用户点击时才执行），只需顶层存在。
 const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
 // 商品详情：SKU 规格、图集、停留上报、评价提交。productNavLock 是 App.vue 的 let 变量
 //（syncRoute 也要用）→ 留在原地，这里用读写器操作，避免两个来源各管一半。
-const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadRatingSummary, loadProducts, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getView: () => view.value });
+const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty, loadRatingSummary } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadProducts, ratingSummaryMap, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getView: () => view.value });
 
 // 购物车：增删改 + 可用券的数据源。
 // 购物车：金额合计、增删改、可用券。⚠️ 装配点必须在 useGuestCart 之后（要用 guestAdd / guestRemoveItem 等）。
@@ -689,6 +654,10 @@ const { loadOrders, loadMoreOrders, loadOrdersPage, loadReviewedFlags, payOrder,
 const { addDetailToCart, buildQuickBuyCartItem, buyDetailNow, enterQuickBuy, consumePendingQuickBuy } = useQuickBuy({ api, run, fail, session, isAdmin, router, navigate, notice, cart, quickBuy, pendingQuickBuy, productDetail, detailQuantity, selectedSpecText, effectiveDetailPrice, selectedSkuPrice, getFlashSaleOfProduct: flashSaleOfProduct, getFlashLimitOfProduct: flashLimitOfProduct, reportDwell, guestAdd, takeAddSource, flyToCart, setPendingAction, takePendingAction, clearPendingAction, goLogin });
 // 优惠券中心：可领列表 / 我的券 / 领取。与 useCart 的「可用券选择」是两件事（那边服务结算）。
 const { loadCoupons, receiveCoupon } = useCoupons({ api, run, session, isAdmin, coupons, myCoupons });
+// 后台各列表的数据加载。state 仍留在 App.vue —— 侧栏菜单要读它们的 total 算角标。
+const { loadAdminProducts, loadAdminOrders, loadAdminStatsOverview, loadRefundOrders, loadStockAlerts, loadAdminCoupons, loadAdminUsers } = useAdminLoaders({ api, isAdmin, adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, adminStatsOverview, refundOrders, refundStatusFilter, refundJumpPage, stockAlerts, adminCoupons, adminCouponKeyword, adminCouponJumpPage, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage });
+// 结算下单：地址簿 + 去结算 + 提交订单（购物车 / 立即购买两条路径）。
+const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder } = useCheckout({ api, run, fail, session, isAdmin, router, navigate, route, notice, cart, paying, quickBuy, selectedUserCouponId, userOptedOutCoupon, addresses, selectedAddressId, addressForm, usePoints, pointsToUse, memberPreview, isPickup, activeStoreId, isExpress, fulfillment, QUICKBUY_ITEM_ID, loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales, setPendingAction, goLogin });
 
 
 function ensureAllowedView() {
@@ -818,295 +787,6 @@ async function loadCategories() {
   if (!productForm.categoryId && categories.value[0]) productForm.categoryId = categories.value[0].id;
 
 }
-
-
-async function loadAddresses() {
-  if (!session.user || isAdmin.value) return;
-  addresses.value = await api.get('/addresses');
-  const defaultAddress = addresses.value.find((item) => item.isDefault) || addresses.value[0];
-  selectedAddressId.value = defaultAddress?.id || null;
-
-}
-
-function useAddress(address) {
-  selectedAddressId.value = address.id;
-  Object.assign(addressForm, address);
-  notice.value = '已选择该地址';
-  // 从结算页补地址过来的：选好即返回结算页继续下单（query 在 /addresses 上，回到 /checkout 即清除）
-  if (route.query.redirect === 'checkout') router.push({ name: 'checkout' });
-
-}
-
-async function saveAddress() {
-  await run(async () => {
-    const saved = await api.post('/addresses', addressForm);
-    selectedAddressId.value = saved.id;
-    await loadAddresses();
-  }, '地址已保存');
-  // 从结算页补地址过来的：保存后自动返回结算页继续下单（watch(view='checkout') 会重拉钱包/优惠券/门店等）
-  if (route.query.redirect === 'checkout') router.push({ name: 'checkout' });
-
-}
-
-async function goCheckout() {
-  if (!cart.items?.length) { fail('购物车为空，请先添加商品'); return; }
-  if (!session.user) { setPendingAction({ type: 'checkout', redirect: 'checkout' }); goLogin({ tab: 'login' }); return; }
-  if (!addresses.value.length) await loadAddresses();
-  if (!selectedAddressId.value && addresses.value.length) {
-    selectedAddressId.value = (addresses.value.find((item) => item.isDefault) || addresses.value[0]).id;
-  }
-  if (!selectedAddressId.value) { router.push({ name: 'addresses', query: { redirect: 'checkout' } }); return; }
-  await Promise.all([loadWallet(), loadMyCoupons(), loadUsableCoupons()]);
-  navigate('checkout');
-
-}
-
-async function createOrder() {
-  if (paying.value) return;
-  // 履约三选一：自提要选门店；即时配送与快递配送都要收货地址
-  if (isPickup.value) {
-    if (!activeStoreId.value) { fail('请选择自提门店'); return; }
-  } else if (!selectedAddressId.value) {
-    // 没有收货地址（且非门店自提）：跳到收货地址页补地址，加完带 redirect 自动返回结算继续下单
-    router.push({ name: 'addresses', query: { redirect: 'checkout' } });
-    return;
-  }
-  // 「立即购买」独立通道：不依赖购物车行，走 /orders/quick-buy；成功后清掉虚拟项（购物车零残留）
-  if (quickBuy.value) {
-    const q = quickBuy.value;
-    const body = { productId: q.productId, quantity: q.qty, skuSpec: q.spec || null, remark: '前端下单' };
-    if (isPickup.value) {
-      body.fulfillmentType = 'PICKUP';
-      body.pickupStoreId = activeStoreId.value;
-    } else {
-      body.fulfillmentType = isExpress.value ? 'EXPRESS' : 'INSTANT';
-      body.addressId = selectedAddressId.value;
-      if (!isExpress.value && fulfillment.slot) body.deliverySlot = fulfillment.slot;
-    }
-    if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
-    if (usePoints.value && memberPreview.value.pointsUsed > 0) {
-      body.usePoints = true;
-      body.pointsToUse = memberPreview.value.pointsUsed;
-    }
-    paying.value = true;
-    try {
-      await new Promise((r) => setTimeout(r, 700));
-      // 这里只「提交订单」，不自动付款 —— 订单一建成就已经锁了库存（后端 deductStocks 在建单时执行），
-      // 若此刻直接扣款，用户根本不知道自己刚才跨过了「下单」这一步。改由收银台显式倒计时后再决定。
-      const order = await api.post('/orders/quick-buy', body);
-      selectedUserCouponId.value = '';
-      userOptedOutCoupon.value = false;
-      usePoints.value = false;
-      pointsToUse.value = 0;
-      quickBuy.value = null;
-      cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
-      await loadCart();
-      await loadOrders();
-      // 下单即占秒杀名额（未付款也占），必须重拉，否则首页「还能买几件」停留在旧值
-      await loadFlashSales();
-      navigate('pay', { id: order.id });
-      return order;
-    } finally {
-      paying.value = false;
-    }
-  }
-  // 购物车结算路径：只下「已勾选」的项；被「立即购买」临时取消勾选的真实项不会进入本单（不污染购物车）。
-  const itemIds = (cart.items || []).filter((i) => i.selected !== false).map((i) => i.id);
-  if (!itemIds.length) { fail('请先在购物车勾选要购买的商品'); return; }
-  paying.value = true;
-  try {
-    // 模拟支付网关受理：先展示加载态，使模拟支付更逼真
-    await new Promise((r) => setTimeout(r, 700));
-    await run(async () => {
-      const body = { cartItemIds: itemIds, remark: '前端下单' };
-      if (isPickup.value) {
-        body.fulfillmentType = 'PICKUP';
-        body.pickupStoreId = activeStoreId.value;
-      } else {
-        // 即时配送与快递配送都要地址；只有即时配送带自选时段（快递时效由第三方决定）
-        body.fulfillmentType = isExpress.value ? 'EXPRESS' : 'INSTANT';
-        body.addressId = selectedAddressId.value;
-        if (!isExpress.value && fulfillment.slot) body.deliverySlot = fulfillment.slot;
-      }
-      if (selectedUserCouponId.value) body.userCouponId = selectedUserCouponId.value;
-      if (usePoints.value && memberPreview.value.pointsUsed > 0) {
-        body.usePoints = true;
-        body.pointsToUse = memberPreview.value.pointsUsed;
-      }
-      // 只提交、不付款：创建即锁定库存，剩下交给收银台倒计时，由用户决定是否真正扣款
-      const order = await api.post('/orders', body);
-      selectedUserCouponId.value = '';
-      userOptedOutCoupon.value = false;
-      usePoints.value = false;
-      pointsToUse.value = 0;
-      await loadCart();
-      await loadOrders();
-      // 下单会占掉秒杀名额（未付款也占），必须重拉，否则「还能买几件」停留在旧值
-      await loadFlashSales();
-      navigate('pay', { id: order.id });
-      return order;
-    }, '订单已提交，请在限定时间内完成支付');
-  } finally {
-    paying.value = false;
-  }
-}
-
-
-
-
-async function loadAdminProducts() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(adminProducts.page),
-    size: String(adminProducts.size),
-  });
-  if (adminProductKeyword.value.trim()) params.set('keyword', adminProductKeyword.value.trim());
-  if (adminProductStatus.value) params.set('status', adminProductStatus.value);
-  const data = await api.get(`/admin/products?${params}`);
-  Object.assign(adminProducts, data);
-  // 当前页被删空（如删掉最后一页最后一条）时，自动回退到上一页
-  if (adminProducts.items.length === 0 && adminProducts.page > 1) {
-    adminProducts.page -= 1;
-    await loadAdminProducts();
-    return;
-  }
-  adminJumpPage.value = adminProducts.page;
-}
-
-// 仪表盘「商品库存排行」需要全量商品，与分页后的表格数据解耦，避免只统计当前页
-// 公开接口：全量商品星级聚合（有评价的商品才会出现）
-async function loadRatingSummary() {
-  try {
-    const list = await api.get('/products/rating-summary');
-    const map = {};
-    for (const item of list || []) {
-      map[item.productId] = { avg: Number(item.avgRating || 0), count: Number(item.reviewCount || 0) };
-    }
-    ratingSummaryMap.value = map;
-  } catch (e) {
-    ratingSummaryMap.value = {};
-  }
-}
-
-
-
-
-
-
-
-
-async function loadAdminOrders() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(adminOrders.page),
-    size: String(adminOrders.size),
-  });
-  if (adminOrderKeyword.value.trim()) params.set('orderNo', adminOrderKeyword.value.trim());
-  if (adminOrderStatus.value) params.set('status', adminOrderStatus.value);
-  const data = await api.get(`/admin/orders?${params}`);
-  Object.assign(adminOrders, data);
-  // 当前页被删空（如取消最后一页最后一条）时，自动回退到上一页
-  if (adminOrders.items.length === 0 && adminOrders.page > 1) {
-    adminOrders.page -= 1;
-    await loadAdminOrders();
-    return;
-  }
-  adminOrderJumpPage.value = adminOrders.page;
-}
-
-// 仪表盘聚合统计：后端一次给全量口径（订单总数/成交额/今日/待办/状态分布），
-// 不再拿分页数据凑 KPI（旧实现请求 size=200 被后端 400 拒绝，环图永远是"暂无订单"）
-async function loadAdminStatsOverview() {
-  if (!isAdmin.value) return;
-  try {
-    adminStatsOverview.value = await api.get('/admin/stats/overview');
-  } catch (e) {
-    adminStatsOverview.value = null;
-  }
-}
-
-
-
-
-
-
-
-async function loadRefundOrders() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(refundOrders.page),
-    size: String(refundOrders.size),
-    refundStatus: refundStatusFilter.value,
-  });
-  const data = await api.get(`/admin/orders?${params}`);
-  Object.assign(refundOrders, data);
-  if (refundOrders.items.length === 0 && refundOrders.page > 1) {
-    refundOrders.page -= 1;
-    await loadRefundOrders();
-    return;
-  }
-  refundJumpPage.value = refundOrders.page;
-}
-
-
-
-
-
-async function loadStockAlerts() {
-  if (!isAdmin.value) return;
-  stockAlerts.value = await api.get('/admin/stock-alerts');
-
-}
-
-
-async function loadAdminCoupons() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(adminCoupons.page),
-    size: String(adminCoupons.size),
-  });
-  if (adminCouponKeyword.value.trim()) params.set('keyword', adminCouponKeyword.value.trim());
-  const data = await api.get(`/admin/coupons?${params}`);
-  Object.assign(adminCoupons, data);
-  if (adminCoupons.items.length === 0 && adminCoupons.page > 1) {
-    adminCoupons.page -= 1;
-    await loadAdminCoupons();
-    return;
-  }
-  adminCouponJumpPage.value = adminCoupons.page;
-}
-
-
-
-
-
-
-
-
-
-
-
-async function loadAdminUsers() {
-  if (!isAdmin.value) return;
-  const params = new URLSearchParams({
-    page: String(adminUsers.page),
-    size: String(adminUsers.size),
-  });
-  if (adminUserKeyword.value.trim()) params.set('keyword', adminUserKeyword.value.trim());
-  if (adminUserRole.value) params.set('role', adminUserRole.value);
-  if (adminUserStatus.value !== '') params.set('status', String(adminUserStatus.value));
-  const data = await api.get(`/admin/users?${params}`);
-  Object.assign(adminUsers, data);
-  if (adminUsers.items.length === 0 && adminUsers.page > 1) {
-    adminUsers.page -= 1;
-    await loadAdminUsers();
-    return;
-  }
-  adminUserJumpPage.value = adminUsers.page;
-}
-
-
-
 
 
 async function refreshAdminData() {
