@@ -1,3 +1,9 @@
+-- ============================================================
+-- DEPRECATED: 不要再用于(重新)部署。
+-- 部署目标已迁至阿里云香港 ECS，bootstrap 以 deploy/init.sql 为准。
+-- 本副本为旧 mysqldump，原含 19 条 DROP TABLE IF EXISTS(会清空目标库)，已在此剥离。
+-- 如需 Railway 部署请改用 deploy/init.sql 并自行适配。
+-- ============================================================
 -- MySQL dump 10.13  Distrib 8.0.30, for Win64 (x86_64)
 --
 -- Host: localhost    Database: supermarket_system
@@ -19,7 +25,6 @@
 -- Table structure for table `activity`
 --
 
-DROP TABLE IF EXISTS `activity`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `activity` (
@@ -58,7 +63,6 @@ UNLOCK TABLES;
 -- Table structure for table `cart_item`
 --
 
-DROP TABLE IF EXISTS `cart_item`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `cart_item` (
@@ -95,7 +99,6 @@ UNLOCK TABLES;
 -- Table structure for table `coupon`
 --
 
-DROP TABLE IF EXISTS `coupon`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `coupon` (
@@ -134,7 +137,6 @@ UNLOCK TABLES;
 -- Table structure for table `order_item`
 --
 
-DROP TABLE IF EXISTS `order_item`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `order_item` (
@@ -173,7 +175,6 @@ UNLOCK TABLES;
 -- Table structure for table `orders`
 --
 
-DROP TABLE IF EXISTS `orders`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `orders` (
@@ -236,7 +237,6 @@ UNLOCK TABLES;
 -- Table structure for table `page_dwell`
 --
 
-DROP TABLE IF EXISTS `page_dwell`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `page_dwell` (
@@ -268,7 +268,6 @@ UNLOCK TABLES;
 -- Table structure for table `payment_record`
 --
 
-DROP TABLE IF EXISTS `payment_record`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `payment_record` (
@@ -304,7 +303,6 @@ UNLOCK TABLES;
 -- Table structure for table `product`
 --
 
-DROP TABLE IF EXISTS `product`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product` (
@@ -358,7 +356,6 @@ UNLOCK TABLES;
 -- Table structure for table `product_attribute`
 --
 
-DROP TABLE IF EXISTS `product_attribute`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product_attribute` (
@@ -388,7 +385,6 @@ UNLOCK TABLES;
 -- Table structure for table `product_category`
 --
 
-DROP TABLE IF EXISTS `product_category`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product_category` (
@@ -423,7 +419,6 @@ UNLOCK TABLES;
 -- Table structure for table `product_image`
 --
 
-DROP TABLE IF EXISTS `product_image`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product_image` (
@@ -452,7 +447,6 @@ UNLOCK TABLES;
 -- Table structure for table `product_review`
 --
 
-DROP TABLE IF EXISTS `product_review`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product_review` (
@@ -493,7 +487,6 @@ UNLOCK TABLES;
 -- Table structure for table `product_sku`
 --
 
-DROP TABLE IF EXISTS `product_sku`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `product_sku` (
@@ -526,7 +519,6 @@ UNLOCK TABLES;
 -- Table structure for table `recharge_order`
 --
 
-DROP TABLE IF EXISTS `recharge_order`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `recharge_order` (
@@ -564,7 +556,6 @@ UNLOCK TABLES;
 -- Table structure for table `stock_log`
 --
 
-DROP TABLE IF EXISTS `stock_log`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `stock_log` (
@@ -603,7 +594,6 @@ UNLOCK TABLES;
 -- Table structure for table `sys_user`
 --
 
-DROP TABLE IF EXISTS `sys_user`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sys_user` (
@@ -647,7 +637,6 @@ UNLOCK TABLES;
 -- Table structure for table `user_address`
 --
 
-DROP TABLE IF EXISTS `user_address`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_address` (
@@ -683,7 +672,6 @@ UNLOCK TABLES;
 -- Table structure for table `user_coupon`
 --
 
-DROP TABLE IF EXISTS `user_coupon`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_coupon` (
@@ -722,7 +710,6 @@ UNLOCK TABLES;
 -- Table structure for table `wallet_transaction`
 --
 
-DROP TABLE IF EXISTS `wallet_transaction`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `wallet_transaction` (
