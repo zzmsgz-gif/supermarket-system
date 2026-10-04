@@ -9,6 +9,8 @@ import com.example.supermarket.repository.StoreRepository;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -27,6 +29,7 @@ public class StoreService {
         this.entityManager = entityManager;
     }
 
+    @Cacheable("stores")
     @Transactional(readOnly = true)
     public List<StoreResponse> listOpen() {
         return storeRepository.findByDeletedAndStatusOrderBySortNoAscIdAsc(NOT_DELETED, Store.OPEN).stream()
@@ -41,6 +44,7 @@ public class StoreService {
                 .collect(Collectors.toList());
     }
 
+    @CacheEvict(value = "stores", allEntries = true)
     @Transactional
     public StoreResponse create(StoreRequest request) {
         String name = request.getName().trim();
@@ -53,6 +57,7 @@ public class StoreService {
         return reload(storeRepository.saveAndFlush(store));
     }
 
+    @CacheEvict(value = "stores", allEntries = true)
     @Transactional
     public StoreResponse update(Long id, StoreRequest request) {
         Store store = getActive(id);
@@ -64,6 +69,7 @@ public class StoreService {
         return reload(storeRepository.saveAndFlush(store));
     }
 
+    @CacheEvict(value = "stores", allEntries = true)
     @Transactional
     public StoreResponse updateStatus(Long id, Byte status) {
         Store store = getActive(id);
@@ -71,6 +77,7 @@ public class StoreService {
         return reload(storeRepository.saveAndFlush(store));
     }
 
+    @CacheEvict(value = "stores", allEntries = true)
     @Transactional
     public void delete(Long id) {
         Store store = getActive(id);

@@ -31,14 +31,19 @@ public class MemberService {
     /** 积分抵扣最多占（优惠后）应付金额的比例 */
     private static final BigDecimal MAX_REDEEM_RATIO = new BigDecimal("0.5");
 
-    /** 等级阈值（累计消费，元）/ 折扣率 / 名称，数组下标即等级 */
+    /** 等级阈值（累计消费，元）/ 折扣率 / 名称，数组下标即等级。
+     *  7 档：在「钻石 0.90」与「黑卡 0.85」之间插入「紫钻 0.88」（用户要求新增一档 88 折）。 */
     private static final BigDecimal[] TIER_THRESHOLDS = {
-        BigDecimal.ZERO, new BigDecimal("1000"), new BigDecimal("5000"), new BigDecimal("20000")
+        BigDecimal.ZERO, new BigDecimal("1000"), new BigDecimal("5000"), new BigDecimal("20000"),
+        new BigDecimal("30000"), new BigDecimal("50000"), new BigDecimal("100000")
     };
     private static final BigDecimal[] TIER_RATES = {
-        BigDecimal.ONE, new BigDecimal("0.98"), new BigDecimal("0.95"), new BigDecimal("0.90")
+        BigDecimal.ONE, new BigDecimal("0.98"), new BigDecimal("0.95"), new BigDecimal("0.90"),
+        new BigDecimal("0.88"), new BigDecimal("0.85"), new BigDecimal("0.80")
     };
-    private static final String[] TIER_NAMES = {"普通会员", "银卡会员", "金卡会员", "钻石会员"};
+    private static final String[] TIER_NAMES = {"普通用户", "银卡会员", "金卡会员", "钻石会员", "紫钻会员", "黑卡会员", "至尊会员"};
+    /** 享受商品「会员价」的最低等级：level0=普通用户不享会员价（否则原价失去意义） */
+    private static final int MEMBER_PRICE_MIN_LEVEL = 1;
 
     private final SysUserRepository userRepository;
     private final PointLedgerRepository ledgerRepository;
@@ -81,6 +86,35 @@ public class MemberService {
             return ZERO;
         }
         return base.multiply(BigDecimal.ONE.subtract(rate)).setScale(2, RoundingMode.HALF_UP).max(ZERO);
+    }
+
+    /** 是否有资格享受商品「会员价」：level0=普通用户不行，避免原价失去意义 */
+    public static boolean canUseMemberPrice(Integer level) {
+        return level != null && level >= MEMBER_PRICE_MIN_LEVEL;
+    }
+
+    /**
+     * 单品成交单价（逐商品取优，不叠加）：
+     * 基准价（规格价/售价）→ 与「会员价」（够格时）取更低 → 再与「等级折扣价」取更低。
+     * 会员价与等级折扣互斥取优，避免同一件商品吃两道会员优惠（原实现会 ¥118 再打 98 折）。
+     *
+     * <p>刻意做成 static：购物车预览 {@code CartItemResponse.from} 是静态组装、拿不到 Spring bean，
+     * 下单与预览必须调同一个方法，否则又会出现「预览价 ≠ 实付价」。
+     */
+    public static BigDecimal unitPriceFor(Integer level, BigDecimal basePrice, BigDecimal memberPrice) {
+        if (basePrice == null) {
+            return null;
+        }
+        BigDecimal best = basePrice;
+        if (canUseMemberPrice(level) && memberPrice != null && memberPrice.compareTo(best) < 0) {
+            best = memberPrice;
+        }
+        int idx = level == null ? 0 : Math.max(0, Math.min(level, TIER_RATES.length - 1));
+        BigDecimal levelPrice = basePrice.multiply(TIER_RATES[idx]).setScale(2, RoundingMode.HALF_UP);
+        if (levelPrice.compareTo(best) < 0) {
+            best = levelPrice;
+        }
+        return best;
     }
 
     /** 实付金额可获积分（每满 1 元 1 分，向下取整）；按「今天」判定会员日。 */

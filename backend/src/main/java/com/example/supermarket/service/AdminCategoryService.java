@@ -10,6 +10,7 @@ import com.example.supermarket.repository.ProductCategoryRepository;
 import com.example.supermarket.repository.ProductRepository;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -41,6 +42,7 @@ public class AdminCategoryService {
                 .toList();
     }
 
+    @CacheEvict(value = "categories", allEntries = true)
     @Transactional
     public CategoryResponse createCategory(AdminCategoryRequest request) {
         Long parentId = request.getParentId();
@@ -59,6 +61,7 @@ public class AdminCategoryService {
         return CategoryResponse.from(categoryRepository.save(category));
     }
 
+    @CacheEvict(value = "categories", allEntries = true)
     @Transactional
     public CategoryResponse updateCategory(Long id, AdminCategoryRequest request) {
         ProductCategory category = getActiveCategory(id);
@@ -76,6 +79,7 @@ public class AdminCategoryService {
         return CategoryResponse.from(categoryRepository.save(category));
     }
 
+    @CacheEvict(value = "categories", allEntries = true)
     @Transactional
     public CategoryResponse updateStatus(Long id, CategoryStatusRequest request) {
         ProductCategory category = getActiveCategory(id);
@@ -84,6 +88,7 @@ public class AdminCategoryService {
         return CategoryResponse.from(categoryRepository.save(category));
     }
 
+    @CacheEvict(value = "categories", allEntries = true)
     @Transactional
     public void deleteCategory(Long id) {
         ProductCategory category = getActiveCategory(id);

@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +41,7 @@ public class LegalDocService {
                 .orElseThrow(() -> new ResourceNotFoundException("该文档不存在或未启用"));
     }
 
+    @Cacheable("legalDocs")
     @Transactional(readOnly = true)
     public List<LegalDocResponse> listPublic() {
         return legalDocRepository.findByEnabledOrderBySortNoAscIdAsc(ENABLED).stream()
@@ -53,6 +56,7 @@ public class LegalDocService {
                 .toList();
     }
 
+    @CacheEvict(value = "legalDocs", allEntries = true)
     @Transactional
     public LegalDocResponse update(String docKey, LegalDocRequest request) {
         String key = normalizeKey(docKey);

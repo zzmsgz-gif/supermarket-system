@@ -7,6 +7,8 @@ import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.HotSearchRepository;
 import java.util.List;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,7 @@ public class HotSearchService {
 
     /* ===== 前台 ===== */
 
+    @Cacheable("hotSearches")
     @Transactional(readOnly = true)
     public List<HotSearchResponse> listEnabled() {
         return hotSearchRepository
@@ -46,6 +49,7 @@ public class HotSearchService {
                 .toList();
     }
 
+    @CacheEvict(value = "hotSearches", allEntries = true)
     @Transactional
     public HotSearchResponse create(HotSearchRequest request) {
         String keyword = normalize(request.getKeyword());
@@ -56,6 +60,7 @@ public class HotSearchService {
         return HotSearchResponse.from(hotSearchRepository.save(entity));
     }
 
+    @CacheEvict(value = "hotSearches", allEntries = true)
     @Transactional
     public HotSearchResponse update(Long id, HotSearchRequest request) {
         HotSearch entity = hotSearchRepository.findById(id)
@@ -71,6 +76,7 @@ public class HotSearchService {
      * 软删（不是物理删）：种子脚本用固定 id + INSERT IGNORE 播默认词，
      * 物理删会让它在下次重启被重新插回来（"删了又复活"）。
      */
+    @CacheEvict(value = "hotSearches", allEntries = true)
     @Transactional
     public void delete(Long id) {
         hotSearchRepository.findById(id)

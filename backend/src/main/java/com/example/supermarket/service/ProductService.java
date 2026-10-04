@@ -137,8 +137,8 @@ public class ProductService {
         Product product = productRepository.findByIdAndStatusAndDeleted(id, ON_SALE, NOT_DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         List<String> baseTags = splitTags(product.getTags());
-        List<Product> candidates = productRepository.findByStatusAndDeletedAndCategoryIdAndIdNot(
-                ON_SALE, NOT_DELETED, product.getCategoryId(), id,
+        List<Product> candidates = productRepository.findByStatusAndDeletedAndCategoryIdAndIdNotAndKind(
+                ON_SALE, NOT_DELETED, product.getCategoryId(), id, Product.KIND_NORMAL,
                 PageRequest.of(0, Math.max(limit * 4, 20), Sort.by(Sort.Direction.DESC, "sales")));
         return candidates.stream()
                 .map(p -> new AbstractMap.SimpleEntry<>(p, relatedScore(p, baseTags)))
@@ -170,8 +170,9 @@ public class ProductService {
                         tagWeight.merge(t, 1, Integer::sum);
                     }
                 }
-                List<Product> candidates = productRepository.findByStatusAndDeleted(
-                        ON_SALE, NOT_DELETED, PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "sales")));
+                List<Product> candidates = productRepository.findByStatusAndDeletedAndKind(
+                        ON_SALE, NOT_DELETED, Product.KIND_NORMAL,
+                        PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "sales")));
                 List<Product> scored = candidates.stream()
                         .map(p -> new AbstractMap.SimpleEntry<>(p, guessScore(p, categoryWeight, tagWeight)))
                         .filter(e -> e.getValue() > 0)
@@ -311,6 +312,8 @@ public class ProductService {
                 Predicate skuLike = cb.like(cb.lower(root.get("sku")), pattern);
                 predicates.add(cb.or(nameLike, skuLike));
             }
+            // 秒杀独立商品（kind=FLASH）只在秒杀区出现，绝不混入普通商品搜索/楼层
+            predicates.add(cb.or(cb.isNull(root.get("kind")), cb.equal(root.get("kind"), Product.KIND_NORMAL)));
             return cb.and(predicates.toArray(Predicate[]::new));
         };
     }

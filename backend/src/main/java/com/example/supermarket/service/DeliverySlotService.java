@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -23,6 +24,7 @@ public class DeliverySlotService {
     /** 当天下单至少提前多久才能选该时段（小时） */
     private static final int MIN_LEAD_HOURS = 1;
 
+    @Cacheable("deliverySlots")
     public List<Map<String, Object>> slots() {
         LocalDateTime now = LocalDateTime.now();
         List<Map<String, Object>> result = new ArrayList<>();

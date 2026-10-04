@@ -73,7 +73,8 @@ app:
   bootstrap:
     admin-username: ${APP_BOOTSTRAP_ADMIN_USERNAME:}
     admin-password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
+  # 进程内 Caffeine 缓存：默认开启（无需 Redis 等外部进程）。设 APP_CACHE_ENABLED=false 可整体关闭。
   cache:
-    enabled: ${APP_CACHE_ENABLED:false}
+    enabled: ${APP_CACHE_ENABLED:true}
   idempotency:
     ttl-seconds: ${APP_IDEMPOTENCY_TTL_SECONDS:300}

@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,6 +84,7 @@ public class MemberDayService {
      * 前台展示用：启用中且**未过期**的会员日 + 下一次的日期 + 一句话描述
      * （会员中心直接用 `slogan`，免得前端拼文案）。
      */
+    @Cacheable("memberDay")
     @Transactional(readOnly = true)
     public Map<String, Object> publicView() {
         LocalDate today = LocalDate.now();
@@ -101,6 +104,7 @@ public class MemberDayService {
 
     // ---------------- 后台维护 ----------------
 
+    @CacheEvict(value = "memberDay", allEntries = true)
     @Transactional
     public MemberDayResponse create(MemberDayRequest request) {
         LocalDate date = request.getMemberDate();
@@ -116,6 +120,7 @@ public class MemberDayService {
         return MemberDayResponse.from(memberDayRepository.save(entity));
     }
 
+    @CacheEvict(value = "memberDay", allEntries = true)
     @Transactional
     public MemberDayResponse update(Long id, MemberDayRequest request) {
         MemberDay entity = memberDayRepository.findById(id)
@@ -136,6 +141,7 @@ public class MemberDayService {
         return MemberDayResponse.from(memberDayRepository.save(entity));
     }
 
+    @CacheEvict(value = "memberDay", allEntries = true)
     @Transactional
     public void delete(Long id) {
         MemberDay entity = memberDayRepository.findById(id)

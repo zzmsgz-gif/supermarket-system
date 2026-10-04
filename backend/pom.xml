@@ -83,10 +83,14 @@
             <version>2.8.0</version>
         </dependency>
 
-        <!-- Redis 缓存（默认关闭；启用需设置 app.cache.enabled=true 并运行 Redis） -->
+        <!-- 本地缓存（Caffeine，进程内；默认开启，无需 Redis。app.cache.enabled=false 可关闭） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
         </dependency>
     </dependencies>
 

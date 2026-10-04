@@ -7,6 +7,8 @@ import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.BannerRepository;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,7 @@ public class BannerService {
         this.bannerRepository = bannerRepository;
     }
 
+    @Cacheable("banners")
     @Transactional(readOnly = true)
     public List<BannerResponse> listEnabled() {
         return bannerRepository.findByEnabledAndDeletedOrderBySortOrderAscIdAsc(ENABLED, NOT_DELETED)
@@ -35,6 +38,7 @@ public class BannerService {
                 .stream().map(BannerResponse::from).collect(Collectors.toList());
     }
 
+    @CacheEvict(value = "banners", allEntries = true)
     @Transactional
     public BannerResponse create(BannerRequest request) {
         Banner entity = new Banner();
@@ -43,6 +47,7 @@ public class BannerService {
         return BannerResponse.from(bannerRepository.save(entity));
     }
 
+    @CacheEvict(value = "banners", allEntries = true)
     @Transactional
     public BannerResponse update(Long id, BannerRequest request) {
         Banner entity = bannerRepository.findById(id)
@@ -52,6 +57,7 @@ public class BannerService {
         return BannerResponse.from(bannerRepository.save(entity));
     }
 
+    @CacheEvict(value = "banners", allEntries = true)
     @Transactional
     public void delete(Long id) {
         bannerRepository.findById(id)

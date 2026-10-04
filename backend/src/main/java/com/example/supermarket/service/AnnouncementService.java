@@ -6,6 +6,8 @@ import com.example.supermarket.entity.Announcement;
 import com.example.supermarket.repository.AnnouncementRepository;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -30,6 +32,7 @@ public class AnnouncementService {
                 .collect(Collectors.toList());
     }
 
+    @CacheEvict(value = "announcements", allEntries = true)
     @org.springframework.transaction.annotation.Transactional
     public AnnouncementResponse create(AnnouncementRequest request) {
         Announcement entity = new Announcement();
@@ -39,6 +42,7 @@ public class AnnouncementService {
         return AnnouncementResponse.from(announcementRepository.save(entity));
     }
 
+    @CacheEvict(value = "announcements", allEntries = true)
     @org.springframework.transaction.annotation.Transactional
     public AnnouncementResponse update(Long id, AnnouncementRequest request) {
         Announcement entity = announcementRepository.findById(id)
@@ -48,6 +52,7 @@ public class AnnouncementService {
         return AnnouncementResponse.from(announcementRepository.save(entity));
     }
 
+    @CacheEvict(value = "announcements", allEntries = true)
     @org.springframework.transaction.annotation.Transactional
     public void delete(Long id) {
         announcementRepository.findById(id)
@@ -70,6 +75,7 @@ public class AnnouncementService {
         entity.setEnabled((byte) (Boolean.TRUE.equals(request.getEnabled()) ? 1 : 0));
     }
 
+    @Cacheable("announcements")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<AnnouncementResponse> listEnabled() {
         return announcementRepository

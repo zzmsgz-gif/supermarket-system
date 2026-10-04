@@ -5,13 +5,21 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "product")
+@Table(name = "product", indexes = {
+        @Index(name = "idx_product_kind", columnList = "kind"),
+        @Index(name = "idx_product_del_status_cat", columnList = "deleted, status, category_id")
+})
 public class Product {
+
+    /** 商品类型：普通在售商品 NORMAL；由秒杀独立出来的「秒杀商品」FLASH（与原商品是两件不同的商品） */
+    public static final String KIND_NORMAL = "NORMAL";
+    public static final String KIND_FLASH = "FLASH";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -82,6 +90,10 @@ public class Product {
 
     @Column(nullable = false)
     private Byte deleted;
+
+    /** 商品类型：NORMAL 普通商品 / FLASH 秒杀独立商品。公开列表与后台商品列表都按此排除 FLASH。 */
+    @Column(name = "kind", length = 16, nullable = false, columnDefinition = "varchar(16) not null default 'NORMAL'")
+    private String kind = KIND_NORMAL;
 
     public Long getId() {
         return id;
@@ -265,5 +277,13 @@ public class Product {
 
     public void setDeleted(Byte deleted) {
         this.deleted = deleted;
+    }
+
+    public String getKind() {
+        return kind;
+    }
+
+    public void setKind(String kind) {
+        this.kind = kind;
     }
 }

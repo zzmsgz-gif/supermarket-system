@@ -21,6 +21,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -56,6 +58,7 @@ public class ActivityService {
         return new ActivityEvaluation(best, bestDiscount);
     }
 
+    @Cacheable("activities")
     @Transactional(readOnly = true)
     public List<Activity> listActiveNow() {
         LocalDateTime now = LocalDateTime.now();
@@ -79,6 +82,7 @@ public class ActivityService {
         return PageResponse.of(items, safePage, safeSize, page1.getTotalElements());
     }
 
+    @CacheEvict(value = "activities", allEntries = true)
     @Transactional
     public ActivityResponse createActivity(AdminActivityRequest request) {
         validate(request);
@@ -88,6 +92,7 @@ public class ActivityService {
         return ActivityResponse.from(activityRepository.save(activity));
     }
 
+    @CacheEvict(value = "activities", allEntries = true)
     @Transactional
     public ActivityResponse updateActivity(Long id, AdminActivityRequest request) {
         Activity activity = getActive(id);
@@ -96,6 +101,7 @@ public class ActivityService {
         return ActivityResponse.from(activityRepository.save(activity));
     }
 
+    @CacheEvict(value = "activities", allEntries = true)
     @Transactional
     public void deleteActivity(Long id) {
         Activity activity = getActive(id);
@@ -103,6 +109,7 @@ public class ActivityService {
         activityRepository.save(activity);
     }
 
+    @CacheEvict(value = "activities", allEntries = true)
     @Transactional
     public ActivityResponse updateStatus(Long id, Integer status) {
         Activity activity = getActive(id);

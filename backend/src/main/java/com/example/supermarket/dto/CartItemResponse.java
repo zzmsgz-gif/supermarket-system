@@ -1,5 +1,7 @@
 package com.example.supermarket.dto;
 
+import com.example.supermarket.service.MemberService;
+
 import com.example.supermarket.entity.CartItem;
 import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.Product;
@@ -37,6 +39,12 @@ public class CartItemResponse {
     private Integer flashQty;
     /** 非秒杀单价（min(正常售价, 会员价)），供前端展示「超出部分按原价」那一段 */
     private BigDecimal regularPrice;
+    /**
+     * 本行「会员让利」（等级折扣 / 商品会员价带来的优惠，不含秒杀），单位：元。
+     * = (非会员单价 − 会员成交单价) × 数量；非会员或会员价未低于基准价时为 0。
+     * 供前端结算页把「会员折扣」单独拆出一行，与活动 / 优惠券并列展示。
+     */
+    private BigDecimal memberDiscount;
     /**
      * 商品是否仍在售（未下架、未软删）。购物车/结算页必须能提前看出「这行已经买不了」——
      * 否则用户要等到提交订单才被后端拦下，而且只能拿到一句笼统的错误。
@@ -78,6 +86,16 @@ public class CartItemResponse {
      */
     public static CartItemResponse from(CartItem item, Product product, FlashSale flashSale, Integer flashQty,
             BigDecimal skuPrice) {
+        // 未传会员等级时按普通用户处理（level0 不享会员价）
+        return from(item, product, flashSale, flashQty, skuPrice, 0);
+    }
+
+    /**
+     * @param memberLevel 买家会员等级：决定能否享「商品会员价」与「等级折扣」；
+     *                    与下单 {@code OrderService} 同口径（逐商品取优、不叠加）。传 null 按普通用户处理。
+     */
+    public static CartItemResponse from(CartItem item, Product product, FlashSale flashSale, Integer flashQty,
+            BigDecimal skuPrice, Integer memberLevel) {
         CartItemResponse response = new CartItemResponse();
         response.setId(item.getId());
         response.setProductId(product.getId());
@@ -86,12 +104,11 @@ public class CartItemResponse {
         response.setProductCoverUrl(product.getCoverUrl());
         response.setSkuSpec(item.getSkuSpec());
         int qty = item.getQuantity();
-        BigDecimal regular = skuPrice != null ? skuPrice : product.getPrice();
-        // 只有「未走规格价」时才比会员价：会员价是商品级绝对值，与规格价不可直接比大小
-        if (skuPrice == null && product.getMemberPrice() != null
-                && product.getMemberPrice().compareTo(regular) < 0) {
-            regular = product.getMemberPrice();
-        }
+        // 逐商品取优：会员价（level>=1 才享）与「等级折扣价」取更低，两者不叠加。
+        // 走规格价时不比较会员价 —— 会员价是商品级绝对值，与规格价不可直接比大小。
+        BigDecimal regular = MemberService.unitPriceFor(memberLevel,
+                skuPrice != null ? skuPrice : product.getPrice(),
+                skuPrice == null ? product.getMemberPrice() : null);
         // 秒杀价按「折扣率」套到规格价上：走规格价时 = 规格价 × (基准秒杀价 / 基准价)，否则用基准秒杀绝对值
         BigDecimal flashUnitPrice = flashSale != null
                 ? flashSale.flashPriceFor(product.getPrice(), skuPrice) : regular;
@@ -111,6 +128,16 @@ public class CartItemResponse {
         response.setProductPrice(unit);
         response.setSubtotalAmount(subtotal);
         response.setRegularPrice(regular);
+        // 会员折扣（仅常规成交；秒杀行的优惠走秒杀行，不计入会员折扣）
+        BigDecimal memberDiscount = BigDecimal.ZERO;
+        if (!flashApplies) {
+            BigDecimal baseUnit = skuPrice != null ? skuPrice : product.getPrice();
+            BigDecimal perUnitMd = baseUnit.subtract(regular);
+            if (perUnitMd.compareTo(BigDecimal.ZERO) > 0) {
+                memberDiscount = perUnitMd.multiply(BigDecimal.valueOf(qty));
+            }
+        }
+        response.setMemberDiscount(memberDiscount.setScale(2, java.math.RoundingMode.HALF_UP));
         if (fq > 0) {
             response.setFlashSaleId(flashSale.getId());
             response.setFlashPrice(flashUnit);
@@ -279,6 +306,14 @@ public class CartItemResponse {
 
     public void setRegularPrice(BigDecimal regularPrice) {
         this.regularPrice = regularPrice;
+    }
+
+    public BigDecimal getMemberDiscount() {
+        return memberDiscount;
+    }
+
+    public void setMemberDiscount(BigDecimal memberDiscount) {
+        this.memberDiscount = memberDiscount;
     }
 
 }

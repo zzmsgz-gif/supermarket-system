@@ -39,6 +39,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -100,6 +101,7 @@ public class AdminProductService {
         return enrich(getActiveProduct(id));
     }
 
+    @CacheEvict(cacheNames = {"productDetail", "hotProducts", "newProducts"}, allEntries = true)
     @Transactional
     public ProductDetailResponse createProduct(AdminProductCreateRequest request) {
         String sku = normalize(request.getSku());
@@ -118,6 +120,7 @@ public class AdminProductService {
         return enrich(saved);
     }
 
+    @CacheEvict(cacheNames = {"productDetail", "hotProducts", "newProducts"}, allEntries = true)
     @Transactional
     public ProductDetailResponse updateProduct(Long id, AdminProductUpdateRequest request) {
         Product product = getActiveProduct(id);
@@ -165,6 +168,7 @@ public class AdminProductService {
         return enrich(product);
     }
 
+    @CacheEvict(cacheNames = {"productDetail", "hotProducts", "newProducts"}, allEntries = true)
     @Transactional
     public ProductDetailResponse updateStatus(Long id, ProductStatusRequest request) {
         Product product = getActiveProduct(id);
@@ -174,6 +178,7 @@ public class AdminProductService {
         return enrich(productRepository.save(product));
     }
 
+    @CacheEvict(cacheNames = {"productDetail", "hotProducts", "newProducts"}, allEntries = true)
     @Transactional
     public void deleteProduct(Long id) {
         Product product = getActiveProduct(id);
@@ -278,6 +283,8 @@ public class AdminProductService {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("deleted"), NOT_DELETED));
+            // 秒杀独立商品由秒杀场次统一管理，不出现在普通商品列表里（避免被误改/误删）
+            predicates.add(cb.or(cb.isNull(root.get("kind")), cb.equal(root.get("kind"), Product.KIND_NORMAL)));
 
             if (StringUtils.hasText(status)) {
                 String normalized = normalize(status);

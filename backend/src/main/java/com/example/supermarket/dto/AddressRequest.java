@@ -5,28 +5,28 @@ import jakarta.validation.constraints.Size;
 
 public class AddressRequest {
 
-    @NotBlank(message = "Receiver name is required")
-    @Size(max = 50, message = "Receiver name must be at most 50 characters")
+    @NotBlank(message = "请填写收货人姓名")
+    @Size(max = 50, message = "收货人姓名不能超过 50 个字符")
     private String receiverName;
 
-    @NotBlank(message = "Receiver phone is required")
-    @Size(max = 20, message = "Receiver phone must be at most 20 characters")
+    @NotBlank(message = "请填写手机号码")
+    @Size(max = 20, message = "手机号码不能超过 20 个字符")
     private String receiverPhone;
 
-    @NotBlank(message = "Province is required")
-    @Size(max = 50, message = "Province must be at most 50 characters")
+    @NotBlank(message = "请选择省份")
+    @Size(max = 50, message = "省份不能超过 50 个字符")
     private String province;
 
-    @NotBlank(message = "City is required")
-    @Size(max = 50, message = "City must be at most 50 characters")
+    @NotBlank(message = "请选择城市")
+    @Size(max = 50, message = "城市不能超过 50 个字符")
     private String city;
 
-    @NotBlank(message = "District is required")
-    @Size(max = 50, message = "District must be at most 50 characters")
+    @NotBlank(message = "请选择区/县")
+    @Size(max = 50, message = "区/县不能超过 50 个字符")
     private String district;
 
-    @NotBlank(message = "Detail address is required")
-    @Size(max = 255, message = "Detail address must be at most 255 characters")
+    @NotBlank(message = "请填写详细地址")
+    @Size(max = 255, message = "详细地址不能超过 255 个字符")
     private String detailAddress;
 
     private Boolean isDefault;

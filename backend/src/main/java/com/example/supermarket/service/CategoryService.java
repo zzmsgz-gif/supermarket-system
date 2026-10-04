@@ -3,6 +3,7 @@ package com.example.supermarket.service;
 import com.example.supermarket.dto.CategoryResponse;
 import com.example.supermarket.repository.ProductCategoryRepository;
 import java.util.List;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,7 @@ public class CategoryService {
         this.categoryRepository = categoryRepository;
     }
 
+    @Cacheable("categories")
     @Transactional(readOnly = true)
     public List<CategoryResponse> listEnabledCategories() {
         return categoryRepository.findByStatusAndDeletedOrderBySortNoAscIdAsc((byte) 1, (byte) 0)

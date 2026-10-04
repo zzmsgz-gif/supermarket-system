@@ -30,7 +30,12 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     List<Product> findByStatusAndDeletedAndCategoryIdAndIdNot(String status, Byte deleted, Long categoryId, Long id, Pageable pageable);
 
+    List<Product> findByStatusAndDeletedAndCategoryIdAndIdNotAndKind(
+            String status, Byte deleted, Long categoryId, Long id, String kind, Pageable pageable);
+
     List<Product> findByStatusAndDeleted(String status, Byte deleted, Pageable pageable);
+
+    List<Product> findByStatusAndDeletedAndKind(String status, Byte deleted, String kind, Pageable pageable);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Product p set p.stock = p.stock - :quantity, p.sales = p.sales + :quantity where p.id = :id and p.status = :status and p.deleted = :deleted and p.stock >= :quantity")
