@@ -10,19 +10,9 @@ USE supermarket_system;
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP TABLE IF EXISTS product_review;
-DROP TABLE IF EXISTS user_coupon;
-DROP TABLE IF EXISTS coupon;
-DROP TABLE IF EXISTS stock_log;
-DROP TABLE IF EXISTS wallet_transaction;
-DROP TABLE IF EXISTS payment_record;
-DROP TABLE IF EXISTS order_item;
-DROP TABLE IF EXISTS orders;
-DROP TABLE IF EXISTS cart_item;
-DROP TABLE IF EXISTS user_address;
-DROP TABLE IF EXISTS product;
-DROP TABLE IF EXISTS product_category;
-DROP TABLE IF EXISTS sys_user;
+-- 安全约束：本脚本只用于「新机首次建表」，故意不含 DROP TABLE。
+-- 任何 `mysql < init.sql`（无论目标库名是什么）都只会建表/报错，绝不会清空已有库。
+-- 验证请在独立空库加载，或先 `sed '/^CREATE TABLE/,$!d'` 剥掉头部。
 
 CREATE TABLE sys_user (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
@@ -96,10 +86,13 @@ CREATE TABLE product (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted TINYINT NOT NULL DEFAULT 0,
+    kind VARCHAR(16) NOT NULL DEFAULT 'NORMAL' COMMENT 'NORMAL 普通商品 / FLASH 秒杀独立商品',
     PRIMARY KEY (id),
     UNIQUE KEY uk_product_sku (sku),
     KEY idx_product_category_status (category_id, status),
     KEY idx_product_name (name),
+    KEY idx_product_kind (kind),
+    KEY idx_product_del_status_cat (deleted, status, category_id),
     CONSTRAINT fk_product_category
         FOREIGN KEY (category_id) REFERENCES product_category (id),
     CONSTRAINT chk_product_price CHECK (price >= 0),
@@ -650,7 +643,8 @@ SET FOREIGN_KEY_CHECKS = 1;
 CREATE TABLE flash_sale (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(80) NOT NULL COMMENT '场次名，如「早市秒杀」',
-    product_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL COMMENT '克隆出来的「秒杀独立商品」id',
+    source_product_id BIGINT DEFAULT NULL COMMENT '被秒杀的原商品 id（用于校验同原商品不可并存未结束场次）',
     flash_price DECIMAL(10, 2) NOT NULL COMMENT '秒杀价（必须低于商品售价）',
     total_quota INT NOT NULL COMMENT '秒杀总名额（与商品库存相互独立）',
     sold_quota INT NOT NULL DEFAULT 0 COMMENT '已抢名额',
@@ -698,6 +692,19 @@ CREATE TABLE password_reset_request (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='找回密码申请';
 
 -- 首页头部「热搜」词条（原先这 5 条写死在前端 App.vue 里，既没有"怎么才算热"的规则、后台也改不了）
+CREATE TABLE banner (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    image_url VARCHAR(500) DEFAULT NULL COMMENT '背景图（本地 uploads）',
+    link_product_id BIGINT UNSIGNED DEFAULT NULL COMMENT '点击跳转商品（可空）',
+    sort_order INT NOT NULL DEFAULT 0,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    deleted TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_banner_enabled (enabled, deleted, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='首页轮播位';
+
 CREATE TABLE hot_search (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
     keyword VARCHAR(30) NOT NULL COMMENT '点击后实际搜索的词（对应 /shop?kw=）',
