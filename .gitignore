@@ -49,3 +49,20 @@ backend/**/*.err
 # Python 字节码缓存（部署脚本跑语法检查时会生成）
 __pycache__/
 *.pyc
+
+# 巨型组件拆分过程中的产物（非源码）：
+# dist_b*tmp/dist_deploy = 绕开被 Windows 锁住的 dist/ 时的临时构建输出；
+# *.b2out/_b*out.txt = 拆分脚本的中间产物；*.bak_b* = 拆分前整份备份。
+frontend/dist_b*tmp/
+frontend/dist_deploy/
+frontend/src/*.b2out
+frontend/src/**/*.b2out
+frontend/src/*.bak_b*
+frontend/src/_b*
+frontend/src/**/_b*
+frontend/src/_appctx_*.txt
+frontend/src/_locktest.txt
+frontend/src/_writeprobe.txt
+frontend/src/_verify_ids.py
+frontend/src/*.new
+frontend/src/*.test

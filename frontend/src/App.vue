@@ -254,38 +254,18 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, provide } from 'vue';
 import { api, setToken, isRemembered } from './api/client';
 import { setPendingAction, takePendingAction, clearPendingAction } from './composables/pendingAction.js';
+import { useStores } from './composables/useStores.js';
+import { useLegalDoc } from './composables/useLegalDoc.js';
+import { useMessages } from './composables/useMessages.js';
+import { useAuth } from './composables/useAuth';
+import { useRecharge } from './composables/useRecharge';
+import { useActivity } from './composables/useActivity.js';
+import { useFavorites } from './composables/useFavorites.js';
+import { useFlashSale } from './composables/useFlashSale.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
@@ -591,129 +571,6 @@ async function mergeGuestCartToServer() {
     await loadCart();
   }
 }
-// 活动规则缓存拉取（凑单进度条用；公开接口，游客也可调）
-async function ensureActiveActivities() {
-  if (activeActivities.value.length) return;
-  try { activeActivities.value = (await api.get('/activities/active')) || []; } catch { /* 非关键 */ }
-}
-// 活动口号：通栏横幅/商品角标共用
-function activitySlogan(a) {
-  if (!a) return '';
-  const t = Number(a.threshold || 0);
-  return a.type === 'DISCOUNT'
-    ? `满${t}打${Math.round(Number(a.discount) * 10)}折`
-    : `满${t}减${Number(a.discount)}`;
-}
-// 全站通栏首推：按「满额时的实际减免」取力度最大者
-// 顶部公告带单条文案：活动名里已含「满/折/减」语义时只显名字，避免与口号重复
-function activityNoticeText(a) {
-  const name = String(a.name || '').trim();
-  const slogan = activitySlogan(a);
-  if (/满|折|减/.test(name)) return name;
-  return name ? `${name} · ${slogan}` : slogan;
-}
-// 公告带轮播：全部来自后台「营销活动管理」（4s 一换）
-//   · 满减/折扣活动 → 「限时活动 满200减50」
-//   · 纯文案活动(type=PROMOTION) → 直接显示 name（新人福利这类只宣传不让利的文案）
-// 不再有任何硬编码，也不再从「商城公告」取 —— 避免同一内容在公告栏与顶栏各显示一遍。
-const noticeIndex = ref(0);
-let noticeTimer = null;
-const noticeList = computed(() => {
-  const items = [];
-  for (const a of activeActivities.value || []) {
-    if (String(a.type || '').toUpperCase() === 'PROMOTION') {
-      const text = String(a.name || '').trim();
-      if (text) items.push(text);
-      continue;
-    }
-    if (Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0) {
-      items.push(`限时活动 ${activityNoticeText(a)}`);
-    }
-  }
-  return items;
-});
-const rotatingNotice = computed(() => noticeList.value[noticeIndex.value % noticeList.value.length] || '');
-// 到达门槛后能减多少 —— 与后端 evaluateBestActivity「取减免最大者」同一口径
-function activityOffset(a) {
-  return a.type === 'DISCOUNT'
-    ? Number(a.threshold) * (1 - Number(a.discount))
-    : Number(a.discount);
-}
-
-// 商品是否命中该活动（ALL / CATEGORY / PRODUCT 三种范围）
-function activityMatches(a, product) {
-  const scope = String(a.scope || 'ALL');
-  if (scope === 'PRODUCT') return Number(a.productId) === Number(product.id);
-  if (scope === 'CATEGORY') return a.categoryId != null && Number(a.categoryId) === Number(product.categoryId);
-  return true;
-}
-
-const topActivity = computed(() => [...(activeActivities.value || [])]
-  .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
-  .sort((x, y) => activityOffset(y) - activityOffset(x))[0] || null);
-// 商品卡角标：只在活动**限定了分类或单品**（scope ≠ ALL）时才显示，且取命中的活动里「最省」的那个。
-//
-// 为什么排除全场活动：全场活动对每一张商品卡都是同一句话，一屏重复几十次没有任何信息量，
-// 反而把真正有区分度的「分类专属 / 单品专属」活动淹没了；全场活动交给页头公告条统一宣传。
-// 为什么取「最省」而不是「第一个命中的」：角标必须与结算实际生效的那条一致，
-// 否则会出现「卡上写满200打8折、实付按满200减50」，被当成欺骗。
-function productActivityTag(product) {
-  const hits = (activeActivities.value || [])
-    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0)
-    .filter((a) => String(a.scope || 'ALL') !== 'ALL')
-    .filter((a) => activityMatches(a, product));
-  if (!hits.length) return '';
-  return activitySlogan([...hits].sort((x, y) => activityOffset(y) - activityOffset(x))[0]);
-}
-// 凑单进度条：与后端同口径——只有达到门槛的活动才生效，实际生效取「减免金额最大者」，
-// 未达门槛时宣传的也是「达到门槛后减免最大」的同一活动，保证达标前后文案一致。
-const cartActivityProgress = computed(() => {
-  const amount = cartLocalTotal.value;
-  const rules = (activeActivities.value || [])
-    .filter((a) => Number(a.threshold || 0) > 0 && Number(a.discount || 0) > 0 && String(a.scope || 'ALL') === 'ALL');
-  if (!rules.length || amount <= 0) return null;
-  const discountOf = (a, base) => {
-    if (base < Number(a.threshold)) return 0;
-    if (a.type === 'DISCOUNT') {
-      const rate = Number(a.discount);
-      return (rate > 0 && rate < 1) ? Math.round(base * (1 - rate) * 100) / 100 : 0;
-    }
-    return Number(a.discount);
-  };
-  const benefitOf = (a) => a.type === 'DISCOUNT'
-    ? `打 ${Math.round(Number(a.discount) * 10)} 折`
-    : `立减 ¥${Number(a.discount)}`;
-  // 已达门槛的活动里取减免最大者（与后端 evaluateBestActivity 一致）
-  const bestApplied = rules
-    .map((rule) => ({ rule, off: discountOf(rule, amount) }))
-    .sort((x, y) => y.off - x.off)[0];
-  // 尚未达标的活动里，按「到达门槛后能减多少」取最优者，作为凑单目标
-  const bestUpcoming = rules
-    .filter((a) => amount < Number(a.threshold))
-    .map((rule) => ({ rule, off: discountOf(rule, Number(rule.threshold)) }))
-    .sort((x, y) => y.off - x.off || Number(x.rule.threshold) - Number(y.rule.threshold))[0];
-  // 若继续凑单能换到更大优惠，优先展示凑单提示（当前已享优惠仍由合计区展示）
-  if (bestUpcoming && bestUpcoming.off > (bestApplied ? bestApplied.off : 0)) {
-    const target = bestUpcoming.rule;
-    return {
-      benefit: benefitOf(target),
-      gap: Math.max(Number(target.threshold) - amount, 0),
-      threshold: Number(target.threshold),
-      amount,
-      percent: Math.min(100, Math.round((amount / Number(target.threshold)) * 100)),
-      reachedTop: false,
-    };
-  }
-  if (!bestApplied) return null;
-  return {
-    benefit: benefitOf(bestApplied.rule),
-    gap: 0,
-    threshold: Number(bestApplied.rule.threshold),
-    amount,
-    percent: 100,
-    reachedTop: true,
-  };
-});
 const orders = reactive({ items: [], total: 0, page: 1, size: 20, loading: false });
 const addresses = ref([]);
 const selectedAddressId = ref(null);
@@ -842,21 +699,6 @@ const session = reactive({
   user: JSON.parse(localStorage.getItem('supermarket_user') || sessionStorage.getItem('supermarket_user') || 'null'),
 
 });
-const authOpen = ref(false);
-const authTab = ref('login');
-const authSubmitting = ref(false);
-const loginForm = reactive({ username: '', password: '', remember: true });
-const registerForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', phone: '', email: '', agree: false });
-const authErrors = reactive({});
-const changeForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
-const changeErrors = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
-const changeSubmitting = ref(false);
-// 强制改密：管理员重置过密码，登录后必须先改密。此时弹窗不可关闭（关闭按钮/遮罩点击都禁掉）。
-const forcedChange = ref(false);
-// 找回密码申请（忘记密码）：只提交申请，由客服核对身份后发临时密码
-const resetForm = reactive({ username: '', contact: '' });
-const resetErrors = reactive({ username: '', contact: '' });
-const resetSubmitting = ref(false);
 const filters = reactive({ categoryId: '', keyword: '', minPrice: '', maxPrice: '', sort: '' });
 const addressForm = reactive({ receiverName: '', receiverPhone: '', province: '', city: '', district: '', detailAddress: '', isDefault: true });
 const productForm = reactive({ categoryId: '', sku: '', name: '', subtitle: '', description: '', price: 0, originalPrice: '', memberPrice: '', stock: 0, unit: 'piece', customUnit: '', brand: '', isHot: false, isNew: false, tags: '', images: [], skus: [], attributes: [] });
@@ -894,7 +736,6 @@ async function loadChannel(key, url) {
 function rotateChannel(key) { channelRefs[key].value = channelPage(key); }
 // 池子够两屏才值得给「换一批」按钮（新品在售可能只有 5 个，那种情况按钮是骗人的）
 function channelRotatable(key) { return (channelPool[key] || []).length > CHANNEL_PAGE; }
-const activeActivities = ref([]);
 const dwellEnterTs = ref(0);
 const dwellProductId = ref(null);
 const dwellSource = ref('detail');
@@ -936,7 +777,6 @@ const adminCouponJumpPage = ref(1);
 // 分类管理：基于全量分类（商品表单也要用），前端做筛选 + 分页
 
 // 库存预警：基于全量预警（数量少），前端做筛选 + 分页
-
 
 
 
@@ -992,6 +832,7 @@ async function refreshCurrentPage() {
 }
 
 const selectedCoupon = computed(() => usableCoupons.value.find((coupon) => coupon.id === selectedUserCouponId.value) || null);
+
 
 // 购物车实时合计：只累加「已勾选」商品（与后端 selectedAmount 口径一致）
 const cartLocalTotal = computed(() => (cart.items || [])
@@ -1183,446 +1024,6 @@ watch(usePoints, (on) => {
 
 
 
-
-
-
-
-/* ---------------- 收藏 + 降价提醒 ---------------- */
-const favoriteIds = ref([]);
-const favorites = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
-const priceAlerts = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
-const alertUnread = ref(0);
-const pendingFavorite = ref(null);
-
-function isFavorite(productId) {
-  return favoriteIds.value.includes(Number(productId));
-}
-
-function setFavoriteLocal(productId, on) {
-  const id = Number(productId);
-  const next = new Set(favoriteIds.value.map(Number));
-  if (on) next.add(id);
-  else next.delete(id);
-  favoriteIds.value = [...next];
-}
-
-async function loadFavoriteIds() {
-  if (!session.user || isAdmin.value) { favoriteIds.value = []; return; }
-  try { favoriteIds.value = ((await api.get('/favorites/ids')) || []).map(Number); } catch (e) { /* ignore */ }
-}
-
-async function loadFavorites(reset = true) {
-  if (!session.user || isAdmin.value) { favorites.items = []; favorites.total = 0; return; }
-  const nextPage = reset ? 1 : favorites.page + 1;
-  favorites.loading = true;
-  try {
-    const data = await api.get(`/favorites?page=${nextPage}&size=${favorites.size}`);
-    const items = data?.items || [];
-    favorites.items = reset ? items : [...favorites.items, ...items];
-    favorites.total = data?.total || 0;
-    favorites.page = nextPage;
-  } catch (e) { /* ignore */ } finally { favorites.loading = false; }
-}
-
-async function loadPriceAlerts(reset = true) {
-  if (!session.user || isAdmin.value) { priceAlerts.items = []; priceAlerts.total = 0; return; }
-  const nextPage = reset ? 1 : priceAlerts.page + 1;
-  priceAlerts.loading = true;
-  try {
-    const data = await api.get(`/price-alerts?page=${nextPage}&size=${priceAlerts.size}`);
-    const items = data?.items || [];
-    priceAlerts.items = reset ? items : [...priceAlerts.items, ...items];
-    priceAlerts.total = data?.total || 0;
-    priceAlerts.page = nextPage;
-  } catch (e) { /* ignore */ } finally { priceAlerts.loading = false; }
-}
-
-// 跳到指定页码（替换式翻页，不是「加载更多」追加）
-async function loadFavoritesPage(page) {
-  if (!session.user || isAdmin.value) return;
-  const safe = Math.max(1, page | 0);
-  favorites.loading = true;
-  try {
-    const data = await api.get(`/favorites?page=${safe}&size=${favorites.size}`);
-    favorites.items = data?.items || [];
-    favorites.total = data?.total || 0;
-    favorites.page = safe;
-  } catch (e) { /* ignore */ } finally { favorites.loading = false; }
-}
-
-async function loadPriceAlertsPage(page) {
-  if (!session.user || isAdmin.value) return;
-  const safe = Math.max(1, page | 0);
-  priceAlerts.loading = true;
-  try {
-    const data = await api.get(`/price-alerts?page=${safe}&size=${priceAlerts.size}`);
-    priceAlerts.items = data?.items || [];
-    priceAlerts.total = data?.total || 0;
-    priceAlerts.page = safe;
-  } catch (e) { /* ignore */ } finally { priceAlerts.loading = false; }
-}
-
-async function loadAlertUnread() {
-  if (!session.user || isAdmin.value) { alertUnread.value = 0; return; }
-  try {
-    const data = await api.get('/price-alerts/unread-count');
-    alertUnread.value = Number(data?.count || 0);
-  } catch (e) { /* ignore */ }
-}
-
-async function markAlertsRead() {
-  if (!session.user || isAdmin.value || alertUnread.value <= 0) return;
-  try {
-    await api.post('/price-alerts/read');
-    alertUnread.value = 0;
-    priceAlerts.items = priceAlerts.items.map((item) => ({ ...item, isRead: true }));
-    notice.value = '降价提醒已全部标记为已读';
-  } catch (err) {
-    fail(err?.message || '操作失败，请稍后重试');
-  }
-}
-
-// 收藏/取消收藏：先乐观更新心形状态，失败再回滚；未登录则引导登录并在登录后自动补做
-async function toggleFavorite(product) {
-  const id = Number(product?.id);
-  if (!id) return;
-  if (!session.user) {
-    setPendingAction({ type: 'favorite', product, redirect: (route.name && route.name !== 'login') ? route.name : 'shop' });
-    notice.value = '登录后即可收藏，降价时会提醒你';
-    goLogin({ tab: 'login' });
-    return;
-  }
-  const wasFav = isFavorite(id);
-  setFavoriteLocal(id, !wasFav);
-  try {
-    if (wasFav) await api.delete(`/favorites/${id}`);
-    else await api.post(`/favorites/${id}`);
-    notice.value = wasFav ? '已取消收藏' : '已收藏，降价后会在「我的收藏」提醒你';
-    await loadAlertUnread();
-    if (view.value === 'favorites') await Promise.all([loadFavorites(), loadPriceAlerts()]);
-  } catch (err) {
-    setFavoriteLocal(id, wasFav);
-    fail(err?.message || '操作失败，请稍后重试');
-  }
-}
-
-/* ---------------- 履约：同城即时配送 / 快递配送 / 门店自提 ---------------- */
-// 三种互斥的交付形态，与后端 OrderEntity.FULFILLMENT_* 一一对应。
-// 改造前的旧值 DELIVERY 已迁移为 INSTANT，这里不再产生该值。
-const stores = ref([]);
-const deliverySlots = ref([]);
-const fulfillment = reactive({ type: 'INSTANT', storeId: null, slot: '' });
-
-// ⚠️ 必须与后端 OrderService.EXPRESS_FREE_THRESHOLD / EXPRESS_FREIGHT 保持一致
-const EXPRESS_FREE_THRESHOLD = 99;
-const EXPRESS_FREIGHT = 8;
-
-const isPickup = computed(() => fulfillment.type === 'PICKUP');
-const isExpress = computed(() => fulfillment.type === 'EXPRESS');
-// 快递运费：按**商品小计**判门槛（不含运费本身），即时配送与门店自提恒为 0
-const expressFreight = computed(() => {
-  if (!isExpress.value) return 0;
-  return cartLocalTotal.value >= EXPRESS_FREE_THRESHOLD ? 0 : EXPRESS_FREIGHT;
-});
-// 生效门店：显式选过就用选的，否则回落到第一家营业门店（与 activeStoreId 保持一致）
-const selectedStore = computed(() => {
-  const id = Number(fulfillment.storeId) || (stores.value.length ? Number(stores.value[0].id) : 0);
-  return stores.value.find((s) => Number(s.id) === id) || null;
-});
-// 自提门店的默认选择：进结算页时若没选过，自动选中第一家营业门店
-const activeStoreId = computed(() => {
-  if (fulfillment.storeId) return Number(fulfillment.storeId);
-  return stores.value.length ? Number(stores.value[0].id) : null;
-});
-
-async function loadStores() {
-  try { stores.value = (await api.get('/stores')) || []; } catch (e) { /* ignore */ }
-}
-
-async function loadDeliverySlots() {
-  try { deliverySlots.value = (await api.get('/delivery-slots')) || []; } catch (e) { /* ignore */ }
-}
-
-// ===== 限时秒杀 =====
-const flashSales = ref([]);
-// 用本地时间戳做倒计时基准：服务端只给「剩余秒数」，前端换算成本地绝对时刻后自行走秒，
-// 这样不会因为请求延迟或前后端时钟不一致而出现倒计时跳变。
-const nowTick = ref(Date.now());
-let flashTickTimer = null;
-
-async function loadFlashSales() {
-  try {
-    const list = (await api.get('/flash-sales')) || [];
-    flashSales.value = list.map((f) => {
-      // RUNNING 时 targetAt 是结束时刻，UPCOMING 时是开始时刻。
-      // ⚠️ 必须用服务端下发的**绝对时刻**（endTime/startTime），别用 `Date.now() + countdownSeconds` 反推：
-      // 后者会把「浏览器时钟 vs 服务端时钟的偏差」带进来 —— 本机实测浏览器慢约 60s，
-      // 于是 10-15 00:00 的档期被显示成「10月14日 23:59 结束」（2026-09-19 发现）。
-      // countdownSeconds 只作为绝对时刻缺失时的兜底。
-      const raw = f.state === 'RUNNING' ? f.endTime : f.startTime;
-      const at = raw ? new Date(raw).getTime() : NaN;
-      return {
-        ...f,
-        targetAt: Number.isFinite(at) ? at : Date.now() + Number(f.countdownSeconds || 0) * 1000
-      };
-    });
-  } catch (e) { /* 秒杀是营销位，拉不到就不展示，不打扰用户 */ }
-}
-
-const runningFlashSales = computed(() => flashSales.value.filter((f) => f.state === 'RUNNING'));
-
-function flashRemaining(sale) {
-  if (!sale || !sale.targetAt) return 0;
-  return Math.max(0, Math.floor((sale.targetAt - nowTick.value) / 1000));
-}
-
-/* 秒杀档期文案：**只有真的快结束才逐秒倒计时**（唯一实现，首页卡片与商品详情页共用）。
-   此前无论档期多长都挂「距结束 25天 03:27:28」—— 既没有紧迫感、也不像有效信息，
-   还让这排卡片每秒重渲染一次。超过 24h 就退回静态的结束/开抢时刻，
-   把倒计时留给真正快结束的场次（如今晚 24:00 到期的那种）。 */
-const FLASH_TICK_WINDOW_SECONDS = 24 * 3600;
-function flashDeadlineText(sale) {
-  if (!sale || !sale.targetAt) return '';
-  const running = sale.state === 'RUNNING';
-  const left = flashRemaining(sale);
-  if (left > FLASH_TICK_WINDOW_SECONDS) {
-    const d = new Date(sale.targetAt);
-    const pad = (n) => String(n).padStart(2, '0');
-    const when = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    return running ? `${when} 结束` : `${when} 开抢`;
-  }
-  return running ? `距结束 ${formatDuration(left)}` : `距开始 ${formatDuration(left)}`;
-}
-
-// 秒杀档期可能跨天，MM:SS 不够用，这里给到「天/时/分/秒」
-function formatDuration(seconds) {
-  const s = Math.max(0, Math.floor(seconds || 0));
-  const days = Math.floor(s / 86400);
-  const hh = String(Math.floor((s % 86400) / 3600)).padStart(2, '0');
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return days > 0 ? `${days}天 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
-}
-
-function startFlashTick() {
-  if (flashTickTimer) return;
-  flashTickTimer = setInterval(() => { nowTick.value = Date.now(); }, 1000);
-}
-
-// ===== 秒杀限购：把「还能买几件」提前暴露出来，而不是等用户点结算才报错 =====
-
-/** 该商品此刻进行中的秒杀（同一商品同时只会有一个进行中的场次） */
-function flashSaleOfProduct(productId) {
-  const id = Number(productId);
-  return flashSales.value.find((f) => f.state === 'RUNNING' && Number(f.productId) === id) || null;
-}
-
-/**
- * 该商品「我还能买几件」—— 直接读后端算好的 myRemainingQuota（= 每人限购 − 我的已购，
- * 已把未付款订单占用的名额算进去），不在前端重算一遍，避免两处口径漂移。
- * 返回 null 表示不受限购约束（游客未登录，或该场次不限购）。
- */
-function flashLimitOfProduct(productId) {
-  const sale = flashSaleOfProduct(productId);
-  if (!sale || sale.myRemainingQuota === null || sale.myRemainingQuota === undefined) return null;
-  return Number(sale.myRemainingQuota);
-}
-
-/**
- * 购物车里某行最多能加到几件 = 库存上限。
- *
- * 秒杀改为「自动拆分」后，超出每人限购的部分按原价成交，不再拒绝加购，
- * 所以这里不再用秒杀剩余名额夹数量（否则用户想多买却被卡住）。
- * 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
- */
-// 购物车里某行最多能加到几件：受库存与秒杀每人限购名额双重约束。
-// 秒杀品是纯折扣通道，名额用完后不能再加（连原价都不行），所以这里用「还能买几件」夹住数量。
-// 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
-function cartQtyMax(item) {
-  const stock = Number(item?.stock || 0);
-  const left = flashLimitOfProduct(item?.productId);
-  const cap = left === null ? stock : Math.min(stock, left);
-  return cap > 0 ? cap : 1;
-}
-
-/**
- * 该行是否达到秒杀限购上限（仅用于提示，不再禁用 + 号）：达到后继续加只按原价。
- */
-function cartQtyCapped(item) {
-  const limit = flashLimitOfProduct(item?.productId);
-  return limit !== null && Number(item?.quantity || 0) >= limit;
-}
-
-/**
- * 秒杀自动拆分提示文案：
- * - 部分秒杀：前 N 件秒杀价，超出 M 件按原价
- * - 名额已用完（仍在进行中的限购场次）：本件按原价
- * 其余情况（纯原价 / 整行都秒杀）返回空串。
- */
-function flashSplitNote(item) {
-  if (!item) return '';
-  const sale = flashSaleOfProduct(item.productId);
-  if (!sale) return '';
-  const flashQty = Number(item.flashQty || 0);
-  const qty = Number(item.quantity || 0);
-  if (flashQty > 0 && flashQty < qty) {
-    return `前 ${flashQty} 件限时秒杀价，超出 ${qty - flashQty} 件按原价`;
-  }
-  if (flashQty === 0
-      && sale.myRemainingQuota !== null && sale.myRemainingQuota !== undefined) {
-    return `秒杀名额已用完（每人限购 ${sale.perUserLimit} 件），本件按原价`;
-  }
-  return '';
-}
-
-/** 该行是否需要拆成「秒杀段 + 原价段」两段展示 */
-function isFlashSplit(item) {
-  return Number(item?.flashQty || 0) > 0 && Number(item.flashQty) < Number(item.quantity || 0);
-}
-
-/**
- * 因限购被挡时的统一文案（措辞与后端 409 对齐，用户在前端预检和后端拒绝时看到的是同一句话）。
- *
- * left = 后端算的「还能买几件」：它只扣了订单已占用的，没有扣购物车里已有的件数，
- * 所以说「购物车里最多放几件」而不是「你还能买几件」—— 否则与用户眼前看到的数量对不上，
- * 会被当成系统算错。
- */
-function flashLimitMessage(productId, left) {
-  const sale = flashSaleOfProduct(productId);
-  const limit = Number(sale?.perUserLimit || 0);
-  const cap = `「${sale?.name || '该秒杀商品'}」每人限购 ${limit} 件`;
-  if (left <= 0) return cap + '，你已经买满了';
-  const bought = limit - Number(left);
-  return cap + `，购物车里最多放 ${left} 件` + (bought > 0 ? `（已下单占用 ${bought} 件）` : '');
-}
-
-// ===== 协议 / 隐私正文（后台可编辑，按 key 拉取） =====
-const legalDocs = reactive({ data: {}, loading: false });
-
-async function loadLegalDoc(docKey) {
-  const key = String(docKey || '').toUpperCase();
-  if (!key) return null;
-  legalDocs.loading = true;
-  try {
-    legalDocs.data[key] = await api.get(`/legal-docs/${key}`);
-    return legalDocs.data[key];
-  } catch (e) {
-    return legalDocs.data[key] || null;
-  } finally {
-    legalDocs.loading = false;
-  }
-}
-
-// 注册弹窗里点《用户协议》《隐私政策》：新标签页打开，避免关掉弹窗丢失已填内容
-function openLegal(docKey) {
-  window.open(docKey === 'PRIVACY' ? '/privacy' : '/terms', '_blank', 'noopener');
-}
-
-// 三种履约互斥：切到自提要清掉时段，切到快递也要清时段（快递的时效由第三方决定，不自选时段）
-function selectFulfillment(type) {
-  const next = ['PICKUP', 'EXPRESS'].includes(type) ? type : 'INSTANT';
-  fulfillment.type = next;
-  if (next !== 'INSTANT') fulfillment.slot = '';
-  if (next === 'PICKUP' && !fulfillment.storeId && stores.value.length) {
-    fulfillment.storeId = Number(stores.value[0].id);
-  }
-}
-
-function selectStore(id) {
-  fulfillment.storeId = id ? Number(id) : null;
-}
-
-function resetFulfillment() {
-  fulfillment.type = 'INSTANT';
-  fulfillment.slot = '';
-}
-
-/* ---------------- 消息中心 ---------------- */
-const messages = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
-const messageUnread = ref(0);
-const messageTypeFilter = ref('');
-
-// 头像上的未读红点：导航条取消后，「消息」与「收藏降价提醒」两个提醒都收在这一颗点上。
-// 返回空串即不显示，所以模板里直接用它当 v-if 条件。
-const accountDotTitle = computed(() => {
-  const parts = [];
-  if (messageUnread.value) parts.push(`${messageUnread.value} 条未读消息`);
-  if (alertUnread.value) parts.push(`${alertUnread.value} 条降价提醒`);
-  return parts.join(' · ');
-});
-
-async function loadMessages(reset = true) {
-  if (!session.user || isAdmin.value) { messages.items = []; messages.total = 0; return; }
-  const nextPage = reset ? 1 : messages.page + 1;
-  messages.loading = true;
-  try {
-    const query = messageTypeFilter.value ? `&type=${messageTypeFilter.value}` : '';
-    const data = await api.get(`/messages?page=${nextPage}&size=${messages.size}${query}`);
-    const items = data?.items || [];
-    messages.items = reset ? items : [...messages.items, ...items];
-    messages.total = data?.total || 0;
-    messages.page = nextPage;
-  } catch (e) { /* ignore */ } finally { messages.loading = false; }
-}
-
-async function loadMessageUnread() {
-  if (!session.user || isAdmin.value) { messageUnread.value = 0; return; }
-  try {
-    const data = await api.get('/messages/unread-count');
-    messageUnread.value = Number(data?.count || 0);
-  } catch (e) { /* ignore */ }
-}
-
-function changeMessageFilter(type) {
-  messageTypeFilter.value = type || '';
-  loadMessages();
-}
-
-// 跳到指定页码（替换式翻页，不是「加载更多」追加）
-async function loadMessagesPage(page) {
-  if (!session.user || isAdmin.value) return;
-  const safe = Math.max(1, page | 0);
-  messages.loading = true;
-  try {
-    const query = messageTypeFilter.value ? `&type=${messageTypeFilter.value}` : '';
-    const data = await api.get(`/messages?page=${safe}&size=${messages.size}${query}`);
-    messages.items = data?.items || [];
-    messages.total = data?.total || 0;
-    messages.page = safe;
-  } catch (e) { /* ignore */ } finally { messages.loading = false; }
-}
-
-async function markMessagesRead() {
-  if (!session.user || isAdmin.value || messageUnread.value <= 0) return;
-  try {
-    await api.post('/messages/read');
-    messageUnread.value = 0;
-    messages.items = messages.items.map((item) => ({ ...item, isRead: true }));
-    notice.value = '消息已全部标记为已读';
-  } catch (err) {
-    fail(err?.message || '操作失败，请稍后重试');
-  }
-}
-
-// 点开消息：先置为已读，再按 linkView 跳到对应页面
-async function openMessage(message) {
-  if (!message) return;
-  if (!message.isRead) {
-    try {
-      await api.post(`/messages/${message.id}/read`);
-      message.isRead = true;
-      messageUnread.value = Math.max(0, messageUnread.value - 1);
-    } catch (e) { /* 已读失败不阻断跳转 */ }
-  }
-  const target = message.linkView;
-  if (target === 'orderDetail' && message.linkRef) navigate('orderDetail', { id: Number(message.linkRef) });
-  else if (target === 'coupons') navigate('coupons');
-  else if (target === 'points') navigate('points');
-  else if (target === 'favorites') navigate('favorites');
-  else if (target === 'orders') navigate('orders');
-  else if (target === 'shop') navigate('shop');
-}
-
 function rememberUser(user) {
   session.user = user;
   // 用户信息跟着 token 走：勾了「记住我」→ localStorage（关浏览器仍在），否则 sessionStorage（关浏览器即清）
@@ -1641,6 +1042,48 @@ function rememberUser(user) {
   ensureAllowedView();
 
 }
+
+/* ---------------- 履约 / 协议 / 消息：已抽为 composable ---------------- */
+// 装配点必须在 fail() 之后（消息的 markMessagesRead 要用），且被抽走的符号在本行之前
+// 无任何同步求值（无 immediate watch / watchEffect），故不存在 TDZ 风险。
+const { stores, deliverySlots, fulfillment, EXPRESS_FREE_THRESHOLD, EXPRESS_FREIGHT, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment } = useStores({ getCartLocalTotal: () => cartLocalTotal.value });
+
+const { legalDocs, loadLegalDoc, openLegal } = useLegalDoc();
+
+const { messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, loadMessagesPage, markMessagesRead, openMessage } = useMessages({ getSession: () => session, isAdmin, navigate, notice, fail });
+
+// 头像上的未读红点：导航条取消后，「消息」与「收藏降价提醒」两个提醒都收在这一颗点上。
+// 返回空串即不显示，所以模板里直接用它当 v-if 条件。
+// ⚠️ 它跨两个域（messageUnread 来自消息域、alertUnread 来自收藏域），故留在 App.vue 不搬，
+//    位置必须在上面 useMessages 装配之后。
+const accountDotTitle = computed(() => {
+  const parts = [];
+  if (messageUnread.value) parts.push(`${messageUnread.value} 条未读消息`);
+  if (alertUnread.value) parts.push(`${alertUnread.value} 条降价提醒`);
+  return parts.join(' · ');
+});
+
+/* ---------------- 认证 / 钱包充值：已抽为 composable ---------------- */
+// 装配点必须在全部依赖之后：auth 需要 rememberUser/refreshForSession/loadCart/goLogin/
+// closeAccountMenu，recharge 需要 askConfirm/run/wallet/recharge。
+// 且被抽走的符号在本行之前无任何同步求值（无 immediate watch / watchEffect），无 TDZ 风险。
+const { authOpen, authTab, authSubmitting, loginForm, registerForm, authErrors, changeForm, changeErrors, changeSubmitting, forcedChange, resetForm, resetErrors, resetSubmitting, openAuth, closeAuth, switchAuth, resetAuthErrors, authErrorText, submitLogin, validateRegisterForm, submitRegister, forgotPassword, openChangePassword, submitPasswordReset, validateChangeForm, submitChangePassword, logout, handleAuthExpired, registerAuthListeners, loadMe, onAvatarPick } = useAuth({ getSession: () => session, getRoute: () => route, navigate, goLogin, rememberUser, refreshForSession, loadCart, notice, error, fail, showAlert, closeAccountMenu });
+
+// 全局监听（token 过期 / 待强制改密）由 composable 统一注册，行为与拆分前一致
+registerAuthListeners();
+
+const { loadWallet, methodLabel, selectRechargePreset, onCustomAmountInput, formatCountdown, buildQrSvg, qrSvg, startCountdown, clearRechargeTimer, confirmRecharge, payRechargeOrder, cancelRechargeOrder, handleRechargeExpired, closeRechargeModal, resetRecharge } = useRecharge({ getSession: () => session, isAdmin, rememberUser, wallet, recharge, notice, fail, askConfirm, run });
+
+/* ---------------- 活动 / 收藏 / 秒杀：已抽为 composable ---------------- */
+// 装配点必须在 cartLocalTotal / session / isAdmin / route / goLogin / notice / fail 之后，
+// 且被抽走的符号在本行之前无任何同步求值（无 immediate watch / watchEffect），无 TDZ 风险。
+// ⚠️ activeActivities 虽然被游客购物车(estimateGuestActivity)与商品详情页读写，
+//    但解构拿到的是**同一个 ref 对象**，跨域读写天然可用，无需额外注入。
+const { activeActivities, noticeIndex, noticeList, rotatingNotice, topActivity, cartActivityProgress, ensureActiveActivities, activitySlogan, activityNoticeText, activityOffset, activityMatches, productActivityTag, startNoticeRotation, stopNoticeRotation } = useActivity({ getCartLocalTotal: () => cartLocalTotal.value });
+
+const { favoriteIds, favorites, priceAlerts, alertUnread, pendingFavorite, isFavorite, setFavoriteLocal, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadFavoritesPage, loadPriceAlertsPage, loadAlertUnread, markAlertsRead, toggleFavorite } = useFavorites({ getSession: () => session, isAdmin, getRoute: () => route, goLogin, notice, fail, getView: () => view.value });
+
+const { flashSales, nowTick, runningFlashSales, FLASH_TICK_WINDOW_SECONDS, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, startFlashTick, stopFlashTick, flashSaleOfProduct, flashLimitOfProduct, cartQtyMax, cartQtyCapped, flashSplitNote, isFlashSplit, flashLimitMessage } = useFlashSale();
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
 const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'stores', 'banners', 'users', 'passwordResets'];
@@ -1671,10 +1114,6 @@ async function run(action, message) {
   }
 
 }
-
-
-
-
 
 
 
@@ -1752,464 +1191,10 @@ function categoryName(categoryId) {
 
 
 
+
 // 单个购物车项的「原价→现价」省了多少（已乘数量）；不足优惠时返回 0
 
 // 近 7 天成交趋势：管理员判断生意涨跌的第一张图
-
-function openAuth(tab) {
-  authTab.value = tab === 'register' ? 'register' : 'login';
-  resetAuthErrors();
-  authOpen.value = true;
-}
-
-function closeAuth() {
-  authOpen.value = false;
-  loginForm.username = '';
-  loginForm.password = '';
-  loginForm.remember = true;
-  registerForm.username = '';
-  registerForm.password = '';
-  registerForm.confirmPassword = '';
-  registerForm.nickname = '';
-  registerForm.phone = '';
-  registerForm.email = '';
-  registerForm.agree = false;
-  changeForm.currentPassword = '';
-  changeForm.newPassword = '';
-  changeForm.confirmPassword = '';
-  resetForm.username = '';
-  resetForm.contact = '';
-  forcedChange.value = false;
-  resetAuthErrors();
-}
-
-function switchAuth(tab) {
-  authTab.value = tab;
-  resetAuthErrors();
-}
-
-function resetAuthErrors() {
-  authErrors.username = '';
-  authErrors.password = '';
-  authErrors.confirmPassword = '';
-  authErrors.phone = '';
-  authErrors.email = '';
-  authErrors.agree = '';
-  changeErrors.currentPassword = '';
-  changeErrors.newPassword = '';
-  changeErrors.confirmPassword = '';
-  resetErrors.username = '';
-  resetErrors.contact = '';
-  error.value = '';
-}
-
-// 后端部分错误文案仍是英文，这里统一映射为中文（新后端若已返回中文则原样透传）
-function authErrorText(msg) {
-  if (!msg) return msg;
-  const map = {
-    'username or password is incorrect': '用户名或密码错误',
-    'username already exists': '用户名已存在',
-    'phone already exists': '手机号已被注册',
-    'email already exists': '邮箱已被注册',
-  };
-  const lower = String(msg).toLowerCase();
-  for (const k in map) { if (lower.includes(k)) return map[k]; }
-  return msg;
-}
-
-async function submitLogin() {
-  resetAuthErrors();
-  if (!loginForm.username.trim()) authErrors.username = '请输入用户名';
-  if (!loginForm.password) authErrors.password = '请输入密码';
-  if (authErrors.username || authErrors.password) return { ok: false };
-  authSubmitting.value = true;
-  try {
-    const data = await api.post('/auth/login', {
-      username: loginForm.username.trim(),
-      password: loginForm.password,
-      // 勾了「记住我」→ 后端签发 7 天有效期的 token，前端把它存 localStorage（不勾则是 24 小时 + sessionStorage）
-      remember: !!loginForm.remember,
-    });
-    setToken(data.token, !!loginForm.remember);
-    rememberUser(data.user);
-    await refreshForSession();
-    resetAuthErrors();
-    // 登录逻辑集中在这里（单一真相源），但「登录后去哪 / 是否强制改密」交给 LoginPage 决定（modal 已拆成独立路由页）。
-    if (data.user.mustChangePassword) {
-      // 管理员重置过密码：由 LoginPage 切到「修改密码」态（不可跳过），这里只返回标记
-      return { ok: true, mustChange: true, user: data.user };
-    }
-    showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
-    return { ok: true, mustChange: false, user: data.user };
-  } catch (err) {
-    fail(authErrorText(err.message) || '登录失败，请检查用户名或密码');
-    return { ok: false };
-  } finally {
-    authSubmitting.value = false;
-  }
-}
-
-function validateRegisterForm() {
-  const e = {};
-  if (!registerForm.username.trim()) e.username = '请输入用户名';
-  else if (registerForm.username.trim().length < 3) e.username = '用户名至少 3 个字符';
-  if (!registerForm.password) e.password = '请输入密码';
-  else if (registerForm.password.length < 6) e.password = '密码至少 6 位';
-  if (registerForm.confirmPassword !== registerForm.password) e.confirmPassword = '两次输入的密码不一致';
-  if (!registerForm.phone.trim()) e.phone = '请输入手机号';
-  else if (!/^1[3-9]\d{9}$/.test(registerForm.phone.trim())) e.phone = '手机号格式不正确';
-  if (registerForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email.trim())) e.email = '邮箱格式不正确';
-  if (!registerForm.agree) e.agree = '请先同意用户协议';
-  return e;
-}
-
-async function submitRegister() {
-  resetAuthErrors();
-  Object.assign(authErrors, validateRegisterForm());
-  if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.agree) return { ok: false };
-  authSubmitting.value = true;
-  try {
-    const data = await api.post('/auth/register', {
-      username: registerForm.username.trim(),
-      password: registerForm.password,
-      nickname: registerForm.nickname.trim() || registerForm.username.trim(),
-      phone: registerForm.phone.trim(),
-      email: registerForm.email.trim(),
-    });
-    setToken(data.token);
-    rememberUser(data.user);
-    await refreshForSession();
-    resetAuthErrors();
-    showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
-    return { ok: true };
-  } catch (err) {
-    const msg = authErrorText(err.message) || '注册失败，请稍后重试';
-    if (msg.includes('用户名')) authErrors.username = msg;
-    else if (msg.includes('手机')) authErrors.phone = msg;
-    else if (msg.includes('邮箱')) authErrors.email = msg;
-    fail(msg);
-    return { ok: false };
-  } finally {
-    authSubmitting.value = false;
-  }
-}
-
-// 忘记密码：不走自助重置（没有邮件/短信通道），改为打开「找回申请」表单
-function forgotPassword() {
-  authTab.value = 'reset';
-  resetForm.username = loginForm.username.trim();
-  resetForm.contact = '';
-  resetAuthErrors();
-  authOpen.value = true;
-}
-
-// forced=true 表示管理员刚重置过密码：弹窗不可关闭，改完才能继续用
-function openChangePassword(forced = false) {
-  closeAccountMenu();
-  authTab.value = 'change';
-  forcedChange.value = !!forced;
-  resetAuthErrors();
-  authOpen.value = true;
-}
-
-async function submitPasswordReset() {
-  resetAuthErrors();
-  if (!resetForm.username.trim()) resetErrors.username = '请输入账号';
-  if (!resetForm.contact.trim()) resetErrors.contact = '请留下联系电话，否则客服无法联系你';
-  else if (resetForm.contact.trim().length < 5) resetErrors.contact = '联系电话至少 5 个字符';
-  if (resetErrors.username || resetErrors.contact) return { ok: false };
-  resetSubmitting.value = true;
-  try {
-    const data = await api.post('/auth/password-reset-request', {
-      username: resetForm.username.trim(),
-      contact: resetForm.contact.trim(),
-    });
-    // 后端对「账号存在/不存在」返回同一句文案（防账号枚举），前端原样展示
-    showAlert({ type: 'success', title: '申请已提交', message: data?.message || '客服会在 1 个工作日内联系你。' });
-    return { ok: true };
-  } catch (err) {
-    fail(err?.message || '提交失败，请稍后重试');
-    return { ok: false };
-  } finally {
-    resetSubmitting.value = false;
-  }
-}
-
-function validateChangeForm() {
-  const e = {};
-  if (!changeForm.currentPassword) e.currentPassword = '请输入原密码';
-  if (!changeForm.newPassword) e.newPassword = '请输入新密码';
-  else if (changeForm.newPassword.length < 6) e.newPassword = '新密码至少 6 位';
-  if (changeForm.confirmPassword !== changeForm.newPassword) e.confirmPassword = '两次输入的新密码不一致';
-  if (changeForm.newPassword && changeForm.currentPassword && changeForm.newPassword === changeForm.currentPassword) e.newPassword = '新密码不能与原密码相同';
-  return e;
-}
-
-async function submitChangePassword() {
-  resetAuthErrors();
-  Object.assign(changeErrors, validateChangeForm());
-  if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) return { ok: false };
-  changeSubmitting.value = true;
-  try {
-    await api.post('/auth/change-password', {
-      currentPassword: changeForm.currentPassword,
-      newPassword: changeForm.newPassword,
-      confirmPassword: changeForm.confirmPassword,
-    });
-    // 后端已清掉 must_change_password，重新拉一次 me 让本地 session 同步（强制改密的用户至此恢复可用）
-    await loadMe();
-    showAlert({ type: 'success', title: '修改成功', message: '密码已更新，下次登录请使用新密码。' });
-    return { ok: true };
-  } catch (err) {
-    // 后端业务错误（原密码不正确 / 新密码与原密码相同 / 两次不一致）透传到对应字段
-    const msg = err.message || '修改失败，请稍后重试';
-    if (msg.includes('原密码')) changeErrors.currentPassword = msg;
-    else if (msg.includes('不一致')) changeErrors.confirmPassword = msg;
-    else if (msg.includes('相同')) changeErrors.newPassword = msg;
-    else error.value = msg;
-    fail(msg);
-    return { ok: false };
-  } finally {
-    changeSubmitting.value = false;
-  }
-}
-
-function logout() {
-  setToken('');
-  rememberUser(null);
-  navigate('shop');
-  notice.value = '已退出登录';
-  loadCart(); // 游客态：清掉服务端 cart 视图，回到本地车状态
-}
-
-// token 过期/失效：后端返回 401 时由 api 客户端广播，这里优雅回到未登录态（不卡死界面）
-function handleAuthExpired() {
-  setToken('');
-  rememberUser(null);
-  if (route.name !== 'shop') navigate('shop');
-  notice.value = '登录已过期，请重新登录';
-  loadCart();
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener('auth-expired', handleAuthExpired);
-  // 后端也会拦「待强制改密」的账号（40302，见 MustChangePasswordFilter）：任何调用被拦都把
-  // 不可关闭的改密弹窗拉起来，避免出现「页面能点、接口全 403」这种说不清的状态。
-  window.addEventListener('must-change-password', () => {
-    // 登录态下被后端拦下（账号待强制改密）：跳到独立登录页的改密态（modal 已拆成 /login 路由页）
-    if (session.user && route.name !== 'login') goLogin({ tab: 'change', forced: true });
-  });
-}
-
-async function loadMe() {
-  if (!session.user) return;
-  const user = await api.get('/auth/me');
-  rememberUser(user);
-  userStore.setAuth(localStorage.getItem('token') || '', user);
-  // 刷新页面时若仍处于「待强制改密」，重新跳到独立登录页的改密态
-  if (user.mustChangePassword && route.name !== 'login') goLogin({ tab: 'change', forced: true });
-}
-
-async function onAvatarPick(e) {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  if (file.size > 10 * 1024 * 1024) {
-    fail('头像图片大小不能超过 10MB，请压缩后重试');
-    e.target.value = '';
-    return;
-  }
-  try {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('type', 'avatar');
-    const data = await api.post('/files/upload', fd);
-    await api.put('/auth/me', { avatarUrl: data.url });
-    await loadMe();
-    notice.value = '头像已更新';
-  } catch (err) {
-    fail(err?.message || '头像上传失败');
-  } finally {
-    e.target.value = '';
-  }
-}
-
-async function loadWallet() {
-  if (!session.user || isAdmin.value) return;
-  const data = await api.get('/wallet');
-  Object.assign(wallet, data);
-  rememberUser({ ...session.user, balance: data.balance });
-
-}
-
-/* ---------------- 充值（模拟支付宝 / 微信支付） ---------------- */
-
-function methodLabel(method) {
-  if (method === 'WECHAT') return '微信支付';
-  return '支付宝';
-}
-
-function selectRechargePreset(preset) {
-  recharge.amount = preset;
-  recharge.customAmount = '';
-}
-
-function onCustomAmountInput() {
-  const value = Number(recharge.customAmount);
-  if (recharge.customAmount === '' || Number.isNaN(value)) {
-    recharge.amount = 0;
-    return;
-  }
-  recharge.amount = value;
-}
-
-function formatCountdown(seconds) {
-  const s = Math.max(0, Math.floor(seconds));
-  const mm = String(Math.floor(s / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return `${mm}:${ss}`;
-}
-
-/** 根据订单号生成一张装饰性「二维码」SVG（非真实二维码，仅用于模拟扫码页） */
-function buildQrSvg(seed) {
-  const size = 21;
-  const cell = 8;
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  const rand = () => {
-    hash = (hash * 1103515245 + 12345) >>> 0;
-    return hash / 4294967296;
-  };
-  let rects = '';
-  for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) {
-      if (rand() > 0.5) {
-        rects += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" />`;
-      }
-    }
-  }
-  // 三个定位角
-  const finder = (ox, oy) => `<rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="#fff"/><rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="none" stroke="#1f2933" stroke-width="${cell}"/><rect x="${(ox + 2) * cell}" y="${(oy + 2) * cell}" width="${cell * 3}" height="${cell * 3}" fill="#1f2933"/>`;
-  const svg = `<svg viewBox="0 0 ${size * cell} ${size * cell}" xmlns="http://www.w3.org/2000/svg" fill="#1f2933">${rects}${finder(0, 0)}${finder(size - 7, 0)}${finder(0, size - 7)}</svg>`;
-  return svg;
-}
-
-const qrSvg = computed(() => buildQrSvg(recharge.order?.orderNo || 'RECHARGE'));
-
-function startCountdown() {
-  clearRechargeTimer();
-  if (!recharge.order?.expireAt) return;
-  const expireAt = recharge.order.expireAt;
-  const tick = () => {
-    const remain = Math.max(0, Math.floor((expireAt - Date.now()) / 1000));
-    recharge.countdown = remain;
-    if (remain <= 0) {
-      clearRechargeTimer();
-      handleRechargeExpired();
-    }
-  };
-  tick();
-  recharge.timer = setInterval(tick, 1000);
-}
-
-function clearRechargeTimer() {
-  if (recharge.timer) {
-    clearInterval(recharge.timer);
-    recharge.timer = null;
-  }
-}
-
-async function confirmRecharge() {
-  const amount = Number(recharge.amount);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    fail('请选择或输入大于 0 的充值金额');
-    return;
-  }
-  const ok = await askConfirm({
-    title: '确认创建充值订单',
-    message: `将创建一笔 ${methodLabel(recharge.method)} 充值订单，金额 ${money(amount)}，订单 10 分钟内有效。`,
-    confirmText: '创建订单',
-  });
-  if (!ok) return;
-  await run(async () => {
-    const order = await api.post('/wallet/recharge-orders', { amount, method: recharge.method });
-    recharge.order = order;
-    recharge.step = 'paying';
-    recharge.paying = false;
-    startCountdown();
-    notice.value = '充值订单已创建，请在支付页完成付款';
-  }, null);
-}
-
-async function payRechargeOrder() {
-  if (!recharge.order) return;
-  const ok = await askConfirm({
-    title: '确认支付',
-    message: `确认通过${methodLabel(recharge.method)}支付 ${money(recharge.order.amount)}？支付成功后金额即时到账。`,
-    confirmText: '立即支付',
-  });
-  if (!ok) return;
-  recharge.paying = true;
-  try {
-    await run(async () => {
-      const paid = await api.post(`/wallet/recharge-orders/${recharge.order.id}/pay`);
-      recharge.order = paid;
-      await loadWallet();
-      clearRechargeTimer();
-      recharge.step = 'success';
-    }, '充值成功，金额已到账');
-  } finally {
-    recharge.paying = false;
-  }
-}
-
-async function cancelRechargeOrder() {
-  if (!recharge.order) return;
-  const ok = await askConfirm({
-    title: '取消充值订单',
-    message: '确定取消该充值订单吗？取消后需重新创建。',
-    confirmText: '取消订单',
-    danger: true,
-  });
-  if (!ok) return;
-  await run(async () => {
-    await api.post(`/wallet/recharge-orders/${recharge.order.id}/cancel`);
-    clearRechargeTimer();
-    resetRecharge();
-    notice.value = '充值订单已取消';
-  }, null);
-}
-
-async function handleRechargeExpired() {
-  // 倒计时归零：尝试在服务端取消（已超时的订单也兼容处理），并提示用户
-  if (recharge.order) {
-    try {
-      await api.post(`/wallet/recharge-orders/${recharge.order.id}/cancel`);
-    } catch (e) {
-      // 订单可能已被调度任务置为 EXPIRED，忽略
-    }
-  }
-  recharge.step = 'expired';
-}
-
-function closeRechargeModal() {
-  // 支付中不允许直接关闭，需走「取消订单」；成功/超时允许返回
-  if (recharge.step === 'paying') {
-    cancelRechargeOrder();
-    return;
-  }
-  clearRechargeTimer();
-  resetRecharge();
-}
-
-function resetRecharge() {
-  clearRechargeTimer();
-  recharge.step = 'form';
-  recharge.order = null;
-  recharge.countdown = 0;
-  recharge.paying = false;
-  recharge.customAmount = '';
-  recharge.amount = 100;
-  recharge.method = 'ALIPAY';
-}
 
 function backToShop() {
   clearRechargeTimer();
@@ -3555,10 +2540,6 @@ async function loadRatingSummary() {
 
 
 
-
-
-
-
 async function loadAdminOrders() {
   if (!isAdmin.value) return;
   const params = new URLSearchParams({
@@ -3595,7 +2576,6 @@ async function loadAdminStatsOverview() {
 
 
 
-
 async function loadRefundOrders() {
   if (!isAdmin.value) return;
   const params = new URLSearchParams({
@@ -3612,9 +2592,6 @@ async function loadRefundOrders() {
   }
   refundJumpPage.value = refundOrders.page;
 }
-
-
-
 
 
 
@@ -3654,24 +2631,6 @@ async function loadAdminCoupons() {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function loadAdminUsers() {
   if (!isAdmin.value) return;
   const params = new URLSearchParams({
@@ -3695,10 +2654,6 @@ async function loadAdminUsers() {
 
 
 
-
-
-
-
 async function refreshAdminData() {
   if (!isAdmin.value) return;
   await Promise.all([
@@ -3714,7 +2669,6 @@ async function refreshAdminData() {
     loadAdminHotSearches(),
   ]);
 }
-
 
 
 
@@ -3766,7 +2720,7 @@ watch(() => session.user?.role, () => {
 
 
 onMounted(async () => {
-  noticeTimer = setInterval(() => { if (noticeList.value.length > 1) noticeIndex.value += 1; }, 4000);
+  startNoticeRotation();
   startFlashTick();
   window.addEventListener('beforeunload', reportDwell);
   document.addEventListener('click', onDocumentClick);
@@ -3791,8 +2745,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  clearInterval(noticeTimer);
-  if (flashTickTimer) { clearInterval(flashTickTimer); flashTickTimer = null; }
+  stopNoticeRotation();
+  stopFlashTick();
   window.removeEventListener('beforeunload', reportDwell);
   document.removeEventListener('visibilitychange', reportDwell);
   document.removeEventListener('click', onDocumentClick);
