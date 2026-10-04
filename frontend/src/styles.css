@@ -564,6 +564,10 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   padding: 24px clamp(18px, 4vw, 48px) 58px;
 }
 
+/* 登录页通栏（仿 admin 的 content-wide 先例）：背景大图要铺满视口宽，
+   不受限宽容器与左右内边距约束；上下内边距也归零，让图顶到页头/页脚 */
+.content.content-flush { max-width: none; padding: 0; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -973,6 +977,16 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   gap: 17px;
   align-items: start;
 }
+/* 从结算页补地址进来时的提示条：说明加完会自动返回继续下单 */
+.addr-return-hint {
+  grid-column: 1 / -1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text);
+  font-size: 14px;
+}
 .addr-form {
   display: grid;
   gap: 12px;
@@ -984,6 +998,9 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 }
 .addr-form .panel-head { margin-bottom: 2px; }
 .addr-fields { display: grid; gap: 10px; }
+/* 省/市/区 三级联动下拉：一行三列，窄屏自动换行 */
+.region-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.region-sel { min-height: 40px; }
 .addr-submit { width: 100%; margin-top: 4px; }
 .addr-list-wrap { display: grid; gap: 14px; }
 .addr-count { font-size: 12px; color: var(--muted); }
@@ -1485,10 +1502,6 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
   .product-card { padding: 9px; }
   .product-card h3 { font-size: 14px; }
   .price-line { align-items: flex-start; flex-direction: column; gap: 4px; }
-  /* 手机：筛选栏换行、输入框自适应，避免固定宽溢出 */
-  .shop-filters { flex-wrap: wrap; gap: 8px; }
-  .filter-group { flex-wrap: wrap; }
-  .filter-group input, .filter-group select { min-width: 0; flex: 1 1 110px; }
   /* 手机：轮播内边距收敛，给文案留出空间 */
   .hero-carousel { height: 200px; }
   .carousel-slide { padding: 0 16px; gap: 12px; }
@@ -2360,6 +2373,27 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 
 .detail-buy { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail-buy > button { min-width: 126px; }
+/* 秒杀限购买满：整件秒杀品禁买，给出「去原商品按原价购买」出口 */
+.flash-capped-buy {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px dashed #f0a23a;
+  border-radius: 10px;
+  background: #fff8ec;
+  color: #9a5b00;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.flash-capped-buy p { margin: 0 0 6px; }
+.flash-capped-buy .link-btn {
+  color: #e0531a;
+  font-weight: 600;
+  text-decoration: underline;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
 
 .qty-picker {
   display: inline-flex;
@@ -2805,7 +2839,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 /* 原价（划线价）与折扣展示 */
 .product-image { position: relative; }
 .origin-price { color: var(--muted); font-size: 13px; text-decoration: line-through; margin-left: 6px; }
-.price-main { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.price-main { display: flex; align-items: baseline; gap: 2px 6px; flex-wrap: wrap; }
 .corner-badge {
   position: absolute; top: 8px; left: 8px;
   padding: 2px 8px; background: var(--danger); color: #fff;
@@ -2919,41 +2953,6 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   cursor: not-allowed;
 }
 
-/* ===== 电商升级：首页筛选栏 ===== */
-.shop-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 14px 18px;
-  padding: 16px 18px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow);
-  margin-bottom: 18px;
-}
-.filter-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.filter-group label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.filter-group input,
-.filter-group select {
-  width: auto;
-  min-width: 96px;
-}
-.filter-group .dash {
-  color: var(--muted);
-}
-.shop-filters .ghost {
-  margin-left: auto;
-}
-
 /* 商品卡片品牌行 + 角标 */
 .brand-line {
   margin: 2px 0 0;
@@ -2995,6 +2994,11 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   padding: 2px 10px; background: #fbf3e2; color: #8a6b22;
   border: 1px solid #e8d6a8; border-radius: 10px; font-size: 13px; font-weight: 700;
 }
+/* 两段拆价：纯等级折扣商品的「售价」（会员折率作用基数），非划线、中性强调，区别于吊牌价与会员实付 */
+.sale-price { margin-left: 6px; color: #999; font-size: 13px; text-decoration: line-through; }
+.detail-sale { margin-left: 8px; color: #999; font-size: 14px; text-decoration: line-through; }
+/* 折率标签内标注「（售价）」等基数说明，弱化不抢主信息 */
+.rate-base { font-size: .82em; color: #b08a3a; font-weight: 400; margin-left: 2px; }
 /* 详情页：选中「单独定价的规格」时，价格旁标出「已选规格价」 */
 .detail-spec-price {
   display: inline-block; margin-left: 10px;
@@ -3014,6 +3018,31 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   padding: 2px 10px; background: #fdecea; color: var(--danger);
   border: 1px solid #f6c9c4; border-radius: 10px; font-size: 13px; font-weight: 700;
 }
+/* ===== 卡片价格区：固定「两行」布局（实测卡片内宽仅 ~135px） =====
+   第一行 = 大号实付价（独占整行）；第二行 = 划线价 + 会员折标（同一行，放不下才换）。
+   原因：135px 装不下「大号价 74~88px + 折标 88px」，旧布局靠 flex-wrap 兜底 →
+   数字一长折标就被挤到第三行，同一列表里卡片高度还忽高忽低。
+   折标排在划线价后面，紧挨它真正的计算基数（实付 ÷ 划线价），基数一眼可见。
+   ⚠️ 必须用「直接子选择器」限定在价格容器内 —— .member-price-tag 在购物车/结算页
+   还当「会员价」小标签用（CartPage / CheckoutPage），不能全局改它的字号 / flex。 */
+.price-line > .price-main { flex: 1 1 auto; min-width: 0; }
+.price-main > strong { flex: 0 0 100%; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.price-main > .origin-price,
+.price-main > .sale-price { flex: 0 0 auto; margin-left: 0; font-size: 12px; }
+.price-main > .member-price-tag {
+  flex: 0 0 auto; margin-left: 0; padding: 1px 6px; font-size: 11px; white-space: nowrap;
+}
+
+/* 详情页价格区够宽（>500px），保持「大号价 + 折标」同行、划线单起一行，可读性更好 */
+.detail-price { gap: 4px 10px; }
+.detail-price > strong { order: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.detail-price > .detail-spec-price,
+.detail-price > .detail-unit { order: 0; }
+.detail-price > .detail-member { order: 1; margin-left: 0; flex: 0 0 auto; white-space: nowrap; }
+.detail-price > .detail-origin,
+.detail-price > .detail-sale { order: 2; flex-basis: 100%; margin-left: 0; }
+.detail-price > .detail-discount { order: 3; flex-basis: 100%; margin-left: 0; }
+.detail-price > .detail-flash { order: 3; margin-left: 0; }
 .checkout-points {
   border-top: 1px dashed #e4ebe8; border-bottom: 1px dashed #e4ebe8;
   margin: 10px 0; padding: 10px 0;
@@ -3688,6 +3717,14 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .sku-meta input {
   flex: 1;
 }
+.sku-image {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sku-image .img-upload {
+  margin-top: 0;
+}
 button.mini {
   min-height: 30px;
   padding: 4px 12px;
@@ -4278,8 +4315,6 @@ button.mini.danger:hover {
 /* 商品卡：低库存预警 */
 .product-card .price-line small.low-stock { color: var(--warn); font-weight: 800; } /* 兼容他处 */
 
-.shop-filters { align-items: center; }
-
 /* ============ 页脚 ============ */
 
 /* 服务承诺条：绿渐变横带，四项承诺 */
@@ -4821,3 +4856,72 @@ button.mini.danger:hover {
   background: #fff;
   display: block;
 }
+
+/* ===== 会员等级环（页头头像）：静态彩色渐变环，不旋转（用户嫌旋转显乱，09-29 改为静态） ===== */
+.tier-ring { position: relative; border-radius: 50%; }
+.tier-ring::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #d8dde3, #f4f6f8, #d8dde3);
+}
+.tier-ring.lv1::before { background: conic-gradient(from 0deg, #c3cad3, #f2f5f8, #c3cad3); }
+.tier-ring.lv2::before { background: conic-gradient(from 0deg, #f6d365, #fff3c4, #f6d365); }
+.tier-ring.lv3::before { background: conic-gradient(from 0deg, #7cc4ff, #d6ecff, #7cc4ff); }
+.tier-ring.lv4::before { background: conic-gradient(from 0deg, #b388ff, #e9d8ff, #b388ff); }
+.tier-ring.lv5::before { background: conic-gradient(from 0deg, #2b2f36, #6b7280, #2b2f36); }
+.tier-ring.lv6::before { background: conic-gradient(from 0deg, #ffb020, #fff3c4, #ffb020); }
+.tier-ring > .avatar-img { position: relative; z-index: 1; }
+
+/* ===== 管理员「以会员身份预览价格」 ===== */
+.tier-preview-banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 10px 0 0; padding: 8px 14px;
+  background: linear-gradient(90deg, #fff7e6, #fff);
+  border: 1px solid #ffe2a8; border-radius: 10px;
+  color: #8a5a00; font-size: 13px;
+}
+.tier-preview-banner strong { color: #b45309; }
+.tier-preview-banner .tpb-dot,
+.tier-preview-fab .tpf-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.tier-preview-banner .tpb-exit {
+  margin-left: auto; border: 1px solid #ffce7a; background: #fff; color: #b45309;
+  border-radius: 999px; padding: 3px 12px; font-size: 12px; cursor: pointer;
+}
+.tier-preview-banner .tpb-exit:hover { background: #fff3d6; }
+/* 档位色点（与会员环一致） */
+.tpb-dot.lv0, .tpf-dot.lv0 { background: #9aa3ad; }
+.tpb-dot.lv1, .tpf-dot.lv1 { background: #c3cad3; }
+.tpb-dot.lv2, .tpf-dot.lv2 { background: #f6d365; }
+.tpb-dot.lv3, .tpf-dot.lv3 { background: #7cc4ff; }
+.tpb-dot.lv4, .tpf-dot.lv4 { background: #b388ff; }
+.tpb-dot.lv5, .tpf-dot.lv5 { background: #2b2f36; }
+.tpb-dot.lv6, .tpf-dot.lv6 { background: #ffb020; }
+
+.tier-preview-fab { position: fixed; right: 18px; bottom: 22px; z-index: 1200; width: 184px; }
+.tier-preview-fab .tpf-toggle {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  background: #1f2937; color: #fff; border: none; border-radius: 999px;
+  padding: 9px 14px; font-size: 13px; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.22);
+}
+.tier-preview-fab .tpf-toggle:hover { background: #111827; }
+.tier-preview-fab .tpf-caret { margin-left: auto; transition: transform .15s; }
+.tier-preview-fab .tpf-caret.up { transform: rotate(180deg); }
+.tier-preview-fab .tpf-panel {
+  margin-top: 8px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.16); padding: 8px;
+}
+.tier-preview-fab .tpf-title { font-size: 12px; color: #6b7280; padding: 4px 8px 6px; }
+.tier-preview-fab .tpf-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+.tier-preview-fab .tpf-row:hover { background: #f3f4f6; }
+.tier-preview-fab .tpf-row input { accent-color: #1f2937; }
+.tier-preview-fab .tpf-name { font-weight: 600; }
+.tier-preview-fab .tpf-rate { margin-left: auto; color: #16a34a; font-size: 12px; }
+.tier-preview-fab .tpf-clear {
+  width: 100%; margin-top: 6px; border: 1px solid #e5e7eb; background: #f9fafb; color: #374151;
+  border-radius: 8px; padding: 7px; font-size: 12px; cursor: pointer;
+}
+.tier-preview-fab .tpf-clear:hover { background: #f3f4f6; }

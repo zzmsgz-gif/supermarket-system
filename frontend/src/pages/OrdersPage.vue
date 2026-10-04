@@ -69,6 +69,13 @@
           </div>
         </div>
       </section>
+      <Pager
+        :page="orders.page"
+        :total="orders.total"
+        :size="orders.size"
+        :loading="orders.loading"
+        @go="onOrderPage"
+      />
 </template>
 
 <script>
@@ -78,7 +85,11 @@ export default {
   name: 'OrdersPage',
   setup() {
     const appCtx = inject('appCtx');
-    return { ...appCtx, orderSavedTotal };
+    const onOrderPage = (page) => {
+      appCtx.loadOrdersPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    return { ...appCtx, orderSavedTotal, onOrderPage };
   }
 };
 </script>

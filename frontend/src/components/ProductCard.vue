@@ -1,15 +1,15 @@
 <template>
   <article class="product-card clickable" @click="$emit('open', product)">
     <div class="product-image" @click.stop="$emit('open', product)">
-      <img v-if="product.coverUrl" :src="product.coverUrl" :alt="product.name" @error="imgFallback($event, product.name)" />
+      <img v-if="product.coverUrl" :src="product.coverUrl" :alt="product.name" @error="imgFallback($event, product.name)"  loading="lazy" decoding="async"/>
       <span v-else>{{ initials(product.name) }}</span>
       <!-- 左上角标横排：原先 省X/热/新/会员 四个都 absolute 在 top:8/left:8 同一坐标，
            同现时互相叠盖只露出最后一张；包进 badge-row 用 flex 横排错开。 -->
       <div v-if="badges" class="badge-row">
-        <span v-if="discountSave(product.originalPrice, product.price) > 0" class="corner-badge">省{{ money(discountSave(product.originalPrice, product.price)) }}</span>
+        <span v-if="discountSave(memberView ? memberView.original : product.originalPrice, memberView ? memberView.price : product.price) >= 1" class="corner-badge">省{{ money(discountSave(memberView ? memberView.original : product.originalPrice, memberView ? memberView.price : product.price)) }}</span>
         <span v-if="product.isHot" class="corner-badge hot">热</span>
         <span v-if="product.isNew" class="corner-badge new">新</span>
-        <span v-if="memberPrice" class="corner-badge vip">会员</span>
+        <span v-if="memberPrice" class="corner-badge vip">会员价</span>
       </div>
       <span v-if="flashPrice" class="corner-badge flash">秒杀</span>
       <span v-if="activityTag" class="activity-chip">{{ activityTag }}</span>
@@ -32,15 +32,23 @@
     <div class="price-block" v-if="mode === 'full'">
       <div class="price-line">
         <div class="price-main">
-          <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || product.price) }}</strong>
+          <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || memberView?.price || product.price) }}</strong>
           <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
+          <template v-else-if="memberView">
+            <span class="sale-price">{{ money(product.price) }}</span>
+          </template>
           <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
-          <span v-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
+          <span v-if="memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
+          <span v-else-if="memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
+          <span v-else-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
         </div>
         <!-- 右下角圆形「＋」加购（生鲜电商主流做法）：替代旧的双通栏按钮，卡片更轻盈。
              整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
         <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop="$emit('add', product)">＋</button>
-        <span v-else-if="flashCapped" class="flash-cap-note">{{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : '已达限购（每人 ' + flashLimitText + ' 件）' }}</span>
+        <span v-else-if="flashCapped" class="flash-cap-note">
+          {{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : '已达限购（每人 ' + flashLimitText + ' 件）' }}
+          <button v-if="flashSale && flashSale.sourceProductId && !flashSale.myUnpaidOrderId" type="button" class="link-btn" @click.stop="openOriginal">去原商品</button>
+        </span>
         <span v-else-if="isAdmin" class="admin-inline-note">管理员仅查看上架商品</span>
       </div>
       <div class="meta-line">
@@ -54,9 +62,15 @@
     </div>
     <div class="price-line" v-else>
       <div class="price-main">
-        <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || product.price) }}</strong>
+        <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || memberView?.price || product.price) }}</strong>
         <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
-        <span v-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
+        <template v-else-if="memberView">
+          <span class="sale-price">{{ money(product.price) }}</span>
+        </template>
+        <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
+        <span v-if="memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
+        <span v-else-if="memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
+        <span v-else-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
       </div>
     </div>
   </article>
@@ -76,6 +90,11 @@ const props = defineProps({
 });
 
 defineEmits(['open', 'add']);
+
+// 卡片价格区可用宽度只有 ~135px（右下角「＋」按钮占掉约 50px）：
+// 「银卡会员」这类全称太宽会把折标挤到第三行，卡片上统一去掉「会员」二字（→「银卡」）。
+// 详情页宽度足够，仍显示档位全称。
+const shortTier = (name) => String(name || '').replace(/会员/g, '');
 
 const appCtx = inject('appCtx', null);
 // 商品平均星级（来自 /products/rating-summary 聚合）。评价少于 3 条时不展示：
@@ -140,6 +159,12 @@ const memberPrice = computed(() => {
   return flashPrice.value > 0 && flashPrice.value < mp ? 0 : mp;
 });
 
+// 登录会员的实付价视图（与后端 unitPriceFor 同口径）：非会员/游客返回 null。
+// 列表/详情据此把主价切换成「会员价」，并挂「X折会员价」标签，价格从浏览到下单全程一致。
+const memberView = computed(() => (appCtx && typeof appCtx.productMemberView === 'function'
+  ? appCtx.productMemberView(props.product)
+  : null));
+
 // 收藏状态：直接复用 appCtx（favoriteIds 变化时自动重算），点击即切换
 const favorited = computed(() => (appCtx && typeof appCtx.isFavorite === 'function'
   ? appCtx.isFavorite(props.product.id)
@@ -147,5 +172,10 @@ const favorited = computed(() => (appCtx && typeof appCtx.isFavorite === 'functi
 
 function onToggleFavorite() {
   if (appCtx && typeof appCtx.toggleFavorite === 'function') appCtx.toggleFavorite(props.product);
+}
+// 限购买满后引导去独立原商品按原价购买（sourceProductId 由秒杀列表透出）
+function openOriginal() {
+  const srcId = flashSale.value && flashSale.value.sourceProductId;
+  if (srcId && appCtx && typeof appCtx.openProductDetail === 'function') appCtx.openProductDetail({ id: srcId });
 }
 </script>

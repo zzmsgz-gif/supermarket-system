@@ -80,9 +80,20 @@
             <div class="addr-form">
               <input v-model="addressForm.receiverName" placeholder="收货人" />
               <input v-model="addressForm.receiverPhone" placeholder="手机号" />
-              <input v-model="addressForm.province" placeholder="省份" />
-              <input v-model="addressForm.city" placeholder="城市" />
-              <input v-model="addressForm.district" placeholder="区县" />
+              <div class="region-selects">
+                <select v-model="addressForm.province" @change="onRegionProvince" class="region-sel">
+                  <option value="">省份</option>
+                  <option v-for="(cities, p) in regionData" :key="p" :value="p">{{ p }}</option>
+                </select>
+                <select v-model="addressForm.city" @change="onRegionCity" :disabled="!addressForm.province" class="region-sel">
+                  <option value="">城市</option>
+                  <option v-for="(districts, c) in citiesOf(addressForm.province)" :key="c" :value="c">{{ c }}</option>
+                </select>
+                <select v-model="addressForm.district" :disabled="!addressForm.city" class="region-sel">
+                  <option value="">区 / 县</option>
+                  <option v-for="d in districtsOf(addressForm.province, addressForm.city)" :key="d" :value="d">{{ d }}</option>
+                </select>
+              </div>
               <input v-model="addressForm.detailAddress" placeholder="详细地址" />
               <label class="check-line"><input type="checkbox" v-model="addressForm.isDefault" /> 设为默认地址</label>
               <button @click="saveAddress">保存地址</button>
@@ -104,7 +115,8 @@
               <small v-else>
                 <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
                 {{ money(item.productPrice) }} × {{ item.quantity }}
-                <span v-if="itemOriginalSave(item) > 0" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+                <span v-if="itemOriginalSave(item) >= 1" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+                <span v-if="isMemberItem(item)" class="member-price-tag">会员价</span>
               </small>
             </div>
             <strong class="line-total">{{ money(item.subtotalAmount) }}</strong>
@@ -123,11 +135,10 @@
             : isExpress
               ? '快递配送 · 第三方物流'
               : '同城即时配送 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
-          <div class="row"><span>商品合计</span><strong>{{ money(cartLocalTotal) }}</strong></div>
-          <div v-if="cartOriginalSave > 0" class="row"><span>划线优惠（已省）</span><strong class="minus">- {{ money(cartOriginalSave) }}</strong></div>
+          <div class="row"><span>商品合计</span><strong>{{ money(cartListTotal) }}</strong></div>
+          <div v-if="memberPreview.memberDiscount > 0" class="row"><span>{{ tierNameFor(session.user.memberLevel) }}会员折扣</span><strong class="minus">- {{ money(memberPreview.memberDiscount) }}</strong></div>
           <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
           <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
-          <div v-if="memberPreview.memberDiscount > 0" class="row"><span>{{ tierNameFor(session.user.memberLevel) }}折扣</span><strong class="minus">- {{ money(memberPreview.memberDiscount) }}</strong></div>
 
           <div class="checkout-points" v-if="session.user">
             <label class="points-toggle">
@@ -208,10 +219,14 @@
 <script>
 import { inject, computed, ref, watch } from 'vue';
 import { cartItemIssue, cartIssueItems } from '../utils/format';
+import { regionData, citiesOf, districtsOf } from '../utils/regions';
 export default {
   name: 'CheckoutPage',
   setup() {
     const appCtx = inject('appCtx');
+    // 切换省：清空市/区；切换市：清空区，避免联动下级不匹配
+    const onRegionProvince = () => { appCtx.addressForm.city = ''; appCtx.addressForm.district = ''; };
+    const onRegionCity = () => { appCtx.addressForm.district = ''; };
     const clampPoints = () => {
       const max = appCtx.memberPreview.value.maxRedeemPoints;
       const v = Number(appCtx.pointsToUse.value) || 0;
@@ -257,9 +272,17 @@ export default {
       { immediate: true }
     );
 
+    // 该结算项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）：用于挂「会员价」标签。
+    // 直接用后端 memberDiscount 判定，避免依赖前端商品目录是否加载。
+    function isMemberItem(item) {
+      if (!item || item.flashSaleId || Number(item.flashPrice || 0) > 0) return false;
+      return Number(item.memberDiscount || 0) > 0;
+    }
+
     return {
       ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
-      rangeCheck, outOfRange, hasItems,
+      rangeCheck, outOfRange, hasItems, isMemberItem,
+      regionData, citiesOf, districtsOf, onRegionProvince, onRegionCity,
     };
   }
 };

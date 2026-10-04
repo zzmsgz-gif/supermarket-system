@@ -2,7 +2,7 @@
   <div class="img-upload">
     <div class="iu-list">
       <div v-for="(url, i) in previews" :key="i" class="iu-thumb">
-        <img :src="url" alt="图片预览" />
+        <img :src="url" alt="图片预览"  loading="lazy" decoding="async"/>
         <button type="button" class="iu-del" @click="removeAt(i)" title="移除">×</button>
       </div>
       <label v-if="canAdd" class="iu-add" :class="{ 'iu-busy': uploading }">

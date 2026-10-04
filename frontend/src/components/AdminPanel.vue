@@ -266,7 +266,7 @@
                   <tbody>
                     <tr v-for="category in categoryPageItems" :key="category.id">
                       <td>
-                        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name" />
+                        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name"  loading="lazy" decoding="async"/>
                         <span v-else class="muted">—</span>
                       </td>
                       <td><span class="cell-strong">{{ category.name }}</span></td>
@@ -373,6 +373,13 @@
 
               <div v-if="flashFormOpen" class="compact-form form-bar">
                 <label class="field">
+                  <span class="field-label">商品来源<i class="req">*</i></span>
+                  <select v-model="flashForm.sourceMode">
+                    <option value="existing">克隆现有商品（原商品保持不变）</option>
+                    <option value="new">新建独立秒杀商品（无原商品）</option>
+                  </select>
+                </label>
+                <label v-if="flashForm.sourceMode === 'existing'" class="field">
                   <span class="field-label">秒杀商品<i class="req">*</i></span>
                   <select v-model.number="flashForm.productId">
                     <option v-for="p in flashProductOptions" :key="p.id" :value="p.id">
@@ -380,6 +387,34 @@
                     </option>
                   </select>
                 </label>
+                <template v-if="flashForm.sourceMode === 'new'">
+                  <label class="field">
+                    <span class="field-label">商品名称<i class="req">*</i></span>
+                    <input v-model="flashForm.productName" placeholder="如「中秋月饼礼盒」" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">商品分类<i class="req">*</i></span>
+                    <select v-model.number="flashForm.categoryId">
+                      <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span class="field-label">商品售价<i class="req">*</i></span>
+                    <input v-model.number="flashForm.price" type="number" step="0.01" min="0.01" placeholder="秒杀价必须低于它" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">划线原价</span>
+                    <input v-model.number="flashForm.originalPrice" type="number" step="0.01" min="0" placeholder="可选，用于展示划线价" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">销售单位</span>
+                    <input v-model="flashForm.unit" placeholder="默认「件」" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">商品主图</span>
+                    <ImageUpload v-model="flashForm.coverUrl" :multiple="false" :max="1" type="product" />
+                  </label>
+                </template>
                 <label class="field">
                   <span class="field-label">场次名</span>
                   <input v-model="flashForm.name" placeholder="留空自动生成，如「早市秒杀」" />
@@ -429,7 +464,11 @@
               <tbody>
                 <tr v-for="sale in adminFlashSales" :key="sale.id">
                   <td><span class="cell-strong">{{ sale.name }}</span></td>
-                  <td>{{ sale.productName }}</td>
+                  <td>
+                    {{ sale.productName }}
+                    <span v-if="!sale.sourceProductId" class="tag ok">独立商品</span>
+                    <span v-else class="cell-sub">来自原商品</span>
+                  </td>
                   <td>
                     <span class="cell-strong">{{ money(sale.flashPrice) }}</span>
                     <span class="cell-sub">售价 {{ money(sale.price) }}</span>
@@ -831,7 +870,7 @@
                 <div v-for="(b, bi) in adminBanners" :key="b.id" class="admin-card">
                   <span class="banner-pos" :title="'前台轮播第 ' + (bi + 1) + ' 张'">{{ bi + 1 }}</span>
                   <div class="banner-cover">
-                    <img v-if="b.imageUrl" :src="b.imageUrl" alt="" />
+                    <img v-if="b.imageUrl" :src="b.imageUrl" alt=""  loading="lazy" decoding="async"/>
                     <span v-else class="cover-empty">无图</span>
                   </div>
                   <div class="card-info">
@@ -1070,7 +1109,7 @@
                 </div>
                 <p class="rar-content">{{ r.content || '（无文字评价，仅评分）' }}</p>
                 <div v-if="r.imageUrls && r.imageUrls.length" class="rar-imgs">
-                  <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图" />
+                  <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图"  loading="lazy" decoding="async"/>
                 </div>
                 <div v-if="r.replyContent" class="rar-reply">
                   <b>商家回复</b><small v-if="r.replyAt">（{{ formatDate(r.replyAt) }}）</small>：{{ r.replyContent }}
@@ -1172,16 +1211,17 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, toRef, nextTick, watch } from 'vue';
+import { ref, reactive, computed, onMounted, toRef, nextTick, watch, defineAsyncComponent } from 'vue';
 import { api } from '../api/client';
 import { discountRate, discountSave, fulfillmentLabel, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, initials, itemOriginalSave, money, orderSavedTotal, orderStatusLabel, orderStatusTag, refundStatusTag, resolveUnit } from '../utils/format';
 import ImageUpload from './ImageUpload.vue';
 import AdminPager from './AdminPager.vue';
-import AdminInsightsPanel from './AdminInsightsPanel.vue';
 import AdminStockFormRow from './AdminStockFormRow.vue';
-import AdminProductsPanel from './AdminProductsPanel.vue';
 import AdminPageSize from './AdminPageSize.vue';
 import AdminSearchBox from './AdminSearchBox.vue';
+// 两个重面板改为懒加载：首次进入对应 tab 才下载该面板 chunk，不进 AdminPanel 主包
+const AdminInsightsPanel = defineAsyncComponent(() => import('./AdminInsightsPanel.vue'));
+const AdminProductsPanel = defineAsyncComponent(() => import('./AdminProductsPanel.vue'));
 
 const props = defineProps({
   // 响应式：admin 内会读取 view / categories
@@ -1198,8 +1238,8 @@ const categories = toRef(props, 'categories');
 const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, } = props.adminCtx;
 
 // 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
-const MEMBER_LEVEL_NAMES = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
-const memberLevelName = (level) => MEMBER_LEVEL_NAMES[Number(level) || 0] || '普通会员';
+const MEMBER_LEVEL_NAMES = ['普通用户', '银卡会员', '金卡会员', '钻石会员', '紫钻会员', '黑卡会员', '至尊会员'];
+const memberLevelName = (level) => MEMBER_LEVEL_NAMES[Number(level) || 0] || '普通用户';
 
 const adminActivities = reactive({ items: [], page: 1, size: 10, total: 0 });
 
@@ -1436,8 +1476,12 @@ const flashFormOpen = ref(false);
 const flashEditingId = ref(null);
 const flashProductOptions = ref([]);
 const flashForm = reactive({
+  // sourceMode：existing＝克隆现有商品（有原商品）；new＝从零新建一件独立秒杀商品（无原商品）
+  sourceMode: 'existing',
   productId: 0, name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
   startTime: '', endTime: '', status: 1, sortNo: 0,
+  // 仅 sourceMode==='new' 时使用的商品字段
+  productName: '', categoryId: 0, price: 0, originalPrice: 0, coverUrl: '', unit: '',
 });
 
 async function loadAdminFlashSales() {
@@ -1480,10 +1524,14 @@ function toDateTimeInput(value) {
 
 function openFlashForm(sale) {
   if (!flashProductOptions.value.length) loadFlashProductOptions();
+  // 没有 sourceProductId 的就是「独立秒杀商品」，编辑时要用新建模式回填商品字段
+  const standalone = sale ? !sale.sourceProductId : false;
   flashEditingId.value = sale ? sale.id : null;
   Object.assign(flashForm, sale
     ? {
-        productId: Number(sale.productId),
+        sourceMode: standalone ? 'new' : 'existing',
+        // 编辑时回填「原商品」：秒杀下拉里只有普通商品，而 sale.productId 现在是克隆出来的 FLASH 商品
+        productId: Number(sale.sourceProductId || sale.productId),
         name: sale.name || '',
         flashPrice: Number(sale.flashPrice),
         totalQuota: Number(sale.totalQuota),
@@ -1492,11 +1540,20 @@ function openFlashForm(sale) {
         endTime: toDateTimeInput(sale.endTime),
         status: Number(sale.status),
         sortNo: Number(sale.sortNo || 0),
+        // 独立商品：从场次响应里回填商品自身字段（分类不在响应里，编辑时不改）
+        productName: sale.productName || '',
+        categoryId: 0,
+        price: Number(sale.price || 0),
+        originalPrice: 0,
+        coverUrl: sale.productCoverUrl || '',
+        unit: sale.productUnit || '',
       }
     : {
+        sourceMode: 'existing',
         productId: flashProductOptions.value.length ? Number(flashProductOptions.value[0].id) : 0,
         name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
         startTime: '', endTime: '', status: 1, sortNo: 0,
+        productName: '', categoryId: 0, price: 0, originalPrice: 0, coverUrl: '', unit: '',
       });
   flashFormOpen.value = true;
 }
@@ -1507,13 +1564,23 @@ function closeFlashForm() {
 }
 
 async function saveFlashSale() {
-  if (!flashForm.productId) { fail('请选择秒杀商品'); return; }
+  const standalone = flashForm.sourceMode === 'new';
+  if (standalone) {
+    if (!String(flashForm.productName || '').trim()) { fail('请填写商品名称'); return; }
+    // 分类只在新建时要传（编辑时后端不改分类）
+    if (!flashEditingId.value && !(Number(flashForm.categoryId) > 0)) { fail('请选择商品分类'); return; }
+    if (!(Number(flashForm.price) > 0)) { fail('请填写大于 0 的商品售价'); return; }
+    if (Number(flashForm.flashPrice) >= Number(flashForm.price)) { fail('秒杀价必须低于商品售价'); return; }
+  } else if (!flashForm.productId) {
+    fail('请选择秒杀商品'); return;
+  }
   if (!(Number(flashForm.flashPrice) > 0)) { fail('请填写大于 0 的秒杀价'); return; }
   if (!(Number(flashForm.totalQuota) >= 1)) { fail('秒杀名额至少为 1'); return; }
   if (!flashForm.startTime || !flashForm.endTime) { fail('请选择开始与结束时间'); return; }
   if (flashForm.startTime >= flashForm.endTime) { fail('开始时间必须早于结束时间'); return; }
   const payload = {
-    productId: Number(flashForm.productId),
+    // 独立秒杀商品不传 productId（没有原商品），由后端从零建一件商品
+    productId: standalone ? null : Number(flashForm.productId),
     name: flashForm.name.trim() || null,
     flashPrice: Number(flashForm.flashPrice),
     totalQuota: Number(flashForm.totalQuota),
@@ -1523,6 +1590,14 @@ async function saveFlashSale() {
     status: Number(flashForm.status),
     sortNo: Number(flashForm.sortNo || 0),
   };
+  if (standalone) {
+    payload.productName = String(flashForm.productName || '').trim();
+    payload.categoryId = Number(flashForm.categoryId) > 0 ? Number(flashForm.categoryId) : null;
+    payload.price = Number(flashForm.price);
+    payload.originalPrice = Number(flashForm.originalPrice) > 0 ? Number(flashForm.originalPrice) : null;
+    payload.coverUrl = flashForm.coverUrl || null;
+    payload.unit = String(flashForm.unit || '').trim() || '件';
+  }
   try {
     await run(async () => {
       if (flashEditingId.value) await api.put(`/admin/flash-sales/${flashEditingId.value}`, payload);

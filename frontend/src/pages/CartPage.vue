@@ -26,7 +26,7 @@
               :title="'加入购物车：' + p.name"
               @click="addToCart(p)"
             >
-              <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)" />
+              <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)"  loading="lazy" decoding="async"/>
               <span class="cu-name">{{ p.name }}</span>
               <b class="cu-price">{{ money(p.price) }}</b>
               <span class="cu-add">+</span>
@@ -62,11 +62,10 @@
             alt="商品图片"
             @error="imgFallback($event, item.productName)"
             @click="openProductDetail({ id: item.productId })"
-          />
+           loading="lazy" decoding="async"/>
           <div>
             <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
-            <span v-if="item.flashSaleId" class="flash-chip">限时秒杀</span>
-            <span v-if="flashSplitNote(item)" class="flash-chip capped">{{ flashSplitNote(item) }}</span>
+            <span v-if="item.flashSaleId" class="flash-chip">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
             <span v-if="cartItemIssue(item)" class="flash-chip invalid">{{ cartItemIssue(item) }}</span>
             <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
             <small v-if="unpaidHolds[item.productId]" class="flash-hold">
@@ -75,17 +74,17 @@
               <button type="button" class="link-btn" @click="navigate('orders')">去支付</button>
               <button type="button" class="link-btn" @click="cancelOrder(unpaidHolds[item.productId].myUnpaidOrderId)">取消订单释放</button>
             </small>
-            <small v-if="isFlashSplit(item)">
+            <small v-if="item.flashSaleId">
               <span class="seg flash">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
-              <span class="seg">原价 {{ money(item.regularPrice) }} ×{{ item.quantity - item.flashQty }}</span>
               = <b>{{ money(item.subtotalAmount) }}</b>
-              <span class="save-chip">省 {{ money(Number(item.productOriginalPrice) * Number(item.quantity) - Number(item.subtotalAmount)) }}</span>
+              <span v-if="itemOriginalSave(item) >= 1" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
             </small>
             <small v-else>
               <span v-if="Number(item.productOriginalPrice) > Number(item.productPrice)" class="orig-strike">{{ money(item.productOriginalPrice) }}</span>
               {{ money(item.productPrice) }} × {{ item.quantity }}
               <template v-if="itemOriginalSave(item) > 0"> = <b>{{ money(item.productPrice * item.quantity) }}</b></template>
-              <span v-if="itemOriginalSave(item) > 0" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+              <span v-if="itemOriginalSave(item) >= 1" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
+              <span v-if="isMemberItem(item)" class="member-price-tag">会员价</span>
             </small>
           </div>
           <div class="row-actions">
@@ -95,7 +94,7 @@
               <button
                 class="stepper"
                 type="button"
-                title="增加数量（超出秒杀限购的部分将按原价结算）"
+                title="秒杀品受每人限购限制，名额用完后不可再加"
                 @click="stepQty(item, 1)"
               >+</button>
             </div>
@@ -108,7 +107,7 @@
           <div class="coupon-list">
             <button class="coupon-opt" :class="{ on: !selectedUserCouponId }" @click="chooseNoCoupon">不使用优惠券</button>
             <button
-              v-for="coupon in myCoupons"
+              v-for="coupon in myCoupons.items"
               :key="coupon.id"
               type="button"
               class="coupon-opt"
@@ -128,7 +127,11 @@
         <div v-if="cart.items?.length" class="cart-settle">
           <div class="cs-row">
             <span>商品金额<template v-if="cartSelectedQty">（共 {{ cartSelectedQty }} 件）</template></span>
-            <b>{{ money(cartLocalTotal) }}</b>
+            <b>{{ money(cartListTotal) }}</b>
+          </div>
+          <div v-if="cartMemberDiscount > 0" class="cs-row minus">
+            <span>{{ tierNameFor(session.user.memberLevel) }}会员折扣</span>
+            <b>-{{ money(cartMemberDiscount) }}</b>
           </div>
           <div v-if="Number(cart.activityDiscount) > 0" class="cs-row minus">
             <span>活动优惠<template v-if="cart.activityName">（{{ cart.activityName }}）</template></span>
@@ -223,8 +226,15 @@ export default {
       () => { loadUpsell(); }
     );
 
+    // 该购物项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）：用于挂「会员价」标签。
+    // 直接用后端 memberDiscount 判定，避免依赖前端商品目录是否加载。
+    function isMemberItem(item) {
+      if (!item || item.flashSaleId || Number(item.flashPrice || 0) > 0) return false;
+      return Number(item.memberDiscount || 0) > 0;
+    }
+
     return {
-      ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell,
+      ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell, isMemberItem,
     };
   }
 };

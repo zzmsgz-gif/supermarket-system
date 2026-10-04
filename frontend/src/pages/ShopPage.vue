@@ -17,7 +17,7 @@
         @focus="openCatNow(category)"
         @blur="closeCatSoon"
       >
-        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon" :alt="category.name" @error="onCatImgError" />
+        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon" :alt="category.name" @error="onCatImgError"  loading="lazy" decoding="async"/>
         <span v-else class="cat-emoji">{{ catEmoji(category.name) }}</span>{{ category.name }}
       </button>
     </aside>
@@ -31,7 +31,7 @@
       @mouseleave="closeCatSoon"
     >
       <div class="hcp-head">
-        <img v-if="hoverCat.iconUrl" :src="hoverCat.iconUrl" class="cat-icon" :alt="hoverCat.name" @error="onCatImgError" />
+        <img v-if="hoverCat.iconUrl" :src="hoverCat.iconUrl" class="cat-icon" :alt="hoverCat.name" @error="onCatImgError"  loading="lazy" decoding="async"/>
         <span v-else class="cat-emoji">{{ catEmoji(hoverCat.name) }}</span>
         <strong>{{ hoverCat.name }}</strong>
         <span class="hcp-count">{{ hoverCatItems.length }} 件在售</span>
@@ -131,7 +131,7 @@
         @click="openProductDetail({ id: sale.productId })"
       >
         <div class="flash-img">
-          <img v-if="sale.productCoverUrl" :src="sale.productCoverUrl" :alt="sale.productName" @error="imgFallback($event, sale.productName)" />
+          <img v-if="sale.productCoverUrl" :src="sale.productCoverUrl" :alt="sale.productName" @error="imgFallback($event, sale.productName)"  loading="lazy" decoding="async"/>
           <span v-else>{{ initials(sale.productName) }}</span>
           <span class="flash-tag">{{ sale.state === 'RUNNING' ? '抢购中' : '即将开始' }}</span>
         </div>
@@ -171,26 +171,7 @@
     </div>
   </div>
 
-  <!-- ③ 工具条：价格 / 排序（搜索统一走页头全局搜索框，避免首页出现两个搜索框） -->
-  <div class="shop-filters">
-    <div class="filter-group">
-      <label>价格</label>
-      <input v-model="filters.minPrice" type="number" min="0" placeholder="最低" @keyup.enter="applyFilters" />
-      <span class="dash">—</span>
-      <input v-model="filters.maxPrice" type="number" min="0" placeholder="最高" @keyup.enter="applyFilters" />
-    </div>
-    <div class="filter-group">
-      <label>排序</label>
-      <select v-model="filters.sort" @change="applyFilters">
-        <option value="">综合</option>
-        <option value="price_asc">价格从低到高</option>
-        <option value="price_desc">价格从高到低</option>
-        <option value="sales_desc">销量优先</option>
-        <option value="new_desc">最新上架</option>
-      </select>
-    </div>
-    <button class="ghost" @click="resetFilters">重置</button>
-  </div>
+  <!-- ③ 价格/排序工具条已于 10-01 移除（视觉太挤、与分类楼层信息重复）；筛选只留页头搜索 + 分类 -->
 
   <!-- ④ 主体：无筛选时按真实分类分楼层，筛选时显示结果网格 -->
   <div v-if="isFiltering" class="product-area">
@@ -210,6 +191,17 @@
   </div>
 
   <div v-else class="floor-list">
+    <!-- 会员专区（C）：把「会员到底值多少钱」具象化 —— 直接列出设了会员价的商品 -->
+    <div v-if="memberPriceProducts.length" class="floor member-floor">
+      <div class="fhead">
+        <span class="fbar"></span>
+        <strong>会员专区</strong>
+        <span class="muted-note">{{ canMemberPrice ? '你已解锁会员价' : '升级后立即解锁会员价' }} · {{ memberPriceProducts.length }} 件</span>
+      </div>
+      <div class="product-grid" v-reveal.stagger>
+        <ProductCard v-for="product in memberPriceProducts" :key="'mp' + product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
+      </div>
+    </div>
     <!-- 首屏加载中：一个骨架楼层（标题条 + 一行骨架卡），避免「暂无上架商品」先闪一下 -->
     <div v-if="homeLoading" class="floor" aria-hidden="true">
       <div class="fhead">
@@ -317,6 +309,28 @@ export default {
       const list = await api.get('/banners').catch(() => []);
       banners.value = Array.isArray(list) ? list : [];
     }
+
+    // ============ 会员身份（首页身份卡 + 会员专区楼层）============
+    // 未登录 / 管理员 → profile 为 null，身份卡与会员专区都不展示（避免误导）
+    const memberProfile = ref(null);
+    const memberLevels = ref([]);
+    async function loadMemberIdentity() {
+      try { memberLevels.value = (await api.get('/member/levels')) || []; } catch (e) { memberLevels.value = []; }
+      try { memberProfile.value = await api.get('/member/profile'); } catch (e) { memberProfile.value = null; }
+    }
+    const myLevel = computed(() => Number(memberProfile.value?.memberLevel || 0));
+    // 会员价门槛：level>=1 才可享（level0 普通用户按原价，否则原价失去意义）
+    const canMemberPrice = computed(() => myLevel.value >= 1);
+    const levelName = computed(() => memberProfile.value?.levelName || '普通用户');
+    const nextGap = computed(() => {
+      const p = memberProfile.value;
+      if (!p || p.nextLevelThreshold == null) return null;
+      return Math.max(0, Number(p.nextLevelThreshold) - Number(p.totalSpent || 0));
+    });
+    // 会员专区：把「会员到底值多少钱」具象化 —— 直接列出设了会员价的商品
+    const memberPriceProducts = computed(() => (allProducts.value || [])
+      .filter((p) => p.memberPrice != null && Number(p.memberPrice) < Number(p.price))
+      .slice(0, 8));
 
     // 轮播 CTA：绑了商品直达详情，否则回到商城（不能叫 goSlide——已用于翻页）
     function openBannerTarget(slide) {
@@ -548,6 +562,7 @@ export default {
       loadActivities();
       loadAllProducts();
       loadAnnouncements();
+      loadMemberIdentity();
     });
 
     onUnmounted(() => {
@@ -671,6 +686,7 @@ export default {
       announcements,
       banners,
       openBannerTarget,
+      memberProfile, memberLevels, myLevel, canMemberPrice, levelName, nextGap, memberPriceProducts,
       announcementDetail,
       openAnnouncement,
       slides,
@@ -708,3 +724,9 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+/* ===== 会员专区楼层 ===== */
+.member-floor .fhead strong { color: #8a6d3b; }
+.member-floor .fbar { background: linear-gradient(180deg,#ffd97d,#ffb020) !important; }
+</style>

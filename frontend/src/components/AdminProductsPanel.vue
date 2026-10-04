@@ -332,9 +332,12 @@ async function deleteProduct(product) {
                       <span class="sku-price-tag" v-if="sku.price !== '' && sku.price != null">规格价 ¥{{ sku.price }}</span>
                       <div class="sku-meta">
                         <input v-model="sku.skuCode" placeholder="SKU 编码（选填）" />
-                        <input v-model="sku.image" placeholder="SKU 图片 URL（选填）" />
                         <input v-model="sku.price" placeholder="规格价（选填，留空=跟随商品价）" inputmode="decimal" />
                         <input v-model="sku.originalPrice" placeholder="规格原价（选填，留空=跟随商品原价）" inputmode="decimal" />
+                      </div>
+                      <div class="sku-image">
+                        <span class="field-label">SKU 图片（选填）</span>
+                        <image-upload v-model="sku.image" type="product" :multiple="false" :max="1" />
                       </div>
                       <button type="button" class="ghost mini danger" @click="productForm.skus.splice(si, 1)">删除该 SKU</button>
                     </div>

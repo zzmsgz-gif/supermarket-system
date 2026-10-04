@@ -32,7 +32,8 @@ export function initials(name) {
 }
 
 export function formatRole(role) {
-  const roleMap = { ADMIN: '管理员', USER: '普通用户' };
+  // USER 不能再译成「普通用户」：那现在是会员等级 0 的名字，撞车会让银卡用户误以为自己是普通用户
+  const roleMap = { ADMIN: '管理员', USER: '注册用户' };
   return roleMap[role] || role || '-';
 }
 

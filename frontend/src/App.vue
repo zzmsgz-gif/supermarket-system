@@ -1,6 +1,6 @@
 <template>
   <main class="app-shell">
-    <div class="header-utility">
+    <div class="header-utility" v-if="view !== 'login'">
       <div class="header-utility-inner">
         <div class="u-left" v-if="noticeList.length">
           <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5" rx="1"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
@@ -22,7 +22,7 @@
       </div>
     </div>
 
-    <header class="site-header">
+    <header class="site-header" v-if="view !== 'login'">
       <div class="header-inner">
         <!-- 导航条已取消：Logo 承担「回到首页」 -->
         <div class="brand brand-link" role="button" tabindex="0" title="回到首页" aria-label="回到首页"
@@ -64,7 +64,7 @@
                 @keydown.enter.prevent="toggleAccountMenu"
                 @keydown.space.prevent="toggleAccountMenu"
               >
-                <span class="account-avatar-wrap">
+                <span class="account-avatar-wrap tier-ring" :class="'lv' + (session.user?.memberLevel || 0)" :title="'等级：' + tierNameFor(session.user?.memberLevel)">
                   <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="avatarInput?.click()" />
                   <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click.stop="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
                   <!-- 导航条取消后，未读提醒收在头像上：不展开下拉也能看见 -->
@@ -72,7 +72,9 @@
                 </span>
                 <div class="account-meta">
                   <span>{{ session.user.nickname || session.user.username }}</span>
-                  <small>{{ formatRole(session.user.role) }}</small>
+                  <!-- 这里显示的是「会员等级」而非账号角色：曾用 formatRole(USER)=「普通用户」，
+                       导致银卡用户头像下也挂着「普通用户」被当成等级（角色≠等级） -->
+                  <small>{{ isAdmin ? '管理员' : tierNameFor(session.user.memberLevel) }}</small>
                 </div>
                 <span class="account-caret" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
               </div>
@@ -97,7 +99,7 @@
                   <button role="menuitem" @click="navigate('recharge')">账户充值</button>
                 </div>
                 <div class="account-menu-list account-menu-tail">
-                  <button role="menuitem" @click="openChangePassword">修改密码</button>
+                  <button role="menuitem" @click="goLogin({ tab: 'change', redirect: (route.name && route.name !== 'login') ? route.name : 'shop' })">修改密码</button>
                   <button role="menuitem" class="menu-danger" @click="logout">退出登录</button>
                 </div>
               </div>
@@ -105,8 +107,8 @@
           </template>
           <template v-else>
             <div class="auth-guest">
-              <button class="ghost" @click="openAuth('login')">登录</button>
-              <button class="btn-solid" @click="openAuth('register')">注册</button>
+              <button class="ghost" @click="openAuthNewTab({ tab: 'login' })">登录</button>
+              <button class="btn-solid" @click="openAuthNewTab({ tab: 'register' })">注册</button>
             </div>
           </template>
         </section>
@@ -114,8 +116,14 @@
 
     </header>
 
-    <section class="content" ref="contentEl" :class="{ 'content-wide': view === 'admin' }">
-      <header class="topbar" v-if="view !== 'product' && view !== 'shop'">
+    <section class="content" ref="contentEl" :class="{ 'content-wide': view === 'admin', 'content-flush': view === 'login' }">
+      <!-- 管理员预览身份横幅：以某会员档位查看价格时始终可见，明确「仅展示、不影响真实账号」 -->
+      <div v-if="isPreviewing && view !== 'login'" class="tier-preview-banner">
+        <span class="tpb-dot" :class="'lv' + previewTier"></span>
+        正在以 <strong>{{ previewTierName }}</strong> 身份预览价格（仅展示，不影响真实账号）
+        <button class="tpb-exit" @click="clearPreviewTier()">退出预览</button>
+      </div>
+      <header class="topbar" v-if="view !== 'product' && view !== 'shop' && view !== 'login'">
         <h1>{{ currentTitle.title }}</h1>
         <button v-if="['orders', 'coupons', 'points', 'favorites', 'messages'].includes(view)" class="ghost" @click="refreshCurrentPage">刷新</button>
       </header>
@@ -125,7 +133,26 @@
       <AdminPanel v-else :view="view" :categories="categories" :admin-ctx="adminCtx" />
     </section>
 
-    <footer class="site-footer">
+    <!-- 管理员专属：以某会员身份预览价格（纯展示）。固定右下角，不在后台管理页显示以免遮挡。 -->
+    <div v-if="isAdmin && view !== 'login' && view !== 'admin'" class="tier-preview-fab" :class="{ open: tierPreviewOpen }">
+      <button class="tpf-toggle" @click="tierPreviewOpen = !tierPreviewOpen" :title="isPreviewing ? '当前预览：' + previewTierName : '以会员身份预览价格'">
+        <span class="tpf-dot" :class="'lv' + (isPreviewing ? previewTier : (session.user?.memberLevel || 0))"></span>
+        预览身份{{ isPreviewing ? '：' + previewTierName : '' }}
+        <span class="tpf-caret" :class="{ up: tierPreviewOpen }">▾</span>
+      </button>
+      <div v-if="tierPreviewOpen" class="tpf-panel">
+        <div class="tpf-title">以会员身份预览价格</div>
+        <label class="tpf-row" v-for="(name, i) in TIER_NAMES_FALLBACK" :key="i">
+          <input type="radio" name="tpf-tier" :value="i" :checked="previewTier === i" @change="setPreviewTier(i)" />
+          <span class="tpf-name" :class="'lv' + i">{{ name }}</span>
+          <small v-if="i > 0" class="tpf-rate">{{ (TIER_RATES_FALLBACK[i] * 10).toFixed(1) }}折</small>
+          <small v-else class="tpf-rate">无折扣</small>
+        </label>
+        <button class="tpf-clear" @click="clearPreviewTier()">关闭预览（按真实身份）</button>
+      </div>
+    </div>
+
+    <footer class="site-footer" v-if="view !== 'login'">
       <div class="footer-promise">
         <div class="footer-promise-inner">
           <div class="promise-item">
@@ -221,120 +248,7 @@
       <div v-if="notice" class="app-toast" role="status">{{ notice }}</div>
     </Transition>
 
-    <!-- 登录 / 注册 合一弹窗（modal-mask--auth 让它用浅绿主题，别动其他弹窗的暖色调） -->
-    <div v-if="authOpen" class="modal-mask modal-mask--auth" @click.self="!forcedChange && closeAuth()">
-      <div class="modal auth-modal" role="dialog" aria-modal="true">
-        <button v-if="!forcedChange" class="modal-close" @click="closeAuth" aria-label="关闭">×</button>
-        <div v-if="authTab === 'login' || authTab === 'register'" class="auth-tabs">
-          <button :class="{ active: authTab === 'login' }" type="button" @click="switchAuth('login')">登录</button>
-          <button :class="{ active: authTab === 'register' }" type="button" @click="switchAuth('register')">注册</button>
-        </div>
-        <div v-else-if="authTab === 'change'" class="auth-change-title">修改密码</div>
-        <div v-else class="auth-change-title">找回密码</div>
-
-        <div v-if="error && authOpen" class="auth-error-banner" role="alert">⚠ {{ error }}</div>
-
-        <form v-if="authTab === 'login'" class="auth-form" @submit.prevent="submitLogin">
-          <label class="auth-field">
-            <span>用户名</span>
-            <input v-model="loginForm.username" placeholder="请输入用户名" autocomplete="username" />
-            <small v-if="authErrors.username" class="field-hint warn">{{ authErrors.username }}</small>
-          </label>
-          <label class="auth-field">
-            <span>密码</span>
-            <input v-model="loginForm.password" type="password" placeholder="请输入密码" autocomplete="current-password" />
-            <small v-if="authErrors.password" class="field-hint warn">{{ authErrors.password }}</small>
-          </label>
-          <label class="auth-remember">
-            <input type="checkbox" v-model="loginForm.remember" /> 记住我（7 天免登录）
-            <span class="auth-forgot" @click="forgotPassword">忘记密码？</span>
-          </label>
-          <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '登录中…' : '登录' }}</button>
-        </form>
-
-        <form v-else-if="authTab === 'register'" class="auth-form" @submit.prevent="submitRegister">
-          <label class="auth-field">
-            <span>用户名 <i class="req">*</i></span>
-            <input v-model="registerForm.username" placeholder="3-50 个字符" autocomplete="username" />
-            <small v-if="authErrors.username" class="field-hint warn">{{ authErrors.username }}</small>
-          </label>
-          <label class="auth-field">
-            <span>密码 <i class="req">*</i></span>
-            <input v-model="registerForm.password" type="password" placeholder="至少 6 位" autocomplete="new-password" />
-            <small v-if="authErrors.password" class="field-hint warn">{{ authErrors.password }}</small>
-          </label>
-          <label class="auth-field">
-            <span>确认密码 <i class="req">*</i></span>
-            <input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" autocomplete="new-password" />
-            <small v-if="authErrors.confirmPassword" class="field-hint warn">{{ authErrors.confirmPassword }}</small>
-          </label>
-          <label class="auth-field">
-            <span>昵称</span>
-            <input v-model="registerForm.nickname" placeholder="不填则默认等于用户名" autocomplete="nickname" />
-          </label>
-          <label class="auth-field">
-            <span>手机号 <i class="req">*</i></span>
-            <input v-model="registerForm.phone" placeholder="用于收货通知" autocomplete="tel" />
-            <small v-if="authErrors.phone" class="field-hint warn">{{ authErrors.phone }}</small>
-          </label>
-          <label class="auth-field">
-            <span>邮箱</span>
-            <input v-model="registerForm.email" placeholder="选填" autocomplete="email" />
-            <small v-if="authErrors.email" class="field-hint warn">{{ authErrors.email }}</small>
-          </label>
-          <label class="auth-agree">
-            <input type="checkbox" v-model="registerForm.agree" />
-            我已阅读并同意 <span class="auth-link" @click="openLegal('TERMS')">《用户协议》</span>
-            与 <span class="auth-link" @click="openLegal('PRIVACY')">《隐私政策》</span>
-            <small v-if="authErrors.agree" class="field-hint warn">{{ authErrors.agree }}</small>
-          </label>
-          <button class="auth-submit" type="submit" :disabled="authSubmitting">{{ authSubmitting ? '注册中…' : '注册并领取新人券' }}</button>
-          <p class="auth-tip">注册即自动发放新人券 🎁</p>
-        </form>
-
-        <form v-else-if="authTab === 'change'" class="auth-form" @submit.prevent="submitChangePassword">
-          <p v-if="forcedChange" class="auth-tip warn-tip">
-            管理员已为你重置密码，请先用临时密码设置新密码，改完即可正常使用。
-          </p>
-          <label class="auth-field">
-            <span>{{ forcedChange ? '临时密码' : '原密码' }}</span>
-            <input v-model="changeForm.currentPassword" type="password" placeholder="请输入当前密码" autocomplete="current-password" />
-            <small v-if="changeErrors.currentPassword" class="field-hint warn">{{ changeErrors.currentPassword }}</small>
-          </label>
-          <label class="auth-field">
-            <span>新密码</span>
-            <input v-model="changeForm.newPassword" type="password" placeholder="6-50 位字符" autocomplete="new-password" />
-            <small v-if="changeErrors.newPassword" class="field-hint warn">{{ changeErrors.newPassword }}</small>
-          </label>
-          <label class="auth-field">
-            <span>确认新密码</span>
-            <input v-model="changeForm.confirmPassword" type="password" placeholder="再次输入新密码" autocomplete="new-password" />
-            <small v-if="changeErrors.confirmPassword" class="field-hint warn">{{ changeErrors.confirmPassword }}</small>
-          </label>
-          <button class="auth-submit" type="submit" :disabled="changeSubmitting">{{ changeSubmitting ? '提交中…' : '确认修改' }}</button>
-        </form>
-
-        <!-- 忘记密码：本项目没有邮件/短信通道，不做自助重置，只受理申请由客服核对身份后发临时密码 -->
-        <form v-else class="auth-form" @submit.prevent="submitPasswordReset">
-          <p class="auth-tip">
-            出于安全考虑，找回密码需要人工核对身份。提交申请后，客服会在 1 个工作日内
-            通过你留下的联系方式告知临时密码，首次登录后需立即修改。
-          </p>
-          <label class="auth-field">
-            <span>账号 <i class="req">*</i></span>
-            <input v-model="resetForm.username" placeholder="请输入用户名" autocomplete="username" />
-            <small v-if="resetErrors.username" class="field-hint warn">{{ resetErrors.username }}</small>
-          </label>
-          <label class="auth-field">
-            <span>联系电话 <i class="req">*</i></span>
-            <input v-model="resetForm.contact" placeholder="便于客服核对身份后联系你" autocomplete="tel" />
-            <small v-if="resetErrors.contact" class="field-hint warn">{{ resetErrors.contact }}</small>
-          </label>
-          <button class="auth-submit" type="submit" :disabled="resetSubmitting">{{ resetSubmitting ? '提交中…' : '提交找回申请' }}</button>
-          <p class="auth-tip"><span class="auth-link" @click="switchAuth('login')">返回登录</span></p>
-        </form>
-      </div>
-    </div>
+    <!-- 登录 / 注册 / 改密 / 找回 已拆成独立路由页 /login（见 pages/LoginPage.vue），此处不再渲染 modal -->
   </main>
 </template>
 
@@ -371,13 +285,16 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, provide } from 'vue';
 import { api, setToken, isRemembered } from './api/client';
+import { setPendingAction, takePendingAction, clearPendingAction } from './composables/pendingAction.js';
 import ImageUpload from './components/ImageUpload.vue';
 import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
 import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
 import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
-import AdminPanel from './components/AdminPanel.vue';
+// 后台面板较重且仅管理员进入，改为懒加载（首屏不进主包）
+import { defineAsyncComponent } from 'vue'
+const AdminPanel = defineAsyncComponent(() => import('./components/AdminPanel.vue'));
 import { useRoute, useRouter } from 'vue-router';
 import { useCartStore } from './stores/cart';
 import { useUserStore } from './stores/user';
@@ -433,6 +350,28 @@ function footerSubscribe() {
 function navigate(name, params) {
   closeAccountMenu();
   router.push(params ? { name, params } : { name });
+}
+
+// 跳到独立登录页 /login。query: tab(login/register/change/reset)、forced(强制改密)、redirect(登录后落点路由名)。
+// 拦截式登录（去结算 / 立即购买 / 收藏）由调用方先 setPendingAction，这里只负责跳转。
+function goLogin(query = {}) {
+  const q = {};
+  if (query.tab) q.tab = query.tab;
+  if (query.forced) q.forced = '1';
+  if (query.redirect) q.redirect = query.redirect;
+  router.push({ path: '/login', query: q });
+}
+
+// 页头「登录 / 注册」入口：在新标签页打开 /login（用户点进去登录，原页面留在原地）。
+// 注意：不能带 noopener，否则 window.opener 为 null，登录成功后无法刷新来源页并关闭本标签。
+// 同为同源 SPA，无反向篡改风险。拦截式登录（去结算/立即购买/收藏）仍走 goLogin 同标签，不要动它。
+function openAuthNewTab(query = {}) {
+  const params = new URLSearchParams();
+  if (query.tab) params.set('tab', query.tab);
+  if (query.forced) params.set('forced', '1');
+  if (query.redirect) params.set('redirect', query.redirect);
+  const url = '/login' + (params.toString() ? '?' + params.toString() : '');
+  window.open(url, '_blank');
 }
 
 // 路由 -> 视图镜像 + 深层链接数据恢复（替代原自制 hash 的 restoreRoute）。
@@ -775,11 +714,11 @@ const cartActivityProgress = computed(() => {
     reachedTop: true,
   };
 });
-const orders = reactive({ items: [] });
+const orders = reactive({ items: [], total: 0, page: 1, size: 20, loading: false });
 const addresses = ref([]);
 const selectedAddressId = ref(null);
 const coupons = ref([]);
-const myCoupons = ref([]);
+const myCoupons = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
 const usableCoupons = ref([]);
 const selectedUserCouponId = ref('');
 const userOptedOutCoupon = ref(false);
@@ -820,11 +759,17 @@ function safeParseSpec(str) {
   try { return JSON.parse(str || '{}') || {}; } catch (e) { return {}; }
 }
 
+// 选中规格的配图：用户端「选规格即换主图」的数据源。无图则为空（回落封面/图集）。
+const selectedSkuImage = computed(() => selectedSku.value?.image || '');
+
 const galleryImages = computed(() => {
   const d = productDetail.data;
   if (!d) return [];
   const imgs = (d.images || []).map((it) => it.url).filter(Boolean);
   if (d.coverUrl && !imgs.includes(d.coverUrl)) imgs.unshift(d.coverUrl);
+  // 选中带图的规格时，把规格图置顶为主图（缩略图同步置顶）
+  const skuImg = selectedSkuImage.value;
+  if (skuImg && !imgs.includes(skuImg)) imgs.unshift(skuImg);
   return imgs;
 });
 const currentGalleryImage = computed(() => galleryImages.value[currentImageIndex.value] || '');
@@ -954,6 +899,11 @@ const dwellEnterTs = ref(0);
 const dwellProductId = ref(null);
 const dwellSource = ref('detail');
 const selectedSpec = reactive({});
+
+// 选了带图的规格 → 主图回到置顶的规格图；切换/取消规格 → 回到封面。手动点缩略图不受影响。
+// 必须放在 selectedSpec（定义于上方）之后注册：watch 注册时会立即求值 selectedSkuImage
+// → selectedSku → selectedSpec，若 selectedSpec 尚未初始化会触发 TDZ，整页白屏。
+watch(selectedSkuImage, () => { currentImageIndex.value = 0; });
 // 打开编辑表单时记录当时的库存，仅当管理员改动库存字段时才随表单提交，
 // 避免把打开表单瞬间可能已过期的库存值覆盖真实库存。
 
@@ -994,6 +944,22 @@ const adminCouponJumpPage = ref(1);
 
 
 const isAdmin = computed(() => session.user?.role === 'ADMIN');
+
+// 管理员「以某会员身份预览价格」：仅 admin 可用，纯展示、不改真实账号、不影响下单。
+// previewTier=null 表示不预览（按管理员自身身份）；0..6 表示以对应会员档位预览。
+const previewTier = ref(null);
+const tierPreviewOpen = ref(false);
+const isPreviewing = computed(() => isAdmin.value && previewTier.value != null);
+const previewTierName = computed(() => (isPreviewing.value ? tierNameFor(previewTier.value) : ''));
+function setPreviewTier(level) {
+  if (!isAdmin.value) return;
+  previewTier.value = (level == null || level === '') ? null : Number(level);
+}
+function clearPreviewTier() { previewTier.value = null; }
+function effectiveMemberLevel() {
+  if (isPreviewing.value) return Number(previewTier.value);
+  return Number(session.user?.memberLevel || 0);
+}
 
 
 const currentTitle = computed(() => ({
@@ -1043,7 +1009,9 @@ const cartBadgeCount = computed(() => (cart.items || [])
   .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
 const orderPayPreview = computed(() => {
-  const total = cartLocalTotal.value;
+  // 以「非会员价小计」(cartListTotal) 为基准：会员折扣尚未扣，留给 memberPreview 单独摊成一行；
+  // 若用 cartLocalTotal（已是会员净额）会重复扣会员折扣，导致 应付 偏低。
+  const total = cartListTotal.value;
   let pay = total;
   if (selectedCoupon.value) pay = Math.max(pay - Number(selectedCoupon.value.discountAmount || 0), 0);
   if (Number(cart.activityDiscount) > 0) pay = Math.max(pay - Number(cart.activityDiscount || 0), 0);
@@ -1060,6 +1028,26 @@ const cartTotalSaved = computed(() =>
   Number(cart.activityDiscount || 0)
   + (selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0));
 
+// 商品目录基价（非会员售价）映射：购物项只回了会员净额 productPrice，没有「非会员价」，
+// 要把会员折扣单独摊开，就得反查目录里的 product.price（= 后端 unitPriceFor 里的 base）。
+// 列表分页可能不含该商品 → 缺失时回退 0（不显示会员折扣行，宁可不标也不算错）。
+const productBasePriceMap = computed(() => {
+  const m = {};
+  for (const p of (products.value || [])) m[Number(p.id)] = Number(p.price || 0);
+  return m;
+});
+function catalogBasePrice(id) { return productBasePriceMap.value[Number(id)] || 0; }
+
+// 当前登录会员在各购物项上「相对非会员价」省了多少（仅非秒杀项）。
+// 直接取后端 CartItemResponse.memberDiscount（后端已按 unitPriceFor 同口径算好、跨页面稳定可用），
+// 不再依赖前端商品目录是否加载。非会员/游客该项为 0。结算页据此把「会员折扣」单独摊开。
+const cartMemberDiscount = computed(() => (cart.items || [])
+  .filter((i) => i.selected !== false && !i.flashSaleId && !(Number(i.flashPrice || 0) > 0))
+  .reduce((sum, i) => sum + Number(i.memberDiscount || 0), 0));
+
+// 商品小计（原价/非会员价）：会员净额回加会员折扣，得到未打折前的小计，用于结算页逐行展示。
+const cartListTotal = computed(() => round2(cartLocalTotal.value + cartMemberDiscount.value));
+
 const selectedAddress = computed(() => addresses.value.find((item) => item.id === selectedAddressId.value) || null);
 
 // ---------------- 会员积分体系（前端状态 + 结算预览） ----------------
@@ -1073,8 +1061,8 @@ const usePoints = ref(false);
 const pointsToUse = ref(0);
 
 // 等级档位兜底（与后端 MemberService 常量一致）：/member/levels 未就绪时也不漏算会员折扣
-const TIER_NAMES_FALLBACK = ['普通会员', '银卡会员', '金卡会员', '钻石会员'];
-const TIER_RATES_FALLBACK = [1, 0.98, 0.95, 0.90];
+const TIER_NAMES_FALLBACK = ['普通用户', '银卡会员', '金卡会员', '钻石会员', '紫钻会员', '黑卡会员', '至尊会员'];
+const TIER_RATES_FALLBACK = [1, 0.98, 0.95, 0.90, 0.88, 0.85, 0.80];
 
 function tierRateForLevel(level) {
   const lv = Number(level) || 0;
@@ -1090,6 +1078,48 @@ function tierNameFor(level) {
   const t = memberLevels.value.find((x) => x.level === lv);
   if (t) return t.name;
   return TIER_NAMES_FALLBACK[lv] || '普通会员';
+}
+
+// 登录会员在某商品上的实付单价（与后端 unitPriceFor 同口径：会员价 与 等级折扣 取更低、不叠加）。
+// 非会员/游客返回 null —— 浏览页据此把主价切换成会员价并挂「X折会员价」标签，让列表/详情与购物车价格全程一致。
+function productMemberView(product) {
+  const level = effectiveMemberLevel();
+  if (level < 1) return null;
+  const base = Number(product?.price || 0);
+  if (!base) return null;
+  const rate = tierRateForLevel(level);
+  let price = base;
+  let source = 'tier'; // 折扣来源：'member'=商品专属会员价更低，'tier'=等级折扣更低（默认）
+  const mp = Number(product?.memberPrice || 0);
+  if (mp > 0 && mp < price) { price = mp; source = 'member'; }
+  const levelPrice = round2(base * rate);
+  if (levelPrice < price) { price = levelPrice; source = 'tier'; }
+  if (price >= base) return null;
+  // 【单一基准 = 售价】会员视图的对照价一律取「售价」(base)：折率 = 实付 ÷ 售价、省 = 售价 − 实付，
+  // 全系统只有一个基准，用户不会再拿吊牌价去乘折率（那是「银卡会员 7.5折」错觉的根源）。
+  // 吊牌价只在「游客视图」当商品促销的划线出现，且与会员折标互斥不同屏。
+  const original = base;
+  return { price: round2(price), original, rate, name: tierNameFor(level), source };
+}
+// 与后端 unitPriceFor 同口径，作用于「已选规格/单品单价」(unit)：会员价取 min(商品级会员价, 等级折扣价)，
+// 默认规格价格也照常享折扣，保证 浏览(详情/卡片)→购物车 价格一致。
+function memberUnitView(unit, productMemberPrice) {
+  const level = effectiveMemberLevel();
+  if (level < 1) return null;
+  const base = Number(unit || 0);
+  if (!base) return null;
+  const rate = tierRateForLevel(level);
+  let price = base;
+  let source = 'tier';
+  const mp = Number(productMemberPrice || 0);
+  if (mp > 0 && mp < price) { price = mp; source = 'member'; }
+  const levelPrice = round2(base * rate);
+  if (levelPrice < price) { price = levelPrice; source = 'tier'; }
+  if (price >= base) return null;
+  // original 同 productMemberView：【单一基准 = 售价】对照价一律取当前单价 base（含已选规格价），
+  // 详情页「普通价」与折率都据此算，保证 卡片 ↔ 详情 ↔ 购物车 完全同口径。
+  const original = base;
+  return { price: round2(price), original, rate, name: tierNameFor(level), source };
 }
 function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
@@ -1118,8 +1148,10 @@ async function loadMemberLedger(page = 1) {
 const memberPreview = computed(() => {
   const amountAfterPromo = Number(orderPayPreview.value || 0);
   const level = session.user?.memberLevel || 0;
-  const rate = tierRateForLevel(level);
-  const memberDiscount = rate < 1 ? round2(amountAfterPromo * (1 - rate)) : 0;
+  // 会员等级折扣已下沉到「单品成交价」（后端逐商品取优：会员价 与 等级折扣 取更低、不叠加），
+  // 购物车/预览返回的 regularPrice 已经是折后价。这里不再重复扣，而是把「已省的会员折扣」摊开成一行展示，
+  // 让结算页明确写出「为什么比原价低」——金额口径与后端 Order.memberDiscount 一致（base − 会员净额）。
+  const memberDiscount = round2(cartMemberDiscount.value);
   const payBeforePoints = Math.max(amountAfterPromo - memberDiscount, 0);
   const maxRedeemValue = round2(payBeforePoints * 0.5);
   const maxRedeemPoints = Math.floor(maxRedeemValue * 100);
@@ -1205,6 +1237,31 @@ async function loadPriceAlerts(reset = true) {
   } catch (e) { /* ignore */ } finally { priceAlerts.loading = false; }
 }
 
+// 跳到指定页码（替换式翻页，不是「加载更多」追加）
+async function loadFavoritesPage(page) {
+  if (!session.user || isAdmin.value) return;
+  const safe = Math.max(1, page | 0);
+  favorites.loading = true;
+  try {
+    const data = await api.get(`/favorites?page=${safe}&size=${favorites.size}`);
+    favorites.items = data?.items || [];
+    favorites.total = data?.total || 0;
+    favorites.page = safe;
+  } catch (e) { /* ignore */ } finally { favorites.loading = false; }
+}
+
+async function loadPriceAlertsPage(page) {
+  if (!session.user || isAdmin.value) return;
+  const safe = Math.max(1, page | 0);
+  priceAlerts.loading = true;
+  try {
+    const data = await api.get(`/price-alerts?page=${safe}&size=${priceAlerts.size}`);
+    priceAlerts.items = data?.items || [];
+    priceAlerts.total = data?.total || 0;
+    priceAlerts.page = safe;
+  } catch (e) { /* ignore */ } finally { priceAlerts.loading = false; }
+}
+
 async function loadAlertUnread() {
   if (!session.user || isAdmin.value) { alertUnread.value = 0; return; }
   try {
@@ -1230,9 +1287,9 @@ async function toggleFavorite(product) {
   const id = Number(product?.id);
   if (!id) return;
   if (!session.user) {
-    pendingFavorite.value = product;
+    setPendingAction({ type: 'favorite', product, redirect: (route.name && route.name !== 'login') ? route.name : 'shop' });
     notice.value = '登录后即可收藏，降价时会提醒你';
-    openAuth('login');
+    goLogin({ tab: 'login' });
     return;
   }
   const wasFav = isFavorite(id);
@@ -1378,9 +1435,14 @@ function flashLimitOfProduct(productId) {
  * 所以这里不再用秒杀剩余名额夹数量（否则用户想多买却被卡住）。
  * 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
  */
+// 购物车里某行最多能加到几件：受库存与秒杀每人限购名额双重约束。
+// 秒杀品是纯折扣通道，名额用完后不能再加（连原价都不行），所以这里用「还能买几件」夹住数量。
+// 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
 function cartQtyMax(item) {
   const stock = Number(item?.stock || 0);
-  return stock > 0 ? stock : 1;
+  const left = flashLimitOfProduct(item?.productId);
+  const cap = left === null ? stock : Math.min(stock, left);
+  return cap > 0 ? cap : 1;
 }
 
 /**
@@ -1514,6 +1576,20 @@ async function loadMessageUnread() {
 function changeMessageFilter(type) {
   messageTypeFilter.value = type || '';
   loadMessages();
+}
+
+// 跳到指定页码（替换式翻页，不是「加载更多」追加）
+async function loadMessagesPage(page) {
+  if (!session.user || isAdmin.value) return;
+  const safe = Math.max(1, page | 0);
+  messages.loading = true;
+  try {
+    const query = messageTypeFilter.value ? `&type=${messageTypeFilter.value}` : '';
+    const data = await api.get(`/messages?page=${safe}&size=${messages.size}${query}`);
+    messages.items = data?.items || [];
+    messages.total = data?.total || 0;
+    messages.page = safe;
+  } catch (e) { /* ignore */ } finally { messages.loading = false; }
 }
 
 async function markMessagesRead() {
@@ -1745,7 +1821,7 @@ async function submitLogin() {
   resetAuthErrors();
   if (!loginForm.username.trim()) authErrors.username = '请输入用户名';
   if (!loginForm.password) authErrors.password = '请输入密码';
-  if (authErrors.username || authErrors.password) return;
+  if (authErrors.username || authErrors.password) return { ok: false };
   authSubmitting.value = true;
   try {
     const data = await api.post('/auth/login', {
@@ -1757,23 +1833,17 @@ async function submitLogin() {
     setToken(data.token, !!loginForm.remember);
     rememberUser(data.user);
     await refreshForSession();
-    closeAuth();
+    resetAuthErrors();
+    // 登录逻辑集中在这里（单一真相源），但「登录后去哪 / 是否强制改密」交给 LoginPage 决定（modal 已拆成独立路由页）。
     if (data.user.mustChangePassword) {
-      // 管理员重置过密码：先强制改密，不出常规欢迎提示（改完 AuthService 会清标记）
-      openChangePassword(true);
-    } else {
-      showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+      // 管理员重置过密码：由 LoginPage 切到「修改密码」态（不可跳过），这里只返回标记
+      return { ok: true, mustChange: true, user: data.user };
     }
-    if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
-    else if (await consumePendingQuickBuy()) { /* 游客「立即购买」→ 已跳结算页 */ }
-    // 未登录时点心形收藏 → 登录成功后自动补做
-    if (pendingFavorite.value) {
-      const pendingProduct = pendingFavorite.value;
-      pendingFavorite.value = null;
-      await toggleFavorite(pendingProduct);
-    }
+    showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
+    return { ok: true, mustChange: false, user: data.user };
   } catch (err) {
     fail(authErrorText(err.message) || '登录失败，请检查用户名或密码');
+    return { ok: false };
   } finally {
     authSubmitting.value = false;
   }
@@ -1796,7 +1866,7 @@ function validateRegisterForm() {
 async function submitRegister() {
   resetAuthErrors();
   Object.assign(authErrors, validateRegisterForm());
-  if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.agree) return;
+  if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.agree) return { ok: false };
   authSubmitting.value = true;
   try {
     const data = await api.post('/auth/register', {
@@ -1809,22 +1879,16 @@ async function submitRegister() {
     setToken(data.token);
     rememberUser(data.user);
     await refreshForSession();
-    closeAuth();
+    resetAuthErrors();
     showAlert({ type: 'success', title: '注册成功', message: '欢迎加入！新人券已自动发放到你的账户 🎁' });
-    if (pendingCheckout.value) { pendingCheckout.value = false; navigate('checkout'); }
-    else if (await consumePendingQuickBuy()) { /* 游客「立即购买」→ 已跳结算页 */ }
-    // 未登录时点心形收藏 → 注册成功后自动补做
-    if (pendingFavorite.value) {
-      const pendingProduct = pendingFavorite.value;
-      pendingFavorite.value = null;
-      await toggleFavorite(pendingProduct);
-    }
+    return { ok: true };
   } catch (err) {
     const msg = authErrorText(err.message) || '注册失败，请稍后重试';
     if (msg.includes('用户名')) authErrors.username = msg;
     else if (msg.includes('手机')) authErrors.phone = msg;
     else if (msg.includes('邮箱')) authErrors.email = msg;
     fail(msg);
+    return { ok: false };
   } finally {
     authSubmitting.value = false;
   }
@@ -1853,18 +1917,19 @@ async function submitPasswordReset() {
   if (!resetForm.username.trim()) resetErrors.username = '请输入账号';
   if (!resetForm.contact.trim()) resetErrors.contact = '请留下联系电话，否则客服无法联系你';
   else if (resetForm.contact.trim().length < 5) resetErrors.contact = '联系电话至少 5 个字符';
-  if (resetErrors.username || resetErrors.contact) return;
+  if (resetErrors.username || resetErrors.contact) return { ok: false };
   resetSubmitting.value = true;
   try {
     const data = await api.post('/auth/password-reset-request', {
       username: resetForm.username.trim(),
       contact: resetForm.contact.trim(),
     });
-    closeAuth();
     // 后端对「账号存在/不存在」返回同一句文案（防账号枚举），前端原样展示
     showAlert({ type: 'success', title: '申请已提交', message: data?.message || '客服会在 1 个工作日内联系你。' });
+    return { ok: true };
   } catch (err) {
     fail(err?.message || '提交失败，请稍后重试');
+    return { ok: false };
   } finally {
     resetSubmitting.value = false;
   }
@@ -1883,7 +1948,7 @@ function validateChangeForm() {
 async function submitChangePassword() {
   resetAuthErrors();
   Object.assign(changeErrors, validateChangeForm());
-  if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) return;
+  if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) return { ok: false };
   changeSubmitting.value = true;
   try {
     await api.post('/auth/change-password', {
@@ -1891,10 +1956,10 @@ async function submitChangePassword() {
       newPassword: changeForm.newPassword,
       confirmPassword: changeForm.confirmPassword,
     });
-    closeAuth();
     // 后端已清掉 must_change_password，重新拉一次 me 让本地 session 同步（强制改密的用户至此恢复可用）
     await loadMe();
     showAlert({ type: 'success', title: '修改成功', message: '密码已更新，下次登录请使用新密码。' });
+    return { ok: true };
   } catch (err) {
     // 后端业务错误（原密码不正确 / 新密码与原密码相同 / 两次不一致）透传到对应字段
     const msg = err.message || '修改失败，请稍后重试';
@@ -1903,6 +1968,7 @@ async function submitChangePassword() {
     else if (msg.includes('相同')) changeErrors.newPassword = msg;
     else error.value = msg;
     fail(msg);
+    return { ok: false };
   } finally {
     changeSubmitting.value = false;
   }
@@ -1929,7 +1995,8 @@ if (typeof window !== 'undefined') {
   // 后端也会拦「待强制改密」的账号（40302，见 MustChangePasswordFilter）：任何调用被拦都把
   // 不可关闭的改密弹窗拉起来，避免出现「页面能点、接口全 403」这种说不清的状态。
   window.addEventListener('must-change-password', () => {
-    if (!authOpen.value && session.user) openChangePassword(true);
+    // 登录态下被后端拦下（账号待强制改密）：跳到独立登录页的改密态（modal 已拆成 /login 路由页）
+    if (session.user && route.name !== 'login') goLogin({ tab: 'change', forced: true });
   });
 }
 
@@ -1938,8 +2005,8 @@ async function loadMe() {
   const user = await api.get('/auth/me');
   rememberUser(user);
   userStore.setAuth(localStorage.getItem('token') || '', user);
-  // 刷新页面时若仍处于「待强制改密」，重新把不可关闭的改密弹窗拉起来
-  if (user.mustChangePassword && !authOpen.value) openChangePassword(true);
+  // 刷新页面时若仍处于「待强制改密」，重新跳到独立登录页的改密态
+  if (user.mustChangePassword && route.name !== 'login') goLogin({ tab: 'change', forced: true });
 }
 
 async function onAvatarPick(e) {
@@ -2344,8 +2411,8 @@ function applyFilters() {
 }
 
 // ⚠️ 必须连 categoryId / keyword 一起清：isFiltering 把 categoryId 也算作筛选条件，
-// 只清价格/品牌/排序会**清不掉分类** → 用户卡在「筛选结果」视图回不去楼层，
-// 而 .shop-filters 里又没有分类控件可以取消（09-20 实测：点「清空筛选」后楼层不回来、hero 里分类仍高亮）。
+// 只清价格/排序会**清不掉分类** → 用户卡在「筛选结果」视图回不去楼层。
+// （价格/排序工具条已于 10-01 移除，「清空筛选」按钮是 resetFilters 仅剩的入口。）
 function resetFilters() {
   filters.categoryId = '';
   filters.keyword = '';
@@ -2486,11 +2553,13 @@ async function addToCart(product) {
     fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
     return;
   }
-  // 秒杀「自动拆分」后，超出每人限购的部分按原价成交，不再拒绝加购。
-  // 仅做提示，不影响加入购物车（用户多买的部分会自动按原价）。
+  // 秒杀品是纯折扣通道：名额用完后彻底不能再加购（连原价都不行），只能去原商品按原价买。
   const flashLeft = flashLimitOfProduct(product.id);
   if (flashLeft !== null && currentQty + 1 > flashLeft) {
-    notice.value = `「${flashSaleOfProduct(product.id)?.name || '该秒杀商品'}」每人限购 ${flashLeft} 件，超出部分将按原价结算`;
+    const fsName = flashSaleOfProduct(product.id)?.name || '该秒杀商品';
+    const fsLimit = flashSaleOfProduct(product.id)?.perUserLimit || flashLeft;
+    fail(`「${fsName}」每人限购 ${fsLimit} 件，已达上限，请去原商品按原价购买`, '超出限购');
+    return;
   }
   await run(async () => {
     await api.post('/cart/items', { productId: product.id, quantity: 1 });
@@ -2518,10 +2587,34 @@ async function loadCart() {
 
 }
 
-async function loadMyCoupons() {
-  if (!session.user || isAdmin.value) { myCoupons.value = []; return; }
-  myCoupons.value = await api.get('/coupons/mine') || [];
+async function loadMyCoupons(reset = true) {
+  if (!session.user || isAdmin.value) { myCoupons.items = []; myCoupons.total = 0; return; }
+  const nextPage = reset ? 1 : myCoupons.page + 1;
+  myCoupons.loading = true;
+  try {
+    const data = await api.get(`/coupons/mine?page=${nextPage}&size=${myCoupons.size}`);
+    const items = data?.items || [];
+    myCoupons.items = reset ? items : [...myCoupons.items, ...items];
+    myCoupons.total = data?.total || 0;
+    myCoupons.page = nextPage;
+  } catch (e) { /* ignore */ } finally { myCoupons.loading = false; }
+}
 
+async function loadMoreMyCoupons() {
+  await loadMyCoupons(false);
+}
+
+// 跳到指定页码（替换式翻页，不是「加载更多」追加）
+async function loadMyCouponsPage(page) {
+  if (!session.user || isAdmin.value) return;
+  const safe = Math.max(1, page | 0);
+  myCoupons.loading = true;
+  try {
+    const data = await api.get(`/coupons/mine?page=${safe}&size=${myCoupons.size}`);
+    myCoupons.items = data?.items || [];
+    myCoupons.total = data?.total || 0;
+    myCoupons.page = safe;
+  } catch (e) { /* ignore */ } finally { myCoupons.loading = false; }
 }
 
 async function loadUsableCoupons() {
@@ -2665,6 +2758,8 @@ function useAddress(address) {
   selectedAddressId.value = address.id;
   Object.assign(addressForm, address);
   notice.value = '已选择该地址';
+  // 从结算页补地址过来的：选好即返回结算页继续下单（query 在 /addresses 上，回到 /checkout 即清除）
+  if (route.query.redirect === 'checkout') router.push({ name: 'checkout' });
 
 }
 
@@ -2674,17 +2769,19 @@ async function saveAddress() {
     selectedAddressId.value = saved.id;
     await loadAddresses();
   }, '地址已保存');
+  // 从结算页补地址过来的：保存后自动返回结算页继续下单（watch(view='checkout') 会重拉钱包/优惠券/门店等）
+  if (route.query.redirect === 'checkout') router.push({ name: 'checkout' });
 
 }
 
 async function goCheckout() {
   if (!cart.items?.length) { fail('购物车为空，请先添加商品'); return; }
-  if (!session.user) { pendingCheckout.value = true; openAuth('login'); return; }
+  if (!session.user) { setPendingAction({ type: 'checkout', redirect: 'checkout' }); goLogin({ tab: 'login' }); return; }
   if (!addresses.value.length) await loadAddresses();
   if (!selectedAddressId.value && addresses.value.length) {
     selectedAddressId.value = (addresses.value.find((item) => item.isDefault) || addresses.value[0]).id;
   }
-  if (!selectedAddressId.value) { fail('请先在「收货地址」中添加收货地址'); return; }
+  if (!selectedAddressId.value) { router.push({ name: 'addresses', query: { redirect: 'checkout' } }); return; }
   await Promise.all([loadWallet(), loadMyCoupons(), loadUsableCoupons()]);
   navigate('checkout');
 
@@ -2696,7 +2793,8 @@ async function createOrder() {
   if (isPickup.value) {
     if (!activeStoreId.value) { fail('请选择自提门店'); return; }
   } else if (!selectedAddressId.value) {
-    fail('请先保存或选择收货地址');
+    // 没有收货地址（且非门店自提）：跳到收货地址页补地址，加完带 redirect 自动返回结算继续下单
+    router.push({ name: 'addresses', query: { redirect: 'checkout' } });
     return;
   }
   // 「立即购买」独立通道：不依赖购物车行，走 /orders/quick-buy；成功后清掉虚拟项（购物车零残留）
@@ -2779,11 +2877,36 @@ async function createOrder() {
   }
 }
 
-async function loadOrders() {
-  if (!session.user || isAdmin.value) return;
-  Object.assign(orders, await api.get('/orders?page=1&size=20'));
-  await loadReviewedFlags();
+async function loadOrders(reset = true) {
+  if (!session.user || isAdmin.value) { orders.items = []; orders.total = 0; return; }
+  const nextPage = reset ? 1 : orders.page + 1;
+  orders.loading = true;
+  try {
+    const data = await api.get(`/orders?page=${nextPage}&size=${orders.size}`);
+    const items = data?.items || [];
+    orders.items = reset ? items : [...orders.items, ...items];
+    orders.total = data?.total || 0;
+    orders.page = nextPage;
+    await loadReviewedFlags();
+  } catch (e) { /* ignore */ } finally { orders.loading = false; }
+}
 
+async function loadMoreOrders() {
+  await loadOrders(false);
+}
+
+// 跳到指定页码（替换式翻页，不是「加载更多」追加）
+async function loadOrdersPage(page) {
+  if (!session.user || isAdmin.value) return;
+  const safe = Math.max(1, page | 0);
+  orders.loading = true;
+  try {
+    const data = await api.get(`/orders?page=${safe}&size=${orders.size}`);
+    orders.items = data?.items || [];
+    orders.total = data?.total || 0;
+    orders.page = safe;
+    await loadReviewedFlags();
+  } catch (e) { /* ignore */ } finally { orders.loading = false; }
 }
 
 async function loadReviewedFlags() {
@@ -3020,11 +3143,13 @@ function backFromProduct() {
   navigate('shop');
 }
 
+// 详情页数量步进：上限 = min(库存, 秒杀还能买几件)。名额用完后 detailFlashCapped 会禁用按钮，这里再夹一道。
 function changeDetailQty(delta) {
-  const max = Number(productDetail.data?.stock || 0);
+  const stock = Number(productDetail.data?.stock || 0);
+  const left = flashLimitOfProduct(productDetail.data?.id);
+  const max = left === null ? stock : Math.min(stock, left);
   const next = Number(detailQuantity.value || 1) + delta;
   detailQuantity.value = Math.min(Math.max(next, 1), Math.max(max, 1));
-
 }
 
 async function addDetailToCart() {
@@ -3044,6 +3169,13 @@ async function addDetailToCart() {
   const qty = Number(detailQuantity.value || 1);
   if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
   if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
+  // 秒杀品是纯折扣通道：名额用完后彻底不能加购（连原价都不行），只能去原商品按原价买。
+  const sale = flashSaleOfProduct(productDetail.data?.id);
+  const left = flashLimitOfProduct(productDetail.data?.id);
+  if (sale && left !== null && qty > left) {
+    fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
+    return;
+  }
   const specNote = selectedSpecText.value ? `（${selectedSpecText.value}）` : '';
   await run(async () => {
     reportDwell();
@@ -3081,9 +3213,11 @@ function buildQuickBuyCartItem(product, qty, spec) {
     flashUnit = usingSkuPrice ? round2(regular * rate) : baseFlash;
     flashApplies = flashUnit < regular;
   }
-  const fq = flashApplies ? Math.min(qty, flashLimitOfProduct(id) ?? qty) : 0;
-  const overflow = qty - fq;
-  // 精确小计：秒杀段 + 原价段，避免「平均单价」带来的四舍五入漂移（与后端一致）
+  // 秒杀品是纯折扣通道：不再把超出名额的部分按原价成交，fq 即本行全部件数（已在前端按名额夹量）。
+  const left = flashLimitOfProduct(id);
+  const fq = flashApplies ? Math.min(qty, left ?? qty) : 0;
+  const overflow = 0;
+  // 精确小计：整行秒杀价（与后端严格限额口径一致）
   const subtotal = round2(flashUnit * fq + regular * overflow);
   const unit = round2(subtotal / qty);
   const finalSubtotal = round2(unit * qty);
@@ -3119,15 +3253,24 @@ async function buyDetailNow() {
   const qty = Number(detailQuantity.value || 1);
   if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法购买`); return; }
   if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
+  // 秒杀品是纯折扣通道：名额用完后彻底不能下单（连原价都不行），只能去原商品按原价买。
+  const sale = flashSaleOfProduct(productDetail.data?.id);
+  const left = flashLimitOfProduct(productDetail.data?.id);
+  if (sale && left !== null && qty > left) {
+    fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
+    return;
+  }
   if (!session.user) {
-    // 游客：只记录「要买这件 + 商品快照」，登录后注入虚拟项去结算（不写本地购物车，见 consumePendingQuickBuy）
-    pendingQuickBuy.value = {
+    // 游客：把「要买这件 + 商品快照」写入 sessionStorage，跳到登录页；登录成功后由 LoginPage 调 consumePendingQuickBuy 注入虚拟项去结算（不写本地购物车）
+    setPendingAction({
+      type: 'quickBuy',
       productId: productDetail.data?.id,
       spec: selectedSpecText.value || '',
       qty,
       product: productDetail.data,
-    };
-    openAuth('login');
+      redirect: 'checkout',
+    });
+    goLogin({ tab: 'login' });
     notice.value = '登录后即可直接结算';
     return;
   }
@@ -3155,11 +3298,14 @@ async function enterQuickBuy() {
 }
 
 // 游客点「立即购买」→ 登录/注册成功后：用记录的快照构建虚拟项，直达结算（不写购物车）
-async function consumePendingQuickBuy() {
-  if (!pendingQuickBuy.value) return false;
-  const q = pendingQuickBuy.value;
+async function consumePendingQuickBuy(action) {
+  // 游客点「立即购买」后登录：动作先前已写入 sessionStorage（setPendingAction），这里取出并消费。
+  // 仍兼容旧的 in-memory pendingQuickBuy（保险）。注意 LoginPage.resumeAfterAuth 已经 takePendingAction()
+  // 取过一次（会从 sessionStorage 删除），所以这里优先用调用方传入的 action，避免二次 take 拿到 null。
+  const q = action || pendingQuickBuy.value || takePendingAction();
   pendingQuickBuy.value = null;
-  if (!session.user) return false;
+  clearPendingAction();
+  if (!q || !session.user) return false;
   const product = q.product || { id: q.productId, name: '商品', price: 0, originalPrice: 0, coverUrl: '', unit: '', stock: 0, sku: '' };
   const item = buildQuickBuyCartItem(product, q.qty, q.spec);
   cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
@@ -3176,10 +3322,12 @@ async function loadCoupons() {
   if (!session.user || isAdmin.value) return;
   const [available, mine] = await Promise.all([
     api.get('/coupons/available'),
-    api.get('/coupons/mine'),
+    api.get(`/coupons/mine?page=1&size=${myCoupons.size}`),
   ]);
   coupons.value = available || [];
-  myCoupons.value = mine || [];
+  myCoupons.items = mine?.items || [];
+  myCoupons.total = mine?.total || 0;
+  myCoupons.page = mine?.page || 1;
 
 }
 
@@ -3579,7 +3727,10 @@ async function refreshForSession() {
   // loadMemberLevels 也要在这里补一次：/member/levels 需要登录，而 app 挂载时的调用发生在登录之前（401），
   // 不补的话「站内登录 → 结算」这条常见链路上 memberLevels 为空，会员折扣会被漏算。
   // loadFlashSales 同理，而且它还要拿到「我的已购/未付款占用」——那是带身份的，必须在登录后重拉。
-  await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses(), loadMemberProfile(), loadMemberLevels(), loadFavoriteIds(), loadAlertUnread(), loadMessageUnread(), loadFlashSales()]);
+  // ⚠️ 必须带 loadMe()：头像环读的是 session.user.memberLevel，而它只来自登录那一刻的 /auth/me。
+  // 若用户等级被服务端改了（下单升级 / 管理员 / SQL）却没重新登录，localStorage 里的旧值会让头像一直显示旧等级
+  // （曾出现「库里已是银卡、头像却显示普通用户」）。每次进会话都重拉一次 /auth/me 才能对上。
+  await Promise.all([loadWallet(), loadCart(), loadOrders(), loadAddresses(), loadMemberProfile(), loadMemberLevels(), loadFavoriteIds(), loadAlertUnread(), loadMessageUnread(), loadFlashSales(), loadMe()]);
   // 登录/注册成功后：把游客本地购物车并入服务端
   await mergeGuestCartToServer();
 
@@ -3652,5 +3803,56 @@ onBeforeUnmount(() => {
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
 const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+appCtx.orders = orders;
+appCtx.loadOrders = loadOrders;
+appCtx.loadMoreOrders = loadMoreOrders;
+appCtx.loadOrdersPage = loadOrdersPage;
+appCtx.loadMessages = loadMessages;
+appCtx.loadMessagesPage = loadMessagesPage;
+appCtx.loadFavoritesPage = loadFavoritesPage;
+appCtx.loadPriceAlertsPage = loadPriceAlertsPage;
+appCtx.loadMyCoupons = loadMyCoupons;
+appCtx.loadMoreMyCoupons = loadMoreMyCoupons;
+appCtx.loadMyCouponsPage = loadMyCouponsPage;
+appCtx.cartMemberDiscount = cartMemberDiscount;
+appCtx.cartListTotal = cartListTotal;
+appCtx.productMemberView = productMemberView;
+appCtx.memberUnitView = memberUnitView;
+// 管理员「以某会员身份预览价格」：状态暴露给需要直接读取的面板（卡片/详情页走上面两个函数已自动生效）
+appCtx.previewTier = previewTier;
+appCtx.isPreviewing = isPreviewing;
+appCtx.setPreviewTier = setPreviewTier;
+appCtx.clearPreviewTier = clearPreviewTier;
+appCtx.catalogBasePrice = catalogBasePrice;
+// 以下显式挂到 appCtx，供独立登录页 LoginPage 委托调用（见 pages/LoginPage.vue）。
+// 登录/注册的核心逻辑仍集中在这里（单一真相源），LoginPage 只负责渲染表单 + 登录后跳哪。
+appCtx.openLegal = openLegal;
+appCtx.navigate = navigate;
+appCtx.session = session;
+appCtx.showAlert = showAlert;
+appCtx.error = error;
+appCtx.fail = fail;
+appCtx.rememberUser = rememberUser;
+appCtx.refreshForSession = refreshForSession;
+appCtx.loadMe = loadMe;
+appCtx.toggleFavorite = toggleFavorite;
+appCtx.consumePendingQuickBuy = consumePendingQuickBuy;
+appCtx.submitLogin = submitLogin;
+appCtx.submitRegister = submitRegister;
+appCtx.submitChangePassword = submitChangePassword;
+appCtx.submitPasswordReset = submitPasswordReset;
+appCtx.authErrorText = authErrorText;
+// 登录/注册表单状态原本只给 App.vue 内的 modal 用，独立登录页也要渲染「改密 / 找回」表单，
+// 这里把对应表单状态显式挂上（页面用不到，但 LoginPage 需要）。
+appCtx.loginForm = loginForm;
+appCtx.registerForm = registerForm;
+appCtx.authErrors = authErrors;
+appCtx.authSubmitting = authSubmitting;
+appCtx.changeForm = changeForm;
+appCtx.changeErrors = changeErrors;
+appCtx.changeSubmitting = changeSubmitting;
+appCtx.resetForm = resetForm;
+appCtx.resetErrors = resetErrors;
+appCtx.resetSubmitting = resetSubmitting;
 provide('appCtx', appCtx);
 </script>

@@ -1,46 +1,34 @@
 // 前端路由（Vue Router，history 模式）。
-// 9 个用户页面各自成为独立路由，`<router-view>` 在 App.vue 中按路由名渲染；
-// 后台管理面板 AdminPanel 作为例外直接挂载（它依赖 props 注入 adminCtx）。
+// 各页面改為动态 import（路由级代码分割）：进入哪个页面才加载对应 chunk，首屏体积大幅下降。
+// 后台管理面板 AdminPanel 作为例外直接挂载（依赖 props 注入 adminCtx），其真实懒加载在 App.vue 用 defineAsyncComponent 处理。
 import { createRouter, createWebHistory } from 'vue-router'
-import ShopPage from '../pages/ShopPage.vue'
-import ProductPage from '../pages/ProductPage.vue'
-import OrderDetailPage from '../pages/OrderDetailPage.vue'
-import CartPage from '../pages/CartPage.vue'
-import CheckoutPage from '../pages/CheckoutPage.vue'
-// 待付款收银台：下单成功后跳转到这里，显示支付倒计时 + 真正付款按钮
-import PayPage from '../pages/PayPage.vue'
-import OrdersPage from '../pages/OrdersPage.vue'
-import CouponsPage from '../pages/CouponsPage.vue'
-import AddressesPage from '../pages/AddressesPage.vue'
-import RechargePage from '../pages/RechargePage.vue'
-import PointsPage from '../pages/PointsPage.vue'
-import FavoritesPage from '../pages/FavoritesPage.vue'
-import MessagesPage from '../pages/MessagesPage.vue'
-import LegalPage from '../pages/LegalPage.vue'
-import AdminPanel from '../components/AdminPanel.vue'
 
 export const routes = [
   { path: '/', redirect: '/shop' },
-  { path: '/shop', name: 'shop', component: ShopPage },
-  { path: '/product/:id', name: 'product', component: ProductPage },
-  { path: '/order/:id', name: 'orderDetail', component: OrderDetailPage },
-  { path: '/cart', name: 'cart', component: CartPage },
-  { path: '/checkout', name: 'checkout', component: CheckoutPage },
+  // 首页（默认落地页）
+  { path: '/shop', name: 'shop', component: () => import('../pages/ShopPage.vue') },
+  { path: '/product/:id', name: 'product', component: () => import('../pages/ProductPage.vue') },
+  { path: '/order/:id', name: 'orderDetail', component: () => import('../pages/OrderDetailPage.vue') },
+  { path: '/cart', name: 'cart', component: () => import('../pages/CartPage.vue') },
+  { path: '/checkout', name: 'checkout', component: () => import('../pages/CheckoutPage.vue') },
   // 收银台：必须是 /pay/<订单id>，支持刷新与外部链接直达（PayPage 自己按 id 拉订单）
-  { path: '/pay/:id', name: 'pay', component: PayPage },
-  { path: '/orders', name: 'orders', component: OrdersPage },
-  { path: '/coupons', name: 'coupons', component: CouponsPage },
-  { path: '/addresses', name: 'addresses', component: AddressesPage },
-  { path: '/recharge', name: 'recharge', component: RechargePage },
-  { path: '/points', name: 'points', component: PointsPage },
-  { path: '/favorites', name: 'favorites', component: FavoritesPage },
-  { path: '/messages', name: 'messages', component: MessagesPage },
+  { path: '/pay/:id', name: 'pay', component: () => import('../pages/PayPage.vue') },
+  { path: '/orders', name: 'orders', component: () => import('../pages/OrdersPage.vue') },
+  { path: '/coupons', name: 'coupons', component: () => import('../pages/CouponsPage.vue') },
+  { path: '/addresses', name: 'addresses', component: () => import('../pages/AddressesPage.vue') },
+  { path: '/recharge', name: 'recharge', component: () => import('../pages/RechargePage.vue') },
+  { path: '/points', name: 'points', component: () => import('../pages/PointsPage.vue') },
+  { path: '/favorites', name: 'favorites', component: () => import('../pages/FavoritesPage.vue') },
+  { path: '/messages', name: 'messages', component: () => import('../pages/MessagesPage.vue') },
+  // 登录 / 注册 / 改密 / 找回：独立全屏路由页（原来是 App.vue 里的 modal）。
+  // query: tab=login|register|change|reset，redirect=登录后落点路由名，forced=1 表示强制改密。
+  { path: '/login', name: 'login', component: () => import('../pages/LoginPage.vue') },
   // 协议 / 隐私政策：正文由后台维护（legal-docs 接口），游客也能查看
-  { path: '/terms', name: 'terms', component: LegalPage },
-  { path: '/privacy', name: 'privacy', component: LegalPage },
+  { path: '/terms', name: 'terms', component: () => import('../pages/LegalPage.vue') },
+  { path: '/privacy', name: 'privacy', component: () => import('../pages/LegalPage.vue') },
   // 后台面板：路由表映射 AdminPanel（语义清晰），但 App.vue 用 v-else 直接挂载并传 props，
-  // 因此此处映射实际不参与渲染，仅保证路由可被识别。
-  { path: '/admin', name: 'admin', component: AdminPanel },
+  // 因此此处映射实际不参与渲染，仅保证路由可被识别。真实懒加载在 App.vue 用 defineAsyncComponent 处理。
+  { path: '/admin', name: 'admin', component: () => import('../components/AdminPanel.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/shop' },
 ]
 

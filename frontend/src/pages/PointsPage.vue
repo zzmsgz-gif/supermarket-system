@@ -70,9 +70,13 @@
         <span class="lr-bal">余 {{ row.balanceAfter }}</span>
       </li>
     </ul>
-    <button v-if="memberLedger.items.length < memberLedger.total" class="ghost load-more" @click="loadMemberLedger(memberLedger.page + 1)" :disabled="memberLedger.loading">
-      {{ memberLedger.loading ? '加载中…' : '加载更多' }}
-    </button>
+    <Pager
+      :page="memberLedger.page"
+      :total="memberLedger.total"
+      :size="memberLedger.size"
+      :loading="memberLedger.loading"
+      @go="onLedgerPage"
+    />
   </div>
 </section>
 </template>
@@ -110,7 +114,11 @@ export default {
       return slogan.startsWith('会员日') ? slogan.slice(3) : slogan;
     });
 
-    return { ...appCtx, ledgerLabel, memberDay, memberDayText, memberDayNextText };
+    const onLedgerPage = (page) => {
+      appCtx.loadMemberLedger(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    return { ...appCtx, ledgerLabel, memberDay, memberDayText, memberDayNextText, onLedgerPage };
   }
 };
 </script>

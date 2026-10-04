@@ -125,7 +125,7 @@
           <h3 class="items-title">购买商品（{{ (orderDetail.data.items || []).length }} 件）</h3>
           <div class="order-items">
             <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
-              <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)" />
+              <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)"  loading="lazy" decoding="async"/>
               <div class="order-item-info">
                 <div class="order-item-name">{{ it.productName }}</div>
                 <div v-if="it.skuSpec" class="order-item-spec">规格：{{ it.skuSpec }}</div>

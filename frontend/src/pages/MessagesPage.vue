@@ -40,12 +40,13 @@
     </li>
   </ul>
 
-  <button
-    v-if="messages.items.length < messages.total"
-    class="ghost load-more"
-    @click="loadMessages(false)"
-    :disabled="messages.loading"
-  >{{ messages.loading ? '加载中…' : '加载更多' }}</button>
+  <Pager
+    :page="messages.page"
+    :total="messages.total"
+    :size="messages.size"
+    :loading="messages.loading"
+    @go="onMessagePage"
+  />
 </section>
 </template>
 
@@ -66,7 +67,11 @@ export default {
     const LABELS = { ORDER: '订单', MEMBER: '会员', COUPON: '优惠券', SYSTEM: '系统' };
     const iconOf = (type) => ICONS[type] || '🔔';
     const typeLabelOf = (type) => LABELS[type] || '';
-    return { ...appCtx, filters, iconOf, typeLabelOf };
+    const onMessagePage = (page) => {
+      appCtx.loadMessagesPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    return { ...appCtx, filters, iconOf, typeLabelOf, onMessagePage };
   }
 };
 </script>

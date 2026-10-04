@@ -10,7 +10,7 @@
     <ul class="alert-list">
       <li v-for="alert in priceAlerts.items" :key="alert.id" class="alert-row" :class="{ unread: !alert.isRead }">
         <div class="alert-thumb" @click="alert.product && openProductDetail(alert.product)">
-          <img v-if="alert.product && alert.product.coverUrl" :src="alert.product.coverUrl" :alt="alert.product.name" @error="imgFallback($event, alert.product.name)" />
+          <img v-if="alert.product && alert.product.coverUrl" :src="alert.product.coverUrl" :alt="alert.product.name" @error="imgFallback($event, alert.product.name)"  loading="lazy" decoding="async"/>
           <span v-else>{{ initials(alert.product ? alert.product.name : '?') }}</span>
         </div>
         <div class="alert-main" @click="alert.product && openProductDetail(alert.product)">
@@ -32,12 +32,13 @@
         </div>
       </li>
     </ul>
-    <button
-      v-if="priceAlerts.items.length < priceAlerts.total"
-      class="ghost load-more"
-      @click="loadPriceAlerts(false)"
-      :disabled="priceAlerts.loading"
-    >{{ priceAlerts.loading ? '加载中…' : '加载更多降价提醒' }}</button>
+    <Pager
+      :page="priceAlerts.page"
+      :total="priceAlerts.total"
+      :size="priceAlerts.size"
+      :loading="priceAlerts.loading"
+      @go="onAlertPage"
+    />
   </div>
 
   <!-- 收藏列表 -->
@@ -66,12 +67,13 @@
         @open="openProductDetail"
       />
     </div>
-    <button
-      v-if="favorites.items.length < favorites.total"
-      class="ghost load-more"
-      @click="loadFavorites(false)"
-      :disabled="favorites.loading"
-    >{{ favorites.loading ? '加载中…' : '加载更多收藏' }}</button>
+    <Pager
+      :page="favorites.page"
+      :total="favorites.total"
+      :size="favorites.size"
+      :loading="favorites.loading"
+      @go="onFavoritePage"
+    />
   </div>
 </section>
 </template>
@@ -82,7 +84,15 @@ export default {
   name: 'FavoritesPage',
   setup() {
     const appCtx = inject('appCtx');
-    return { ...appCtx };
+    const onAlertPage = (page) => {
+      appCtx.loadPriceAlertsPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    const onFavoritePage = (page) => {
+      appCtx.loadFavoritesPage(page);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    return { ...appCtx, onAlertPage, onFavoritePage };
   }
 };
 </script>
