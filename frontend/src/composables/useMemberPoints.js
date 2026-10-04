@@ -2,6 +2,7 @@
 // 计价口径全部对齐后端 MemberService.unitPriceFor / OrderService：
 // 会员价与等级折扣**取更低、不叠加**（见 productMemberView / memberUnitView 的注释）。
 import { reactive, ref, computed, watch } from 'vue';
+import { round2 } from '../utils/format.js';
 
 export function useMemberPoints({
   api, session, isAdmin, wallet, effectiveMemberLevel,
@@ -77,7 +78,6 @@ export function useMemberPoints({
     const original = base;
     return { price: round2(price), original, rate, name: tierNameFor(level), source };
   }
-  function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 
   async function loadMemberLevels() {
     // 该接口需要登录：未登录时会 401（静默忽略，结算时由 tierRateForLevel 兜底）
@@ -139,7 +139,7 @@ export function useMemberPoints({
   return {
     memberProfile, memberLedger, memberLevels, usePoints, pointsToUse,
     TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK,
-    tierRateForLevel, tierNameFor, productMemberView, memberUnitView, round2,
+    tierRateForLevel, tierNameFor, productMemberView, memberUnitView,
     loadMemberLevels, loadMemberProfile, loadMemberLedger,
     memberPreview, balanceSufficient,
   };

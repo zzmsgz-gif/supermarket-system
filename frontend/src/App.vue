@@ -270,6 +270,8 @@ import { useChannels } from './composables/useChannels.js';
 import { useShopFilters } from './composables/useShopFilters.js';
 // QUICKBUY_ITEM_ID 随 useGuestCart 一起搬走了（立即购买虚拟项的 id），这里仍要用它过滤虚拟项
 import { useGuestCart, QUICKBUY_ITEM_ID } from './composables/useGuestCart.js';
+import { useCart } from './composables/useCart.js';
+import { useCartTotals } from './composables/useCartTotals.js';
 import { useCartUi } from './composables/useCartUi.js';
 import { useAdminContent } from './composables/useAdminContent.js';
 import { useMemberPoints } from './composables/useMemberPoints.js';
@@ -279,7 +281,7 @@ import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
 import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
-import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
+import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, round2, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
 // 后台面板较重且仅管理员进入，改为懒加载（首屏不进主包）
 import { defineAsyncComponent } from 'vue'
 const AdminPanel = defineAsyncComponent(() => import('./components/AdminPanel.vue'));
@@ -425,12 +427,7 @@ const orders = reactive({ items: [], total: 0, page: 1, size: 20, loading: false
 const addresses = ref([]);
 const selectedAddressId = ref(null);
 const coupons = ref([]);
-const myCoupons = reactive({ items: [], total: 0, page: 1, size: 12, loading: false });
-const usableCoupons = ref([]);
-const selectedUserCouponId = ref('');
-const userOptedOutCoupon = ref(false);
 const paying = ref(false);
-const cartSyncTimers = {};
 const reviewedMap = reactive({});
 const refundOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const stockAlerts = ref([]);
@@ -564,63 +561,7 @@ async function refreshCurrentPage() {
   else if (view.value === 'messages') { await Promise.all([loadMessages(), loadMessageUnread()]); }
 }
 
-const selectedCoupon = computed(() => usableCoupons.value.find((coupon) => coupon.id === selectedUserCouponId.value) || null);
 
-
-// 购物车实时合计：只累加「已勾选」商品（与后端 selectedAmount 口径一致）
-const cartLocalTotal = computed(() => (cart.items || [])
-  .filter((item) => item.selected !== false)
-  .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0));
-
-// 划线价（原价）相对现价的优惠合计：仅统计已勾选商品，纯展示用、不计入应付
-const cartOriginalSave = computed(() => (cart.items || [])
-  .filter((item) => item.selected !== false)
-  .reduce((sum, item) => sum + itemOriginalSave(item), 0));
-
-// 顶栏购物车角标：购物车内商品总件数（不区分是否勾选）；立即购买的虚拟项不算进角标
-const cartBadgeCount = computed(() => (cart.items || [])
-  .filter((item) => item.id !== QUICKBUY_ITEM_ID)
-  .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
-
-const orderPayPreview = computed(() => {
-  // 以「非会员价小计」(cartListTotal) 为基准：会员折扣尚未扣，留给 memberPreview 单独摊成一行；
-  // 若用 cartLocalTotal（已是会员净额）会重复扣会员折扣，导致 应付 偏低。
-  const total = cartListTotal.value;
-  let pay = total;
-  if (selectedCoupon.value) pay = Math.max(pay - Number(selectedCoupon.value.discountAmount || 0), 0);
-  if (Number(cart.activityDiscount) > 0) pay = Math.max(pay - Number(cart.activityDiscount || 0), 0);
-  return pay;
-});
-
-// 已勾选件数（结算明细展示用）
-const cartSelectedQty = computed(() => (cart.items || [])
-  .filter((item) => item.selected !== false)
-  .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
-
-// 实际抵扣口径的共省金额：活动优惠 + 优惠券（划线价已体现在现价里，单列展示不计入）
-const cartTotalSaved = computed(() =>
-  Number(cart.activityDiscount || 0)
-  + (selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0));
-
-// 商品目录基价（非会员售价）映射：购物项只回了会员净额 productPrice，没有「非会员价」，
-// 要把会员折扣单独摊开，就得反查目录里的 product.price（= 后端 unitPriceFor 里的 base）。
-// 列表分页可能不含该商品 → 缺失时回退 0（不显示会员折扣行，宁可不标也不算错）。
-const productBasePriceMap = computed(() => {
-  const m = {};
-  for (const p of (products.value || [])) m[Number(p.id)] = Number(p.price || 0);
-  return m;
-});
-function catalogBasePrice(id) { return productBasePriceMap.value[Number(id)] || 0; }
-
-// 当前登录会员在各购物项上「相对非会员价」省了多少（仅非秒杀项）。
-// 直接取后端 CartItemResponse.memberDiscount（后端已按 unitPriceFor 同口径算好、跨页面稳定可用），
-// 不再依赖前端商品目录是否加载。非会员/游客该项为 0。结算页据此把「会员折扣」单独摊开。
-const cartMemberDiscount = computed(() => (cart.items || [])
-  .filter((i) => i.selected !== false && !i.flashSaleId && !(Number(i.flashPrice || 0) > 0))
-  .reduce((sum, i) => sum + Number(i.memberDiscount || 0), 0));
-
-// 商品小计（原价/非会员价）：会员净额回加会员折扣，得到未打折前的小计，用于结算页逐行展示。
-const cartListTotal = computed(() => round2(cartLocalTotal.value + cartMemberDiscount.value));
 
 const selectedAddress = computed(() => addresses.value.find((item) => item.id === selectedAddressId.value) || null);
 
@@ -671,7 +612,7 @@ const accountDotTitle = computed(() => {
 // 装配点必须在全部依赖之后：auth 需要 rememberUser/refreshForSession/loadCart/goLogin/
 // closeAccountMenu，recharge 需要 askConfirm/run/wallet/recharge。
 // 且被抽走的符号在本行之前无任何同步求值（无 immediate watch / watchEffect），无 TDZ 风险。
-const { authOpen, authTab, authSubmitting, loginForm, registerForm, authErrors, changeForm, changeErrors, changeSubmitting, forcedChange, resetForm, resetErrors, resetSubmitting, openAuth, closeAuth, switchAuth, resetAuthErrors, authErrorText, submitLogin, validateRegisterForm, submitRegister, forgotPassword, openChangePassword, submitPasswordReset, validateChangeForm, submitChangePassword, logout, handleAuthExpired, registerAuthListeners, loadMe, onAvatarPick } = useAuth({ getSession: () => session, getRoute: () => route, navigate, goLogin, rememberUser, refreshForSession, loadCart, notice, error, fail, showAlert, closeAccountMenu });
+const { authOpen, authTab, authSubmitting, loginForm, registerForm, authErrors, changeForm, changeErrors, changeSubmitting, forcedChange, resetForm, resetErrors, resetSubmitting, openAuth, closeAuth, switchAuth, resetAuthErrors, authErrorText, submitLogin, validateRegisterForm, submitRegister, forgotPassword, openChangePassword, submitPasswordReset, validateChangeForm, submitChangePassword, logout, handleAuthExpired, registerAuthListeners, loadMe, onAvatarPick } = useAuth({ getSession: () => session, getRoute: () => route, navigate, goLogin, rememberUser, refreshForSession, getLoadCart: () => loadCart, notice, error, fail, showAlert, closeAccountMenu });
 
 // 全局监听（token 过期 / 待强制改密）由 composable 统一注册，行为与拆分前一致
 registerAuthListeners();
@@ -704,21 +645,41 @@ const { SHOP_FILTER_KEYS, ADMIN_TAB_DEFAULT, filterQueryFromFilters, sameShopQue
 /* ---------------- 游客购物车 / 加购微交互：已抽为 composable ---------------- */
 // 装配点必须在 cart / activeActivities / cartBadgeCount / session 之后（都由 adminCtx 或本文件提供）。
 // activeActivities 来自 useActivity（跨域共享同一个 ref 对象）。
-// ⚠️ fail / loadCart 只在 composable 的**函数体内**被调用（用户交互时），不在实参里求值，
-//    所以它们定义在本装配点之后也没问题（TDZ 只对立即求值的实参生效）。
-const { guestCartRows, guestProductCache, pendingCheckout, pendingQuickBuy, quickBuy, readGuestCart, writeGuestCart, persistGuestFromItems, estimateGuestActivity, recomputeCartTotals, refreshGuestCartView, guestAdd, guestRemoveItem, guestClear, mergeGuestCartToServer } = useGuestCart({ cart, getSession: () => session, activeActivities, loadCart, fail, notice });
+// ⚠️ getLoadCart 是读取器而不是 loadCart 本身：loadCart 由下面的 useCart 提供，而 useCart 又要用本
+//    composable 的 guestAdd 等 —— 直接传会形成循环依赖（双向都要对方的立即值）。改成读取器后
+//    loadCart 只在 mergeGuestCartToServer 被调用（用户登录那一刻）才求值，循环自然解开。
+const { guestCartRows, guestProductCache, pendingCheckout, pendingQuickBuy, quickBuy, readGuestCart, writeGuestCart, persistGuestFromItems, estimateGuestActivity, recomputeCartTotals, refreshGuestCartView, guestAdd, guestRemoveItem, guestClear, mergeGuestCartToServer } = useGuestCart({ cart, getSession: () => session, activeActivities, getLoadCart: () => loadCart, fail, notice });
+
+// 顶栏购物车角标：购物车内商品总件数（不区分是否勾选）；立即购买的虚拟项不算进角标。
+// ⚠️ 刻意留在 App.vue（不进任何 composable）：useCartUi 要 watch 它，useCartTotals 又在 useCartUi 之后，
+//    搬进任一个都会形成循环依赖。它是纯计算、没有副作用，放这里最省事。
+const cartBadgeCount = computed(() => (cart.items || [])
+  .filter((item) => item.id !== QUICKBUY_ITEM_ID)
+  .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
 const { contentEl, cartPillEl, cartBadgeEl, motionAllowed, bob, popCartBadge, flyToCart, onDocClickCapture, takeAddSource } = useCartUi({ cartBadgeCount, getView: () => view.value });
 // 公告 / 热搜词 / 轮播位：后台三个配置型模块。
 // ⚠️ 装配点必须在 isAdmin 之后（它是 ref，装配实参里立即求值）；api/run/showAlert/askConfirm/
 // loadHotSearches 只在 composable 的函数体内被调（用户点击时才执行），只需顶层存在。
 const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
-// 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview / cartMemberDiscount /
-// effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
-const { memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK, tierRateForLevel, tierNameFor, productMemberView, memberUnitView, round2, loadMemberLevels, loadMemberProfile, loadMemberLedger, memberPreview, balanceSufficient } = useMemberPoints({ api, session, isAdmin, wallet, effectiveMemberLevel, orderPayPreview, cartMemberDiscount, expressFreight });
 // 商品详情：SKU 规格、图集、停留上报、评价提交。productNavLock 是 App.vue 的 let 变量
 //（syncRoute 也要用）→ 留在原地，这里用读写器操作，避免两个来源各管一半。
 const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadRatingSummary, loadProducts, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getView: () => view.value });
+
+// 购物车：增删改 + 可用券的数据源。
+// 购物车：金额合计、增删改、可用券。⚠️ 装配点必须在 useGuestCart 之后（要用 guestAdd / guestRemoveItem 等）。
+// takeAddSource / flyToCart 来自下面的 useCartUi，不能直接注入（会形成循环：useCartUi 又要
+//    cartBadgeCount，而它是本 composable 的产物）→ 改成 onAddedFeedback 回调，由这里组装。
+const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cartSyncTimers, addToCart, loadCart, loadMyCoupons, loadMoreMyCoupons, loadMyCouponsPage, loadUsableCoupons, couponEligible, couponShortfall, autoSelectCoupon, selectCoupon, chooseNoCoupon, stepQty, onQtyChange, onQtyInput, removeCartItem, clearCart } = useCart({ api, run, fail, askConfirm, session, isAdmin, cart, cartStore, setNotice: (v) => { notice.value = v; }, onAddedFeedback: (src, url) => flyToCart(takeAddSource(), url), guestAdd, guestRemoveItem, guestClear, persistGuestFromItems, recomputeCartTotals, refreshGuestCartView, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getCartQtyMax: cartQtyMax });
+
+// 购物车的纯金额计算层：只读状态，无副作用。⚠️ 必须在 useCart 之后（读它的 usableCoupons /
+//    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview / cartMemberDiscount）。
+const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice, cartMemberDiscount, cartListTotal } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
+
+// 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview / cartMemberDiscount /
+// effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
+const { memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK, tierRateForLevel, tierNameFor, productMemberView, memberUnitView, loadMemberLevels, loadMemberProfile, loadMemberLedger, memberPreview, balanceSufficient } = useMemberPoints({ api, session, isAdmin, wallet, effectiveMemberLevel, orderPayPreview, cartMemberDiscount, expressFreight });
+
 
 function ensureAllowedView() {
   const allowed = isAdmin.value
@@ -848,216 +809,6 @@ async function loadCategories() {
 
 }
 
-async function addToCart(product) {
-  if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
-  if (!session.user) {
-    const src = takeAddSource();
-    const ok = await guestAdd(product, 1);
-    // 不跳购物车（见下方 run() 里的说明）。⚠️ 游客路径原先**没有**提示条 —— 它是靠"跳页"当反馈的，
-    // 现在不跳了就必须补一句文案，否则点完像没反应。
-    if (ok) { flyToCart(src, product.coverUrl); notice.value = '已加入购物车'; }
-    return;
-  }
-  const stock = Number(product.stock || 0);
-  if (stock <= 0) { fail(`${product.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
-  const existing = (cart.items || []).find((i) => i.productId === product.id);
-  const currentQty = existing ? Number(existing.quantity || 0) : 0;
-  if (currentQty + 1 > stock) {
-    fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
-    return;
-  }
-  // 秒杀品是纯折扣通道：名额用完后彻底不能再加购（连原价都不行），只能去原商品按原价买。
-  const flashLeft = flashLimitOfProduct(product.id);
-  if (flashLeft !== null && currentQty + 1 > flashLeft) {
-    const fsName = flashSaleOfProduct(product.id)?.name || '该秒杀商品';
-    const fsLimit = flashSaleOfProduct(product.id)?.perUserLimit || flashLeft;
-    fail(`「${fsName}」每人限购 ${fsLimit} 件，已达上限，请去原商品按原价购买`, '超出限购');
-    return;
-  }
-  await run(async () => {
-    await api.post('/cart/items', { productId: product.id, quantity: 1 });
-    await loadCart();
-    // 刻意**不** navigate('cart')：首页点「＋」只是"加入"，用户多半还在继续挑。
-    // 反馈交给三样东西 —— 商品图飞进页头购物车、角标数字弹一下、提示条「已加入购物车」；
-    // 想去购物车就点页头那个胶囊（角标刚弹过，本身就是指路）。
-    // 注：详情页的「加入购物车」按钮仍会跳购物车（那是用户明确决定购买的位置），两边故意不同。
-    flyToCart(takeAddSource(), product.coverUrl);
-  }, '已加入购物车');
-
-}
-
-async function loadCart() {
-  if (isAdmin.value) return;
-  if (!session.user) { await refreshGuestCartView(); return; }
-  const cartData = await api.get('/cart');
-  Object.assign(cart, cartData);
-  cartStore.setCart(cartData);
-  await loadMyCoupons();
-  await loadUsableCoupons();
-  // 首次进入：未手动放弃用券且有可用券时，自动选用优惠力度最大的券
-  userOptedOutCoupon.value = false;
-  autoSelectCoupon();
-
-}
-
-async function loadMyCoupons(reset = true) {
-  if (!session.user || isAdmin.value) { myCoupons.items = []; myCoupons.total = 0; return; }
-  const nextPage = reset ? 1 : myCoupons.page + 1;
-  myCoupons.loading = true;
-  try {
-    const data = await api.get(`/coupons/mine?page=${nextPage}&size=${myCoupons.size}`);
-    const items = data?.items || [];
-    myCoupons.items = reset ? items : [...myCoupons.items, ...items];
-    myCoupons.total = data?.total || 0;
-    myCoupons.page = nextPage;
-  } catch (e) { /* ignore */ } finally { myCoupons.loading = false; }
-}
-
-async function loadMoreMyCoupons() {
-  await loadMyCoupons(false);
-}
-
-// 跳到指定页码（替换式翻页，不是「加载更多」追加）
-async function loadMyCouponsPage(page) {
-  if (!session.user || isAdmin.value) return;
-  const safe = Math.max(1, page | 0);
-  myCoupons.loading = true;
-  try {
-    const data = await api.get(`/coupons/mine?page=${safe}&size=${myCoupons.size}`);
-    myCoupons.items = data?.items || [];
-    myCoupons.total = data?.total || 0;
-    myCoupons.page = safe;
-  } catch (e) { /* ignore */ } finally { myCoupons.loading = false; }
-}
-
-async function loadUsableCoupons() {
-  if (!session.user || isAdmin.value) {
-    usableCoupons.value = [];
-    selectedUserCouponId.value = '';
-    return;
-  }
-  const amount = cartLocalTotal.value;
-  usableCoupons.value = await api.get(`/coupons/usable?amount=${amount}`);
-  // 当前选中的券若因金额变化而不再满足条件，自动取消；随后在仍满足条件、且用户未显式放弃时补选最优券
-  if (selectedUserCouponId.value && !usableCoupons.value.some((coupon) => coupon.id === selectedUserCouponId.value)) {
-    selectedUserCouponId.value = '';
-  }
-  autoSelectCoupon();
-
-}
-
-// 该券是否满足当前购物车金额门槛（可点击/可自动使用）
-function couponEligible(coupon) {
-  return usableCoupons.value.some((item) => item.id === coupon.id);
-
-}
-
-// 还差多少金额可用
-function couponShortfall(coupon) {
-  return Math.max(Number(coupon.thresholdAmount || 0) - cartLocalTotal.value, 0);
-
-}
-
-function autoSelectCoupon() {
-  if (userOptedOutCoupon.value || selectedUserCouponId.value) return;
-  const best = usableCoupons.value.slice()
-    .sort((a, b) => Number(b.discountAmount || 0) - Number(a.discountAmount || 0))[0];
-  if (best) selectedUserCouponId.value = best.id;
-
-}
-
-function selectCoupon(coupon) {
-  if (!couponEligible(coupon)) return;
-  selectedUserCouponId.value = coupon.id;
-  userOptedOutCoupon.value = false;
-
-}
-
-function chooseNoCoupon() {
-  selectedUserCouponId.value = '';
-  userOptedOutCoupon.value = true;
-
-}
-
-// 数量改变：价格即时变化（v-model 已更新 item.quantity，计算属性即时重算），
-// 同时防抖把新数量同步到后端，并在合适时机刷新可用券列表。
-// 修复：加入库存与秒杀限购上限校验（cartQtyMax = min(库存, 还能买几件)）。
-// 原实现是「先夹到 max 再加 delta」，到顶时反而会多给一件（5→6），这里改成「先加再夹」。
-function stepQty(item, delta) {
-  const max = cartQtyMax(item);
-  const current = Math.max(1, Number(item.quantity) || 1);
-  const next = Math.min(Math.max(current + delta, 1), Math.max(max, 1));
-  if (next === current) return;   // 已到顶，不发这次必然被拒的请求
-  item.quantity = next;
-  onQtyInput(item);
-}
-
-function onQtyChange(item) {
-  const max = cartQtyMax(item);
-  let q = Number(item.quantity) || 1;
-  if (q < 1) q = 1;
-  if (q > max) q = max;   // 仅按库存夹，秒杀超出部分按原价，不再夹限购
-  item.quantity = q;
-  onQtyInput(item);
-}
-
-async function onQtyInput(item) {
-  clearTimeout(cartSyncTimers[item.id]);
-  if (!session.user) {
-    // 游客：本地车直接改本地存储并即时重算合计（无需网络防抖）
-    persistGuestFromItems();
-    recomputeCartTotals();
-    return;
-  }
-  cartSyncTimers[item.id] = setTimeout(async () => {
-    const max = Number(item.stock || 0);
-    const qty = Number(item.quantity) || 1;
-    if (max > 0 && qty > max) {
-      fail(`库存不足：仅剩 ${max} 件`, '库存不足');
-      await loadCart(); // 回滚到后端真实数量
-      return;
-    }
-    try {
-      // PUT 返回的就是更新后的完整购物车（含 activityDiscount），必须接住，
-      // 否则改数量后活动优惠/应付合计停留在旧值，与结算页对不上
-      const updated = await api.put(`/cart/items/${item.id}`, { quantity: qty, selected: item.selected !== false });
-      if (updated) {
-        Object.assign(cart, updated);
-        cartStore.setCart(updated);
-      }
-      await loadUsableCoupons();
-    } catch (e) {
-      // 后端可能因库存不足、或超出秒杀每人限购而拒绝，回滚到真实数量并提示，
-      // 避免界面与后端不一致。后端的 409 文案已是中文可读的，直接用。
-      const msg = e?.message || '更新数量失败，已恢复';
-      fail(msg, /限购|买满/.test(msg) ? '超出限购' : '库存不足');
-      await loadCart();
-    }
-  }, 400);
-}
-
-async function removeCartItem(id) {
-  if (!session.user) { guestRemoveItem(id); return; }
-  await run(() => api.delete(`/cart/items/${id}`).then(loadCart), '购物车商品已删除');
-
-}
-
-async function clearCart() {
-  const confirmed = await askConfirm({
-    title: '清空购物车',
-    message: '确定要清空购物车里的全部商品吗？此操作不可恢复。',
-    confirmText: '清空',
-    danger: true,
-  });
-  if (!confirmed) return;
-  if (!session.user) { guestClear(); return; }
-  const ids = (cart.items || []).map((item) => item.id);
-  await run(async () => {
-    await Promise.all(ids.map((id) => api.delete(`/cart/items/${id}`)));
-    await loadCart();
-  }, '购物车已清空');
-
-}
 
 async function loadAddresses() {
   if (!session.user || isAdmin.value) return;

@@ -13,7 +13,7 @@
  *   而真实购物车表从头到尾不会被写入（放弃支付也不残留）。
  * - 登录成功后 `mergeGuestCartToServer` 把本地行逐条 POST 进服务端购物车，并清掉本地缓存。
  *
- * 依赖注入：api 直接 import；cart（要写它）、activeActivities、loadCart、fail、notice、
+ * 依赖注入：api 直接 import；cart（要写它）、activeActivities、getLoadCart、fail、notice、
  *   getSession 由 App.vue 传入。
  */
 import { ref } from 'vue';
@@ -23,7 +23,7 @@ const GUEST_CART_KEY = 'supermarket_guest_cart';
 // 立即购买的虚拟购物车项 id：只存在于前端 cart.items，不落库、不进购物车表。
 export const QUICKBUY_ITEM_ID = '__quickbuy__';
 
-export function useGuestCart({ cart, getSession, activeActivities, loadCart, fail, notice }) {
+export function useGuestCart({ cart, getSession, activeActivities, getLoadCart, fail, notice }) {
   const guestCartRows = ref([]); // [{ productId, quantity, skuSpec }]
   const guestProductCache = new Map(); // productId -> 商品快照（渲染本地车用）
   const pendingCheckout = ref(false); // 游客点结算 → 登录完成后继续去结算
@@ -170,7 +170,7 @@ export function useGuestCart({ cart, getSession, activeActivities, loadCart, fai
     guestProductCache.clear();
     if (added > 0) {
       notice.value = `已将本地购物车 ${merged} 种 / ${added} 件商品并入你的账户`;
-      await loadCart();
+      await getLoadCart()();
     }
   }
 

@@ -181,3 +181,7 @@ export function cartItemIssue(item) {
 export function cartIssueItems(items) {
   return (items || []).filter((it) => cartItemIssue(it) !== '');
 }
+
+// 金额保留两位：JS 的浮点加减会漂（0.1+0.2=0.30000000000000004），
+// 所有展示与比较前都要过这一道。与后端 BigDecimal.setScale(2, HALF_UP) 同口径。
+export function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }

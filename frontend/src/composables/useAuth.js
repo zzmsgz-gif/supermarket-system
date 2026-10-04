@@ -6,7 +6,9 @@
  * 依赖注入说明（auth 是「叶子域」，几乎不依赖别的业务域，但依赖路由/会话/全局提示）：
  * - api / setToken / userStore：纯工具与 store，直接 import，不注入。
  * - session / route / navigate / goLogin：会话与路由职责，由 App.vue 注入。
- * - rememberUser / refreshForSession / loadCart：会话刷新与购物车回退，跨域，注入。
+ * - rememberUser / refreshForSession / getLoadCart：会话刷新与购物车回退，跨域，注入。
+ *   getLoadCart 是读取器而非 loadCart 本身 —— loadCart 由 useCart 提供，而 useCart 装配在useAuth 之后，
+ *   直接传会在装配实参里立即求值 → TDZ 白屏。
  * - notice / error / fail / showAlert：全局提示（条/弹窗），注入。
  * - closeAccountMenu：关掉头像下拉，改密弹窗拉起前要先收菜单，注入。
  *
@@ -19,7 +21,7 @@ import { useUserStore } from '../stores/user';
 
 export function useAuth(deps) {
   const {
-    getSession, getRoute, navigate, goLogin, rememberUser, refreshForSession, loadCart,
+    getSession, getRoute, navigate, goLogin, rememberUser, refreshForSession, getLoadCart,
     notice, error, fail, showAlert, closeAccountMenu,
   } = deps;
 
@@ -262,7 +264,7 @@ export function useAuth(deps) {
     rememberUser(null);
     navigate('shop');
     notice.value = '已退出登录';
-    loadCart(); // 游客态：清掉服务端 cart 视图，回到本地车状态
+    getLoadCart()(); // 游客态：清掉服务端 cart 视图，回到本地车状态
   }
 
   // token 过期/失效：后端返回 401 时由 api 客户端广播，这里优雅回到未登录态（不卡死界面）
@@ -272,7 +274,7 @@ export function useAuth(deps) {
     const r = typeof getRoute === 'function' ? getRoute() : null;
     if (r?.name !== 'shop') navigate('shop');
     notice.value = '登录已过期，请重新登录';
-    loadCart();
+    getLoadCart()();
   }
 
   // 挂全局监听：token 过期 + 待强制改密（后端 MustChangePasswordFilter 拦下任何调用时广播）
