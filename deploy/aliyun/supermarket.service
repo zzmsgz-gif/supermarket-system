@@ -1,0 +1,42 @@
+[Unit]
+Description=Supermarket Backend (Spring Boot)
+# Alibaba Cloud Linux 3 上 MySQL 服务名是 mysqld（Ubuntu 是 mysql）
+After=network.target mysqld.service
+
+[Service]
+Type=simple
+User=supermarket
+Group=supermarket
+WorkingDirectory=/opt/supermarket
+# ⚠️ 本机实测内存 ~1.9G（2核2G 规格）：MySQL8 常驻约 400~600M，JVM 上限压到 512m，
+#    另由 01-setup-server.sh 建 1G swap 兜底，避免高峰期 OOM。换成 4G 机器可放宽到 768m~1g。
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /opt/supermarket/app.jar --server.port=8080
+
+# ===== 安全相关用环境变量注入，不写进 jar / yml（本仓库是公开仓库）=====
+# ⚠️ 上线前把下面两个 CHANGE_ME 改成强值（openssl rand -base64 48 可生成）
+Environment=JWT_SECRET=CHANGE_ME_to_a_strong_random_32plus_secret
+Environment=DB_USERNAME=supermarket
+Environment=DB_PASSWORD=CHANGE_ME_db_password
+
+# 激活 prod profile：读 application-prod.yml（本仓库已提交、不含密钥）
+Environment=SPRING_PROFILES_ACTIVE=prod
+# 空库首次部署时自动建表；稳定后可改为 validate（改实体前必须同步 init.sql）
+Environment=SPRING_JPA_HIBERNATE_DDL_AUTO=update
+
+# 文件存储：强制本地盘（项目已停用 OSS，见 application-prod.yml storage.type=local）
+# 上传的图走 /api/uploads/** 由后端直接返回，无需 nginx 额外配置
+Environment=STORAGE_LOCAL_DIR=/opt/supermarket/uploads
+
+# 空库首次启动时把该账号提升/创建为 ADMIN；建好后建议回来把这两行删掉再 daemon-reload
+Environment=APP_BOOTSTRAP_ADMIN_USERNAME=admin
+Environment=APP_BOOTSTRAP_ADMIN_PASSWORD=CHANGE_ME_admin_password
+
+# 新用户注册赠送的券 id（与种子数据一致）
+Environment=APP_NEW_USER_COUPON_ID=5
+
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
