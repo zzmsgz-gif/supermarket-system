@@ -28,8 +28,10 @@ GLOBAL = {
     'in', 'of',
     # :style="{ height: x + 'px' }" 这类样式对象的键
     'height', 'width', 'top', 'left', 'right', 'bottom', 'maxWidth', 'zIndex',
-    # @upload-state="v => (bannerUploading = v)" 里的形参 v / 内联箭头函数的参数名
-    'v', 'k', 'l', 'm', 't', 'on', 'off',
+    # 内联箭头函数的形参：@upload-state="v => ..." 里的 v、
+    # adminStores.filter((s) => ...) 里的 s —— 单字母都算
+    'v', 'k', 'l', 'm', 'n', 's', 't', 'x', 'y', 'z', 'o', 'p', 'q', 'r', 'u', 'w', 'j', 'g', 'h', 'i', 'a', 'b', 'c', 'd', 'e', 'f',
+    'on', 'off',
     # class 名（:class="['ghost', 'danger']" 里的 danger 会被当变量）
     'danger', 'ghost', 'muted', 'ok', 'warn', 'tag', 'chip', 'active',
     # :class="{ on: x, taken: y, today: z, past: w }" 里的键
