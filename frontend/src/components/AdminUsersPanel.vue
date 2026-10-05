@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「用户管理」面板：从 AdminPanel.vue 整块搬过来的（模板 58 行）。
 //
 // adminCtx 给数据与动作；分页/表单/审核这些由父级 composable 装配产出，
@@ -22,8 +23,17 @@ const props = defineProps({
   toggleUser: { type: Function, required: true },
   adminUserTotalPages: { type: Number, required: true },
 });
-const { adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage, loadAdminUsers } = props.adminCtx;
-const { searchAdminUsers, changeAdminUserPage, changeAdminUserPageSize, goAdminUserPage, resetAdminUserSearch, toggleUser, adminUserTotalPages } = props;
+
+// ⚠️ 下面这几个用 defineModel 而不是 props —— 它们被 v-model 双向绑定，
+// 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
+//    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
+//    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+const adminUserJumpPage = defineModel('adminUserJumpPage', { type: Number, required: true });
+const adminUserKeyword = defineModel('adminUserKeyword', { type: String, required: true });
+const adminUserStatus = defineModel('adminUserStatus', { type: String, required: true });
+const adminUserRole = defineModel('adminUserRole', { type: String, required: true });
+const { adminUsers, loadAdminUsers } = props.adminCtx;
+const { searchAdminUsers, changeAdminUserPage, changeAdminUserPageSize, goAdminUserPage, resetAdminUserSearch, toggleUser, adminUserTotalPages } = toRefs(props);
 </script>
 
 <template>

@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「密码重置申请」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
@@ -11,7 +12,6 @@ const props = defineProps({
   confirmRejectPasswordReset: { type: Function, required: true },
   confirmResetPassword: { type: Function, required: true },
   copyTempPassword: { type: Function, required: true },
-  passwordResetJumpPage: { type: Object, required: true },
   passwordResetResult: { type: Object, required: true },
   passwordResetStatus: { type: String, required: true },
   passwordResetStatusClass: { type: Function, required: true },
@@ -20,7 +20,13 @@ const props = defineProps({
   passwordResets: { type: Object, required: true },
   refreshCurrentAdminMenu: { type: Function, required: true },
 });
-const { changePasswordResetPage, changePasswordResetPageSize, confirmRejectPasswordReset, confirmResetPassword, copyTempPassword, passwordResetJumpPage, passwordResetResult, passwordResetStatus, passwordResetStatusClass, passwordResetStatusLabel, passwordResetTotalPages, passwordResets, refreshCurrentAdminMenu } = props;
+
+// ⚠️ 下面这几个用 defineModel 而不是 props —— 它们被 v-model 双向绑定，
+// 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
+//    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
+//    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+const passwordResetJumpPage = defineModel('passwordResetJumpPage', { type: Number, required: true });
+const { changePasswordResetPage, changePasswordResetPageSize, confirmRejectPasswordReset, confirmResetPassword, copyTempPassword, passwordResetResult, passwordResetStatus, passwordResetStatusClass, passwordResetStatusLabel, passwordResetTotalPages, passwordResets, refreshCurrentAdminMenu } = toRefs(props);
 </script>
 
 <template>

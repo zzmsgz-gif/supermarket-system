@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「评价管理」面板：从 AdminPanel.vue 整块搬过来的（模板 73 行）。
 //
 // adminCtx 给数据与动作；分页/表单/审核这些由父级 composable 装配产出，
@@ -27,7 +28,7 @@ const props = defineProps({
   // 回复草稿（按评价 id 存）也来自 useAdminReviews
   reviewReplyDraft: { type: Object, required: true },
 });
-const {  adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, loadAdminReviews, loadAdminReviewUnreplied, reviewReplyDraft } = props;
+const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, loadAdminReviews, loadAdminReviewUnreplied, reviewReplyDraft } = toRefs(props);
 const { searchAdminReviews, changeAdminReviewPage, saveReviewReply, toggleReviewHidden, adminReviewTotalPages } = props;
 </script>
 

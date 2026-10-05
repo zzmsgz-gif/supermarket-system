@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「限时秒杀」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
@@ -21,7 +22,7 @@ const props = defineProps({
   saveFlashSale: { type: Function, required: true },
   toggleFlashStatus: { type: Function, required: true },
 });
-const { adminFlashSales, categories, closeFlashForm, deleteFlashSale, flashEditingId, flashForm, flashFormOpen, flashProductOptions, flashStateClass, flashStateLabel, openFlashForm, saveFlashSale, toggleFlashStatus } = props;
+const { adminFlashSales, categories, closeFlashForm, deleteFlashSale, flashEditingId, flashForm, flashFormOpen, flashProductOptions, flashStateClass, flashStateLabel, openFlashForm, saveFlashSale, toggleFlashStatus } = toRefs(props);
 </script>
 
 <template>

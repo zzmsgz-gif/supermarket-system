@@ -76,5 +76,16 @@ def props_of(key):
     t = open(file_name(key), encoding='utf-8').read()
     m = re.search(r'const props = defineProps\(\{\n(.*?)\n\}\);', t, re.S)
     assert m, key + ' 的 defineProps 未找到'
-    return [re.match(r'\s*(\w+): \{ type:', l).group(1)
-            for l in m.group(1).split('\n') if l.strip()]
+    def prop_name(line):
+        mm = re.match(r'\s+(\w+): \{ type:', line)
+        return mm.group(1) if mm else None
+
+    plain = [n for n in (prop_name(l) for l in m.group(1).split('\n')) if n]
+    models = re.findall(r"defineModel\('(\w+)'", t)
+    return plain, models
+
+
+def binding_of(key):
+    plain, models = props_of(key)
+    ms = set(models)
+    return [(n, 'v-model' if n in ms else ':') for n in plain + models]

@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 import { formatDate } from '../utils/format';
 // 后台「公告管理」面板：从 AdminPanel.vue 整块搬过来的。
 //
@@ -11,7 +12,7 @@ const props = defineProps({
   noticeTypeLabel: { type: Function, required: true },
   noticeTypeClass: { type: Function, required: true },
 });
-const { noticeTypeLabel, noticeTypeClass } = props;
+const { noticeTypeLabel, noticeTypeClass } = toRefs(props);
 const { adminAnnouncements, announcementForm, announcementFormOpen, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement } = props.adminCtx;
 </script>
 

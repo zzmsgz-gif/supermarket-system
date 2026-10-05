@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「会员日」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
@@ -23,7 +24,7 @@ const props = defineProps({
   shiftMemberDayCalendar: { type: Function, required: true },
   toggleMemberDay: { type: Function, required: true },
 });
-const { MDC_WEEK, closeMemberDayForm, deleteMemberDay, memberDayCalendarCells, memberDayCalendarMonthText, memberDayDateLabel, memberDayDateTaken, memberDayEnabledCount, memberDayForm, memberDayFormOpen, memberDaySlogan, memberDays, openMemberDayForm, resetMemberDayCalendar, saveMemberDay, shiftMemberDayCalendar, toggleMemberDay } = props;
+const { MDC_WEEK, closeMemberDayForm, deleteMemberDay, memberDayCalendarCells, memberDayCalendarMonthText, memberDayDateLabel, memberDayDateTaken, memberDayEnabledCount, memberDayForm, memberDayFormOpen, memberDaySlogan, memberDays, openMemberDayForm, resetMemberDayCalendar, saveMemberDay, shiftMemberDayCalendar, toggleMemberDay } = toRefs(props);
 </script>
 
 <template>

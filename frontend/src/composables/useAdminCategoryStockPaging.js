@@ -40,6 +40,19 @@ export function useAdminCategoryStockPaging({ categories, stockAlerts }) {
     categoryPage.value = next;
   }
 
+  // 换页大小 / 搜索后回到第 1 页。模板里原本直接写 `categoryPage = 1`，
+  // 搬进子组件后那种「对 ref 重新赋值」会改到子组件的解包副本上、父级不动 ——
+  // 所以这类赋值一律收敛成这里的函数，面板只调函数。
+  function resetCategoryPage() {
+    categoryPage.value = 1;
+  }
+
+  /** 工具条的「重置」：清关键词 + 回到第 1 页。 */
+  function resetCategorySearch() {
+    categoryKeyword.value = '';
+    categoryPage.value = 1;
+  }
+
   function goCategoryPage() {
     const p = Number(categoryJumpPage.value);
     if (!Number.isInteger(p) || p < 1 || p > categoryTotalPages.value) {
@@ -77,6 +90,16 @@ export function useAdminCategoryStockPaging({ categories, stockAlerts }) {
     stockPage.value = next;
   }
 
+  function resetStockPage() {
+    stockPage.value = 1;
+  }
+
+  /** 工具条的「重置」：清关键词 + 回到第 1 页。 */
+  function resetStockSearch() {
+    stockKeyword.value = '';
+    stockPage.value = 1;
+  }
+
   function goStockPage() {
     const p = Number(stockJumpPage.value);
     if (!Number.isInteger(p) || p < 1 || p > stockTotalPages.value) {
@@ -88,8 +111,8 @@ export function useAdminCategoryStockPaging({ categories, stockAlerts }) {
 
   return {
     categoryKeyword, categoryPage, categorySize, categoryJumpPage,
-    categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage,
+    categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch,
     stockKeyword, stockPage, stockSize, stockJumpPage,
-    stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage,
+    stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage, resetStockPage, resetStockSearch,
   };
 }

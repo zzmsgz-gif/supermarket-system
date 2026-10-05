@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「轮播管理」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // ⚠️ adminCtx 解构列表照抄父级：漏解构一个就是运行时 undefined，模板编译不报错、要跑起来才炸。
@@ -9,7 +10,7 @@ const props = defineProps({
   adminProductName: { type: Function, required: true },
 });
 const { adminBanners, bannerForm, bannerFormOpen, bannerUploading, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, adminProducts } = props.adminCtx;
-const { adminProductName } = props;
+const { adminProductName } = toRefs(props);
 </script>
 
 <template>

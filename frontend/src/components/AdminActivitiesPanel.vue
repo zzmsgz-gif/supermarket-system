@@ -1,4 +1,5 @@
 <script setup>
+import { toRefs } from 'vue';
 // 后台「营销活动」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
@@ -12,8 +13,6 @@ const props = defineProps({
   activityScopeLabel: { type: Function, required: true },
   activityTypeLabel: { type: Function, required: true },
   adminActivities: { type: Object, required: true },
-  adminActivityJumpPage: { type: Object, required: true },
-  adminActivityKeyword: { type: String, required: true },
   adminActivityTotalPages: { type: Number, required: true },
   categories: { type: Array, required: true },
   changeAdminActivityPage: { type: Function, required: true },
@@ -28,7 +27,14 @@ const props = defineProps({
   searchAdminActivities: { type: Function, required: true },
   toggleActivity: { type: Function, required: true },
 });
-const { activityDiscountLabel, activityForm, activityProducts, activityScopeLabel, activityTypeLabel, adminActivities, adminActivityJumpPage, adminActivityKeyword, adminActivityTotalPages, categories, changeAdminActivityPage, changeAdminActivityPageSize, deleteActivity, editActivity, fillActivityPeriod, onActivityScopeChange, resetActivityForm, resetAdminActivitySearch, saveActivity, searchAdminActivities, toggleActivity } = props;
+
+// ⚠️ 下面这几个用 defineModel 而不是 props —— 它们被 v-model 双向绑定，
+// 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
+//    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
+//    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+const adminActivityJumpPage = defineModel('adminActivityJumpPage', { type: Number, required: true });
+const adminActivityKeyword = defineModel('adminActivityKeyword', { type: String, required: true });
+const { activityDiscountLabel, activityForm, activityProducts, activityScopeLabel, activityTypeLabel, adminActivities, adminActivityTotalPages, categories, changeAdminActivityPage, changeAdminActivityPageSize, deleteActivity, editActivity, fillActivityPeriod, onActivityScopeChange, resetActivityForm, resetAdminActivitySearch, saveActivity, searchAdminActivities, toggleActivity } = toRefs(props);
 </script>
 
 <template>

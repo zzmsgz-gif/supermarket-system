@@ -34,202 +34,21 @@
             <button @click="refreshCurrentAdminMenu">刷新</button>
           </header>
 
-          <div v-if="adminMenu === 'orders'" class="data-panel">
-            <div class="toolbar">
-              <AdminSearchBox v-model="adminOrderKeyword" placeholder="按订单号搜索" @search="searchAdminOrders" />
-              <select v-model="adminOrderStatus" class="filter-select" @change="searchAdminOrders">
-                <option value="">全部状态</option>
-                <option value="PENDING_PAYMENT">待付款</option>
-                <option value="PAID">待发货</option>
-                <option value="SHIPPED">待收货</option>
-                <option value="COMPLETED">已完成</option>
-                <option value="CANCELLED">已取消</option>
-                <option value="CLOSED">已关闭</option>
-              </select>
-              <AdminPageSize v-model="adminOrders.size" @change="changeAdminOrderPageSize" />
-              <button class="ghost" @click="resetAdminOrderSearch">重置</button>
-              <span class="result-count">共 {{ adminOrders.total }} 笔订单</span>
-            </div>
+          <AdminOrdersPanel v-if="adminMenu === 'orders'" :admin-orders="adminOrders" v-model:admin-order-keyword="adminOrderKeyword" :admin-order-status="adminOrderStatus" v-model:admin-order-jump-page="adminOrderJumpPage" :admin-order-total-pages="adminOrderTotalPages" :ship-form="shipForm" :search-admin-orders="searchAdminOrders" :change-admin-order-page="changeAdminOrderPage" :change-admin-order-page-size="changeAdminOrderPageSize" :go-admin-order-page="goAdminOrderPage" :reset-admin-order-search="resetAdminOrderSearch" :open-ship-form="openShipForm" :admin-order-ready="adminOrderReady" :submit-ship="submitShip" :complete-admin-order="completeAdminOrder" :cancel-admin-order="cancelAdminOrder" :open-order-detail="openOrderDetail"/>
 
-            <div v-if="!adminOrders.items?.length" class="empty">暂无订单</div>
-            <div v-else class="table-wrap">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>订单号</th>
-                    <th>订单状态</th>
-                    <th>支付状态</th>
-                    <th>收货人</th>
-                    <th>实付金额</th>
-                    <th>物流信息</th>
-                    <th>下单时间</th>
-                    <th class="col-action">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template v-for="order in adminOrders.items" :key="order.id">
-                    <tr>
-                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span><span class="cell-sub">{{ fulfillmentLabel(order) }}</span><span v-if="order.remark" class="cell-sub">备注：{{ order.remark }}</span></td>
-                      <td><span :class="['tag', orderStatusTag(order.status)]">{{ orderStatusLabel(order) }}</span></td>
-                      <td>{{ formatPaymentStatus(order.paymentStatus) }}</td>
-                      <td>{{ order.receiverName || '-' }}<span class="cell-sub">{{ order.receiverPhone || '' }}</span></td>
-                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
-                      <td>
-                        <template v-if="order.shipNo">{{ order.shipCompany }}<span class="cell-sub">{{ order.shipNo }}</span></template>
-                        <span v-else class="cell-muted">未发货</span>
-                      </td>
-                      <td>{{ formatDate(order.createdAt) }}</td>
-                      <td class="col-action">
-                        <div class="row-actions">
-                          <button v-if="order.status === 'PAID' && order.fulfillmentType === 'PICKUP'" @click="adminOrderReady(order)">备货完成</button>
-                          <button v-else-if="order.status === 'PAID'" @click="openShipForm(order.id)">发货</button>
-                          <button v-if="order.status === 'SHIPPED'" @click="completeAdminOrder(order.id)">完成</button>
-                          <button v-if="['PENDING_PAYMENT', 'PAID'].includes(order.status)" class="ghost" @click="cancelAdminOrder(order.id)">取消</button>
-                          <span v-if="!['PENDING_PAYMENT', 'PAID', 'SHIPPED'].includes(order.status)">-</span>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr v-if="shipForm.orderId === order.id" class="row-extra-tr">
-                      <td colspan="8">
-                        <div class="row-extra">
-                          <span class="extra-label">{{ order.fulfillmentType === 'EXPRESS' ? '填写快递信息' : '填写配送信息' }}</span>
-                          <input v-model="shipForm.shipCompany" :placeholder="order.fulfillmentType === 'EXPRESS' ? '快递公司' : '配送方（如 美团配送）'" />
-                          <input v-model="shipForm.shipNo" :placeholder="order.fulfillmentType === 'EXPRESS' ? '快递单号' : '运单号'" />
-                          <button @click="submitShip(order.id)">确认发货</button>
-                          <button class="ghost" @click="shipForm.orderId = null">取消</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-              <AdminPager :page="adminOrders.page" :total-pages="adminOrderTotalPages" v-model:jump-page="adminOrderJumpPage" @change="changeAdminOrderPage" @jump="goAdminOrderPage" />
-            </div>
-          </div>
+          <AdminRefundsPanel v-if="adminMenu === 'refunds'" :admin-ctx="adminCtx" :search-refunds="searchRefunds" :change-refund-page="changeRefundPage" :change-refund-page-size="changeRefundPageSize" :go-refund-page="goRefundPage" :reset-refund-search="resetRefundSearch" :review-admin-refund="reviewAdminRefund" :submit-refund-review="submitRefundReview" :refund-review-form="refundReviewForm" :refund-total-pages="refundTotalPages"  v-model:refund-status-filter="refundStatusFilter"  v-model:refund-jump-page="refundJumpPage"/>
+          <AdminStockPanel v-if="adminMenu === 'stock'" :stock-alerts="stockAlerts" v-model:stock-keyword="stockKeyword" :stock-page="stockPage" :stock-size="stockSize" v-model:stock-jump-page="stockJumpPage" :stock-filtered="stockFiltered" :stock-total-pages="stockTotalPages" :stock-page-items="stockPageItems" :change-stock-page="changeStockPage" :go-stock-page="goStockPage" :reset-stock-page="resetStockPage" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock" :reset-stock-search="resetStockSearch"/>
 
-          <AdminRefundsPanel v-if="adminMenu === 'refunds'" :admin-ctx="adminCtx" :search-refunds="searchRefunds" :change-refund-page="changeRefundPage" :change-refund-page-size="changeRefundPageSize" :go-refund-page="goRefundPage" :reset-refund-search="resetRefundSearch" :review-admin-refund="reviewAdminRefund" :submit-refund-review="submitRefundReview" :refund-review-form="refundReviewForm" :refund-total-pages="refundTotalPages"/>
-          <div v-if="adminMenu === 'stock'" class="data-panel">
-            <div v-if="!stockAlerts.length" class="empty">库存充足，暂无预警</div>
-            <template v-else>
-              <div class="toolbar">
-                <AdminSearchBox v-model="stockKeyword" placeholder="按商品名称 / 编号搜索" @search="stockPage = 1" />
-                <AdminPageSize v-model="stockSize" @change="stockPage = 1" />
-                <button class="ghost" @click="stockKeyword = ''; stockPage = 1">重置</button>
-                <span class="result-count">共 {{ stockFiltered.length }} 条预警</span>
-              </div>
-              <div v-if="!stockPageItems.length" class="empty">没有匹配「{{ stockKeyword }}」的预警商品</div>
-              <div v-else class="table-wrap">
-                <table class="admin-table">
-                  <thead>
-                    <tr>
-                      <th>商品名称</th>
-                      <th>商品编号</th>
-                      <th>当前库存</th>
-                      <th>预警阈值</th>
-                      <th>缺口</th>
-                      <th class="col-action">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <template v-for="alert in stockPageItems" :key="alert.id">
-                      <tr>
-                        <td><span class="cell-strong">{{ alert.name }}</span></td>
-                        <td>{{ alert.sku }}</td>
-                        <td><span class="tag warn">{{ alert.stock }}</span></td>
-                        <td>{{ alert.lowStockThreshold }}</td>
-                        <td>{{ Math.max(alert.lowStockThreshold - alert.stock, 0) }}</td>
-                        <td class="col-action">
-                          <div class="row-actions">
-                            <button class="ghost" @click="openStockForm(alert, Math.max(alert.lowStockThreshold - alert.stock, 10))">补货</button>
-                          </div>
-                        </td>
-                      </tr>
-                      <AdminStockFormRow :form="stockForm" :target="alert" :colspan="6" label="补货数量" @submit="submitStock(alert)" @cancel="stockForm.productId = null" />
-                    </template>
-                  </tbody>
-                </table>
-                <AdminPager :page="stockPage" :total-pages="stockTotalPages" v-model:jump-page="stockJumpPage" @change="changeStockPage" @jump="goStockPage" />
-              </div>
-            </template>
-          </div>
+          <AdminProductsPanel v-if="adminMenu === 'products'" :admin-ctx="adminCtx" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock"  v-model:admin-product-keyword="adminProductKeyword"  v-model:admin-jump-page="adminJumpPage"/>
 
-          <AdminProductsPanel v-if="adminMenu === 'products'" :admin-ctx="adminCtx" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock" />
+          <AdminCategoriesPanel v-if="adminMenu === 'categories'" :categories="categories" v-model:category-keyword="categoryKeyword" :category-page="categoryPage" :category-size="categorySize" v-model:category-jump-page="categoryJumpPage" :category-filtered="categoryFiltered" :category-total-pages="categoryTotalPages" :category-page-items="categoryPageItems" :change-category-page="changeCategoryPage" :go-category-page="goCategoryPage" :reset-category-page="resetCategoryPage" :reset-category-search="resetCategorySearch" :category-form="categoryForm" :save-category="saveCategory" :category-name="categoryName"/>
 
-          <div v-if="adminMenu === 'categories'" class="data-panel">
-            <div class="form-block">
-              <div class="form-title">
-                <span>新增分类</span>
-                <small>选「顶级分类」创建一级导航，选其它分类则在其下创建二级分类</small>
-              </div>
-              <form class="compact-form form-bar" @submit.prevent="saveCategory">
-                <label class="field">
-                  <span class="field-label">分类名称 <i class="req">*</i></span>
-                  <input v-model="categoryForm.name" placeholder="如：进口水果" />
-                </label>
-                <label class="field">
-                  <span class="field-label">上级分类</span>
-                  <select v-model.number="categoryForm.parentId">
-                    <option :value="0">顶级分类（无上级）</option>
-                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">排序号</span>
-                  <input v-model.number="categoryForm.sortNo" type="number" min="0" placeholder="数字越小越靠前，如 10" />
-                </label>
-                <label class="field">
-                  <span class="field-label">分类图标</span>
-                  <ImageUpload v-model="categoryForm.iconUrl" :multiple="false" :max="1" type="category" />
-                </label>
-                <div class="field field-action">
-                  <button type="submit">新增分类</button>
-                </div>
-              </form>
-            </div>
-            <div v-if="!categories.length" class="empty">暂无分类</div>
-            <template v-else>
-              <div class="toolbar">
-                <AdminSearchBox v-model="categoryKeyword" placeholder="按分类名称搜索" @search="categoryPage = 1" />
-                <AdminPageSize v-model="categorySize" @change="categoryPage = 1" />
-                <button class="ghost" @click="categoryKeyword = ''; categoryPage = 1">重置</button>
-                <span class="result-count">共 {{ categoryFiltered.length }} 个分类</span>
-              </div>
-              <div v-if="!categoryPageItems.length" class="empty">没有匹配「{{ categoryKeyword }}」的分类</div>
-              <div v-else class="table-wrap">
-                <table class="admin-table">
-                  <thead>
-                    <tr>
-                      <th>图标</th>
-                      <th>分类名称</th>
-                      <th>上级分类</th>
-                      <th>排序</th>
-                      <th>层级</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="category in categoryPageItems" :key="category.id">
-                      <td>
-                        <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name"  loading="lazy" decoding="async"/>
-                        <span v-else class="muted">—</span>
-                      </td>
-                      <td><span class="cell-strong">{{ category.name }}</span></td>
-                      <td>{{ categoryName(category.parentId) }}</td>
-                      <td>{{ category.sortNo }}</td>
-                      <td><span :class="['tag', category.parentId ? 'muted' : '']">{{ category.parentId ? '二级分类' : '一级分类' }}</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-                <AdminPager :page="categoryPage" :total-pages="categoryTotalPages" v-model:jump-page="categoryJumpPage" @change="changeCategoryPage" @jump="goCategoryPage" />
-              </div>
-            </template>
-          </div>
-
-          <AdminCouponsPanel v-if="adminMenu === 'coupons'" :admin-ctx="adminCtx" :fill-coupon-period="fillCouponPeriod" :save-coupon="saveCoupon" :search-admin-coupons="searchAdminCoupons" :change-admin-coupon-page-size="changeAdminCouponPageSize" :reset-admin-coupon-search="resetAdminCouponSearch" :toggle-coupon="toggleCoupon" :change-admin-coupon-page="changeAdminCouponPage" :go-admin-coupon-page="goAdminCouponPage" :admin-coupon-total-pages="adminCouponTotalPages" :coupon-form="couponForm"/>
+          <AdminCouponsPanel v-if="adminMenu === 'coupons'" :admin-ctx="adminCtx" :fill-coupon-period="fillCouponPeriod" :save-coupon="saveCoupon" :search-admin-coupons="searchAdminCoupons" :change-admin-coupon-page-size="changeAdminCouponPageSize" :reset-admin-coupon-search="resetAdminCouponSearch" :toggle-coupon="toggleCoupon" :change-admin-coupon-page="changeAdminCouponPage" :go-admin-coupon-page="goAdminCouponPage" :admin-coupon-total-pages="adminCouponTotalPages" :coupon-form="couponForm"  v-model:admin-coupon-jump-page="adminCouponJumpPage"  v-model:admin-coupon-keyword="adminCouponKeyword"/>
           <AdminInsightsPanel v-if="adminMenu === 'insights'" ref="insightsPanelRef" :admin-ctx="adminCtx" :select-menu="selectAdminMenu" />
 
           <AdminFlashSalesPanel v-if="adminMenu === 'flashSales'" :admin-flash-sales="adminFlashSales" :categories="categories" :close-flash-form="closeFlashForm" :delete-flash-sale="deleteFlashSale" :flash-editing-id="flashEditingId" :flash-form="flashForm" :flash-form-open="flashFormOpen" :flash-product-options="flashProductOptions" :flash-state-class="flashStateClass" :flash-state-label="flashStateLabel" :open-flash-form="openFlashForm" :save-flash-sale="saveFlashSale" :toggle-flash-status="toggleFlashStatus"/>
 
-          <AdminActivitiesPanel v-if="adminMenu === 'activities'" :activity-discount-label="activityDiscountLabel" :activity-form="activityForm" :activity-products="activityProducts" :activity-scope-label="activityScopeLabel" :activity-type-label="activityTypeLabel" :admin-activities="adminActivities" :admin-activity-jump-page="adminActivityJumpPage" :admin-activity-keyword="adminActivityKeyword" :admin-activity-total-pages="adminActivityTotalPages" :categories="categories" :change-admin-activity-page="changeAdminActivityPage" :change-admin-activity-page-size="changeAdminActivityPageSize" :delete-activity="deleteActivity" :edit-activity="editActivity" :fill-activity-period="fillActivityPeriod" :on-activity-scope-change="onActivityScopeChange" :reset-activity-form="resetActivityForm" :reset-admin-activity-search="resetAdminActivitySearch" :save-activity="saveActivity" :search-admin-activities="searchAdminActivities" :toggle-activity="toggleActivity"/>
+          <AdminActivitiesPanel v-if="adminMenu === 'activities'" :activity-discount-label="activityDiscountLabel" :activity-form="activityForm" :activity-products="activityProducts" :activity-scope-label="activityScopeLabel" :activity-type-label="activityTypeLabel" :admin-activities="adminActivities" v-model:admin-activity-jump-page="adminActivityJumpPage" v-model:admin-activity-keyword="adminActivityKeyword" :admin-activity-total-pages="adminActivityTotalPages" :categories="categories" :change-admin-activity-page="changeAdminActivityPage" :change-admin-activity-page-size="changeAdminActivityPageSize" :delete-activity="deleteActivity" :edit-activity="editActivity" :fill-activity-period="fillActivityPeriod" :on-activity-scope-change="onActivityScopeChange" :reset-activity-form="resetActivityForm" :reset-admin-activity-search="resetAdminActivitySearch" :save-activity="saveActivity" :search-admin-activities="searchAdminActivities" :toggle-activity="toggleActivity"/>
 
           <AdminNoticesPanel v-if="adminMenu === 'notices'" :admin-ctx="adminCtx" :notice-type-label="noticeTypeLabel" :notice-type-class="noticeTypeClass" />
           <AdminHotSearchesPanel v-if="adminMenu === 'hotSearches'" :admin-ctx="adminCtx" />
@@ -343,9 +162,9 @@
             </div>
           </div>
 
-          <AdminUsersPanel v-if="adminMenu === 'users'" :admin-ctx="adminCtx" :search-admin-users="searchAdminUsers" :change-admin-user-page="changeAdminUserPage" :change-admin-user-page-size="changeAdminUserPageSize" :go-admin-user-page="goAdminUserPage" :reset-admin-user-search="resetAdminUserSearch" :toggle-user="toggleUser" :member-level-name="memberLevelName" :admin-user-total-pages="adminUserTotalPages"/>
+          <AdminUsersPanel v-if="adminMenu === 'users'" :admin-ctx="adminCtx" :search-admin-users="searchAdminUsers" :change-admin-user-page="changeAdminUserPage" :change-admin-user-page-size="changeAdminUserPageSize" :go-admin-user-page="goAdminUserPage" :reset-admin-user-search="resetAdminUserSearch" :toggle-user="toggleUser" :member-level-name="memberLevelName" :admin-user-total-pages="adminUserTotalPages"  v-model:admin-user-jump-page="adminUserJumpPage"  v-model:admin-user-keyword="adminUserKeyword"  v-model:admin-user-status="adminUserStatus"  v-model:admin-user-role="adminUserRole"/>
           <AdminReviewsPanel v-if="adminMenu === 'reviews'" :admin-ctx="adminCtx" :search-admin-reviews="searchAdminReviews" :change-admin-review-page="changeAdminReviewPage" :save-review-reply="saveReviewReply" :toggle-review-hidden="toggleReviewHidden" :admin-review-total-pages="adminReviewTotalPages" :admin-reviews="adminReviews" :admin-review-summary="adminReviewSummary" :admin-review-rating="adminReviewRating" :admin-review-replied="adminReviewReplied" :admin-review-keyword="adminReviewKeyword" :load-admin-reviews="loadAdminReviews" :load-admin-review-unreplied="loadAdminReviewUnreplied" :review-reply-draft="reviewReplyDraft"/>
-          <AdminPasswordResetsPanel v-if="adminMenu === 'passwordResets'" :change-password-reset-page="changePasswordResetPage" :change-password-reset-page-size="changePasswordResetPageSize" :confirm-reject-password-reset="confirmRejectPasswordReset" :confirm-reset-password="confirmResetPassword" :copy-temp-password="copyTempPassword" :password-reset-jump-page="passwordResetJumpPage" :password-reset-result="passwordResetResult" :password-reset-status="passwordResetStatus" :password-reset-status-class="passwordResetStatusClass" :password-reset-status-label="passwordResetStatusLabel" :password-reset-total-pages="passwordResetTotalPages" :password-resets="passwordResets" :refresh-current-admin-menu="refreshCurrentAdminMenu"/>
+          <AdminPasswordResetsPanel v-if="adminMenu === 'passwordResets'" :change-password-reset-page="changePasswordResetPage" :change-password-reset-page-size="changePasswordResetPageSize" :confirm-reject-password-reset="confirmRejectPasswordReset" :confirm-reset-password="confirmResetPassword" :copy-temp-password="copyTempPassword" v-model:password-reset-jump-page="passwordResetJumpPage" :password-reset-result="passwordResetResult" :password-reset-status="passwordResetStatus" :password-reset-status-class="passwordResetStatusClass" :password-reset-status-label="passwordResetStatusLabel" :password-reset-total-pages="passwordResetTotalPages" :password-resets="passwordResets" :refresh-current-admin-menu="refreshCurrentAdminMenu"/>
         </div>
       </section>
 </template>
@@ -383,6 +202,9 @@ const AdminFlashSalesPanel = defineAsyncComponent(() => import('./AdminFlashSale
 const AdminActivitiesPanel = defineAsyncComponent(() => import('./AdminActivitiesPanel.vue'));
 const AdminMemberDaysPanel = defineAsyncComponent(() => import('./AdminMemberDaysPanel.vue'));
 const AdminPasswordResetsPanel = defineAsyncComponent(() => import('./AdminPasswordResetsPanel.vue'));
+const AdminOrdersPanel = defineAsyncComponent(() => import('./AdminOrdersPanel.vue'));
+const AdminStockPanel = defineAsyncComponent(() => import('./AdminStockPanel.vue'));
+const AdminCategoriesPanel = defineAsyncComponent(() => import('./AdminCategoriesPanel.vue'));
 const AdminUsersPanel = defineAsyncComponent(() => import('./AdminUsersPanel.vue'));
 const AdminCouponsPanel = defineAsyncComponent(() => import('./AdminCouponsPanel.vue'));
 
@@ -483,7 +305,7 @@ const { memberDays, memberDayFormOpen, memberDayForm, memberDayCalendarCursor, m
 const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages, loadAdminReviews, searchAdminReviews, changeAdminReviewPage, loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden } = useAdminReviews({ run, askConfirm, showAlert });
 
 // ===== 分类 / 库存 / 订单 / 退款 / 优惠券 / 用户：已抽为 composable =====
-const { categoryKeyword, categoryPage, categorySize, categoryJumpPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, stockKeyword, stockPage, stockSize, stockJumpPage, stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage } = useAdminCategoryStockPaging({ categories, stockAlerts });
+const { categoryKeyword, categoryPage, categorySize, categoryJumpPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, stockKeyword, stockPage, stockSize, stockJumpPage, stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage, resetCategoryPage, resetCategorySearch, resetStockPage, resetStockSearch } = useAdminCategoryStockPaging({ categories, stockAlerts });
 
 const { categoryForm, stockForm, noticeTypeLabel, noticeTypeClass, adminProductName, trendHasData, openStockForm, submitStock, saveCategory } = useAdminCategoryStock({ run, fail, askConfirm, loadAdminProducts, loadStockAlerts, loadProducts, loadCategories, adminProducts, adminStatsOverview });
 
