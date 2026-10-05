@@ -4,6 +4,7 @@ import { toRefs } from 'vue';
 //
 // ⚠️ adminCtx 解构列表照抄父级：漏解构一个就是运行时 undefined，模板编译不报错、要跑起来才炸。
 import ImageUpload from './ImageUpload.vue';
+import { imgFallback } from '../utils/format';
 
 const props = defineProps({
   adminCtx: { type: Object, required: true },
@@ -54,7 +55,7 @@ const { adminProductName } = toRefs(props);
         <div v-for="(b, bi) in adminBanners" :key="b.id" class="admin-card">
           <span class="banner-pos" :title="'前台轮播第 ' + (bi + 1) + ' 张'">{{ bi + 1 }}</span>
           <div class="banner-cover">
-            <img v-if="b.imageUrl" :src="b.imageUrl" alt=""  loading="lazy" decoding="async"/>
+            <img v-if="b.imageUrl" :src="b.imageUrl" alt=""  loading="lazy" decoding="async" @error="imgFallback($event, b.name)" />
             <span v-else class="cover-empty">无图</span>
           </div>
           <div class="card-info">

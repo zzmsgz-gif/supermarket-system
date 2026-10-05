@@ -2,7 +2,7 @@
   <div class="img-upload">
     <div class="iu-list">
       <div v-for="(url, i) in previews" :key="i" class="iu-thumb">
-        <img :src="url" alt="图片预览"  loading="lazy" decoding="async"/>
+        <img :src="url" alt="图片预览"  loading="lazy" decoding="async" @error="imgFallback($event, '图片')" />
         <button type="button" class="iu-del" @click="removeAt(i)" title="移除">×</button>
       </div>
       <label v-if="canAdd" class="iu-add" :class="{ 'iu-busy': uploading }">
@@ -25,6 +25,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { api } from '../api/client';
+import { imgFallback } from '../utils/format';
 
 const props = defineProps({
   modelValue: { type: [String, Array], default: '' },

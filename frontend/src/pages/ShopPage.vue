@@ -64,7 +64,7 @@
           :class="slide.image ? 'slide-image' : 'slide-' + slide.parity"
         >
           <template v-if="slide.image">
-            <img class="slide-photo" :src="slide.image" alt="" decoding="async" @click="openBannerTarget(slide)" />
+            <img class="slide-photo" :src="slide.image" alt="" decoding="async" @error="imgFallback($event, slide.tag)" @click="openBannerTarget(slide)" />
           </template>
           <template v-else>
             <span class="slide-tag">{{ slide.tag }}</span>

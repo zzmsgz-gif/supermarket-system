@@ -9,6 +9,7 @@ import AdminSearchBox from './AdminSearchBox.vue';
 import AdminPageSize from './AdminPageSize.vue';
 import AdminPager from './AdminPager.vue';
 import ImageUpload from './ImageUpload.vue';
+import { imgFallback } from '../utils/format';
 
 const props = defineProps({
   categories: { type: Array, required: true },
@@ -90,7 +91,7 @@ const { categories, categoryPage, categorySize, categoryFiltered, categoryTotalP
           <tbody>
             <tr v-for="category in categoryPageItems" :key="category.id">
               <td>
-                <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name"  loading="lazy" decoding="async"/>
+                <img v-if="category.iconUrl" :src="category.iconUrl" class="cat-icon-thumb" :alt="category.name"  loading="lazy" decoding="async" @error="imgFallback($event, category.name)" />
                 <span v-else class="muted">—</span>
               </td>
               <td><span class="cell-strong">{{ category.name }}</span></td>

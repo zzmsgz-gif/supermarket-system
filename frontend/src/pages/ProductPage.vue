@@ -151,7 +151,7 @@
                 </div>
                 <p>{{ review.content || '默认好评' }}</p>
                 <div v-if="review.imageUrls && review.imageUrls.length" class="review-imgs">
-                  <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片"  loading="lazy" decoding="async"/>
+                  <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片" @error="imgFallback($event, '晒图')"  loading="lazy" decoding="async"/>
                 </div>
                 <!-- 商家回复：后台回完必须在这里露出来，否则"回复"这个动作等于白做 -->
                 <div v-if="review.replyContent" class="review-reply">

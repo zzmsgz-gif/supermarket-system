@@ -9,6 +9,7 @@ import { toRefs } from 'vue';
 //    要跑起来才在 console 报 xxx is not a function。改完跑 _check_panels.py。
 import { formatDate } from '../utils/format';
 import AdminPager from './AdminPager.vue';
+import { imgFallback } from '../utils/format';
 
 const props = defineProps({
   adminCtx: { type: Object, required: true },
@@ -86,7 +87,7 @@ const { searchAdminReviews, changeAdminReviewPage, saveReviewReply, toggleReview
         </div>
         <p class="rar-content">{{ r.content || '（无文字评价，仅评分）' }}</p>
         <div v-if="r.imageUrls && r.imageUrls.length" class="rar-imgs">
-          <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图"  loading="lazy" decoding="async"/>
+          <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图" @error="imgFallback($event, '晒图')"  loading="lazy" decoding="async"/>
         </div>
         <div v-if="r.replyContent" class="rar-reply">
           <b>商家回复</b><small v-if="r.replyAt">（{{ formatDate(r.replyAt) }}）</small>：{{ r.replyContent }}
