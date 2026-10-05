@@ -611,132 +611,8 @@
             </template>
           </div>
 
-          <div v-if="adminMenu === 'notices'" class="data-panel">
-            <div class="toolbar">
-              <button @click="openAnnouncementForm(null)">发布公告</button>
-              <span v-if="adminAnnouncements.length" class="tag muted">共 {{ adminAnnouncements.length }} 条</span>
-            </div>
-
-            <div v-if="announcementFormOpen" class="form-card admin-form-card">
-              <div class="form-title">
-                <span>{{ announcementForm.id ? '编辑公告' : '发布公告' }}</span>
-                <small>启用的公告展示在前台「商城公告」栏；<b>类型选「促销」的标题还会滚动出现在首页顶部利益条</b>（如新人福利文案），可在此随时改文改停用</small>
-              </div>
-              <div class="admin-form-grid">
-                <label class="field span-all">
-                  <span class="field-label">标题 <i class="req">*</i></span>
-                  <input v-model="announcementForm.title" maxlength="120" placeholder="如：国庆期间配送时效调整" />
-                </label>
-                <label class="field">
-                  <span class="field-label">类型</span>
-                  <select v-model="announcementForm.type">
-                    <option value="NOTICE">公告</option>
-                    <option value="PROMOTION">促销</option>
-                    <option value="ACTIVITY">活动</option>
-                    <option value="SERVICE">服务</option>
-                    <option value="WARNING">提醒</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">排序值</span>
-                  <input v-model.number="announcementForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
-                </label>
-                <div class="field">
-                  <span class="field-label">是否启用</span>
-                  <label class="check-line"><input type="checkbox" v-model="announcementForm.enabled" /> 启用（前台可见）</label>
-                </div>
-              </div>
-              <label class="field span-all">
-                <span class="field-label">公告内容 <i class="req">*</i></span>
-                <textarea v-model="announcementForm.content" rows="4" maxlength="500" placeholder="公告正文，最多 500 字"></textarea>
-              </label>
-              <div class="admin-form-foot">
-                <button class="ghost" @click="closeAnnouncementForm">取消</button>
-                <button @click="saveAnnouncement">保存</button>
-              </div>
-            </div>
-
-            <template v-else>
-              <div class="admin-cards" v-if="adminAnnouncements.length">
-                <div v-for="a in adminAnnouncements" :key="a.id" class="admin-card">
-                  <span :class="['tag', 'type-chip', noticeTypeClass(a.type)]">{{ noticeTypeLabel(a.type) }}</span>
-                  <div class="card-info">
-                    <p class="card-title"><span class="card-title-text">{{ a.title }}</span></p>
-                    <p v-if="a.content" class="card-content">{{ a.content }}</p>
-                    <p class="card-meta">
-                      <span>发布 {{ formatDate(a.publishTime) }}</span>
-                      <span>排序 {{ a.sortOrder }} · 越小越靠前</span>
-                      <span :class="Number(a.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(a.enabled) === 1 ? '启用中' : '已停用' }}</span>
-                    </p>
-                  </div>
-                  <div class="card-actions">
-                    <button class="ghost" @click="openAnnouncementForm(a)">编辑</button>
-                    <button class="ghost" @click="toggleAnnouncement(a)">{{ Number(a.enabled) === 1 ? '停用' : '启用' }}</button>
-                    <button class="ghost danger" @click="deleteAnnouncement(a)">删除</button>
-                  </div>
-                </div>
-              </div>
-              <empty-state v-else icon="receipt" text="还没有公告，点上方「发布公告」发第一条" />
-            </template>
-          </div>
-
-          <div v-if="adminMenu === 'hotSearches'" class="data-panel">
-            <div class="toolbar">
-              <button @click="openHotSearchForm(null)">新增热搜词</button>
-              <span v-if="adminHotSearches.length" class="tag muted">共 {{ adminHotSearches.length }} 条</span>
-            </div>
-
-            <div v-if="hotSearchFormOpen" class="form-card admin-form-card">
-              <div class="form-title">
-                <span>{{ hotSearchForm.id ? '编辑热搜词' : '新增热搜词' }}</span>
-                <small>这些词显示在首页头部搜索框下面的「热搜」那一排，<b>点击即按「搜索词」跳转搜索</b>；
-                  「展示文案」留空就用搜索词本身（两者可以不同，例如显示「纯牛奶」而实际搜「牛奶」）</small>
-              </div>
-              <div class="admin-form-grid">
-                <label class="field">
-                  <span class="field-label">搜索词 <i class="req">*</i></span>
-                  <input v-model="hotSearchForm.keyword" maxlength="30" placeholder="如：牛奶（点一下就是搜它）" />
-                </label>
-                <label class="field">
-                  <span class="field-label">展示文案</span>
-                  <input v-model="hotSearchForm.label" maxlength="30" placeholder="可留空；如显示「纯牛奶」" />
-                </label>
-                <label class="field">
-                  <span class="field-label">排序值</span>
-                  <input v-model.number="hotSearchForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
-                </label>
-                <div class="field">
-                  <span class="field-label">是否启用</span>
-                  <label class="check-line"><input type="checkbox" v-model="hotSearchForm.enabled" /> 启用（前台可见）</label>
-                </div>
-              </div>
-              <div class="admin-form-foot">
-                <button class="ghost" @click="closeHotSearchForm">取消</button>
-                <button @click="saveHotSearch">保存</button>
-              </div>
-            </div>
-
-            <template v-else>
-              <div class="admin-cards" v-if="adminHotSearches.length">
-                <div v-for="h in adminHotSearches" :key="h.id" class="admin-card">
-                  <span class="tag">{{ h.label }}</span>
-                  <div class="card-info">
-                    <p class="card-title"><span class="card-title-text">点击后搜索「{{ h.keyword }}」</span></p>
-                    <p class="card-meta">
-                      <span>排序 {{ h.sortOrder }} · 越小越靠前</span>
-                      <span :class="Number(h.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(h.enabled) === 1 ? '启用中' : '已停用' }}</span>
-                    </p>
-                  </div>
-                  <div class="card-actions">
-                    <button class="ghost" @click="openHotSearchForm(h)">编辑</button>
-                    <button class="ghost" @click="toggleHotSearch(h)">{{ Number(h.enabled) === 1 ? '停用' : '启用' }}</button>
-                    <button class="ghost danger" @click="deleteHotSearch(h)">删除</button>
-                  </div>
-                </div>
-              </div>
-              <empty-state v-else icon="star" text="还没有热搜词，点上方「新增热搜词」加一条（全部停用或删空时，前台那一排会整块隐藏）" />
-            </template>
-          </div>
+          <AdminNoticesPanel v-if="adminMenu === 'notices'" :admin-ctx="adminCtx" :notice-type-label="noticeTypeLabel" :notice-type-class="noticeTypeClass" />
+          <AdminHotSearchesPanel v-if="adminMenu === 'hotSearches'" :admin-ctx="adminCtx" />
 
           <!-- 会员日：指定日期消费积分翻倍（从日历上挑具体日期，不再按「每月几号」循环）。
                原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端没实现（假承诺）。
@@ -830,70 +706,7 @@
             </template>
           </div>
 
-          <div v-if="adminMenu === 'banners'" class="data-panel">
-            <div class="toolbar">
-              <button @click="openBannerForm(null)">新建轮播位</button>
-              <span v-if="adminBanners.length" class="tag muted">共 {{ adminBanners.length }} 张</span>
-            </div>
-
-            <div v-if="bannerFormOpen" class="form-card admin-form-card">
-              <div class="form-title">
-                <span>{{ bannerForm.id ? '编辑轮播位' : '新建轮播位' }}</span>
-                <small>建议 16:9 横图；宽超 1600px 或大 500KB 自动压缩，点击前台可跳转关联商品</small>
-              </div>
-              <div class="field">
-                <span class="field-label">轮播图片 <i class="req">*</i></span>
-                <ImageUpload v-model="bannerForm.imageUrl" :multiple="false" :max="1" type="banner" @upload-state="v => (bannerUploading = v)" />
-              </div>
-              <div class="admin-form-grid">
-                <label class="field">
-                  <span class="field-label">跳转商品（可选）</span>
-                  <select v-model="bannerForm.linkProductId">
-                    <option :value="null">不跳转，仅展示</option>
-                    <option v-for="p in (adminProducts.items || [])" :key="p.id" :value="p.id">{{ p.name }}</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field-label">排序值</span>
-                  <input v-model.number="bannerForm.sortOrder" type="number" min="0" placeholder="数字越小越靠前，如 10" />
-                </label>
-                <p class="field-hint span-all" style="align-self: end;">是否展示用列表里的「停用 / 启用」控制；新建默认启用、排在最后。</p>
-              </div>
-              <div class="admin-form-foot">
-                <button class="ghost" @click="closeBannerForm">取消</button>
-                <button :disabled="bannerUploading" @click="saveBanner">{{ bannerUploading ? '图片上传中…' : '保存' }}</button>
-              </div>
-            </div>
-
-            <template v-else>
-              <div class="admin-cards" v-if="adminBanners.length">
-                <div v-for="(b, bi) in adminBanners" :key="b.id" class="admin-card">
-                  <span class="banner-pos" :title="'前台轮播第 ' + (bi + 1) + ' 张'">{{ bi + 1 }}</span>
-                  <div class="banner-cover">
-                    <img v-if="b.imageUrl" :src="b.imageUrl" alt=""  loading="lazy" decoding="async"/>
-                    <span v-else class="cover-empty">无图</span>
-                  </div>
-                  <div class="card-info">
-                    <p class="card-title">
-                      <span :class="['tag', Number(b.enabled) === 1 ? 'ok' : 'muted']">{{ Number(b.enabled) === 1 ? '启用中' : '已停用' }}</span>
-                      <span class="card-title-text">{{ b.linkProductId ? (adminProductName(b.linkProductId) || ('跳转商品 #' + b.linkProductId)) : '仅展示，点击不跳转' }}</span>
-                    </p>
-                    <p class="card-meta">
-                      <span>排序值 {{ b.sortOrder }} · 越小越靠前</span>
-                      <span>前台轮播第 {{ bi + 1 }} 张</span>
-                    </p>
-                  </div>
-                  <div class="card-actions">
-                    <button class="ghost" @click="openBannerForm(b)">编辑</button>
-                    <button class="ghost" @click="toggleBanner(b)">{{ Number(b.enabled) === 1 ? '停用' : '启用' }}</button>
-                    <button class="ghost danger" @click="deleteBanner(b)">删除</button>
-                  </div>
-                </div>
-              </div>
-              <empty-state v-else icon="ticket" text="还没有轮播位：新建后前台轮播优先展示这里的内容" />
-            </template>
-          </div>
-
+          <AdminBannersPanel v-if="adminMenu === 'banners'" :admin-ctx="adminCtx" :admin-product-name="adminProductName" />
           <div v-if="adminMenu === 'stores'" class="data-panel">
             <div class="toolbar">
               <button class="primary" @click="openStoreForm(null)">+ 新增门店</button>
@@ -1234,6 +1047,9 @@ import AdminSearchBox from './AdminSearchBox.vue';
 // 两个重面板改为懒加载：首次进入对应 tab 才下载该面板 chunk，不进 AdminPanel 主包
 const AdminInsightsPanel = defineAsyncComponent(() => import('./AdminInsightsPanel.vue'));
 const AdminProductsPanel = defineAsyncComponent(() => import('./AdminProductsPanel.vue'));
+const AdminBannersPanel = defineAsyncComponent(() => import('./AdminBannersPanel.vue'));
+const AdminNoticesPanel = defineAsyncComponent(() => import('./AdminNoticesPanel.vue'));
+const AdminHotSearchesPanel = defineAsyncComponent(() => import('./AdminHotSearchesPanel.vue'));
 
 const props = defineProps({
   // 响应式：admin 内会读取 view / categories
