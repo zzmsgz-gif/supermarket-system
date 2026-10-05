@@ -1,69 +1,57 @@
-.idea/
-.vscode/
-*.iml
 
-target/
-.m2/
-out/
-build/
-dist/
-node_modules/
+# npm 缓存（本机用 npm install --cache ./npm-cache 装依赖时产生）
+# 267 个文件曾被提交进仓库，导致 .git 涨到 63MB —— 缓存可再生，不该入库
+.npm-cache/
 
+# 本机 npm 缓存目录（另一种常见位置）
+.npm/_cacache/
+
+# ===== 本机产生的日志/缓存/工具产物（都不该入库）=====
 *.log
-backend-run.log
-.env
-.env.*
+!.gitkeep
 
-!.env.example
+# Maven 本地仓库（曾误提交，体积大）
+.m2/
 
-# 含 OSS / DB / JWT 等密钥的本地配置，切勿提交到仓库
-backend/src/main/resources/application.yml
+# IDE
+.idea/
+*.iml
+.vscode/
 
-# 部署/测试目录的非源码二进制与临时文件
-deploy/**/*.png
-deploy/**/*.err
-deploy/**/*.jpg
-deploy/**/*.jpeg
-deploy/**/*.gif
-
-# 仓库根目录顶层的调试/走查截图（历次前端走查产物，非源码）。
-# 只匹配根目录，避免误伤 frontend/public 等处的正式图片。
-/*.png
-/*.jpg
-/*.jpeg
-/*.gif
-
-# 编辑器/重构留下的备份，源码仓库不需要
-*.bak
-*.pre-extract
-*.orig
-
-# 本地运行/构建残留与上传产物（非源码，切勿提交）
-target_del_*/
-backend/uploads/
-backend/test.png
-backend/**/*.err
-*.err
+# 临时截图（本轮验证产物）
 .shots/
+_*.png
+_addr_*.png
+_img*/
 
-# Python 字节码缓存（部署脚本跑语法检查时会生成）
+# 我的备份目录（改数据前留的）
+_bak_*/
+
+# 拆分工具脚本的中产物（_split_*.py 的输出）
+_b5out*.txt
+
+# 构建产物
+backend/target/
+frontend/dist/
+frontend/dist_*/
+
+# 上传目录（本机联调产生）
+backend/uploads/
+uploads/
+
+# Python 缓存
 __pycache__/
 *.pyc
 
-# 巨型组件拆分过程中的产物（非源码）：
-# dist_b*tmp/dist_deploy = 绕开被 Windows 锁住的 dist/ 时的临时构建输出；
-# *.b2out/_b*out.txt = 拆分脚本的中间产物；*.bak_b* = 拆分前整份备份。
-frontend/dist_b*tmp/
-frontend/dist_deploy/
-frontend/src/*.b2out
-frontend/src/**/*.b2out
-frontend/src/*.bak_b*
-frontend/src/_b*
-frontend/src/**/_b*
-frontend/src/_appctx_*.txt
-frontend/src/_locktest.txt
-frontend/src/_writeprobe.txt
-frontend/src/_verify_ids.py
-frontend/src/*.new
-frontend/src/*.test
-_bak_20261005/
+# 真实配置（含凭证，必须只在本机）
+backend/src/main/resources/application.yml
+
+# 本机联调产物
+*.err
+
+# 依赖
+node_modules/
+
+# 拆分脚本的中间产物
+*.b2out
+*.b5out*
