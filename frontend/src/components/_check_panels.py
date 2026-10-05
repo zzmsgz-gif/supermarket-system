@@ -30,6 +30,8 @@ GLOBAL = {
     'height', 'width', 'top', 'left', 'right', 'bottom', 'maxWidth', 'zIndex',
     # @upload-state="v => (bannerUploading = v)" 里的形参 v / 内联箭头函数的参数名
     'v', 'k', 'l', 'm', 't', 'on', 'off',
+    # class 名（:class="['ghost', 'danger']" 里的 danger 会被当变量）
+    'danger', 'ghost', 'muted', 'ok', 'warn', 'tag', 'chip', 'active',
 }
 # HTML 标签与属性名
 TAGLIKE = re.compile(r'^[a-z]+$')
@@ -82,15 +84,48 @@ def collect(s):
     return sorted(set(missing))
 
 
+def parent_symbols():
+    """AdminPanel.vue 顶层能拿到的一切：adminCtx 解构 + composable 装配 + import + utils。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = open(os.path.join(here, 'AdminPanel.vue'), encoding='utf-8').read()
+    syms = set()
+    for m in re.finditer(r'const \{([^}]*)\} = ', src):
+        syms |= {x.strip() for x in m.group(1).split(',') if x.strip()}
+    for m in re.finditer(r'const (\w+) = ', src):
+        syms.add(m.group(1))
+    for m in re.finditer(r'import \{([^}]*)\} from', src):
+        syms |= {x.strip() for x in m.group(1).split(',') if x.strip()}
+    for m in re.finditer(r'import (\w+) from', src):
+        syms.add(m.group(1))
+    # 面板组件自己 import 的 utils / 子组件也算可用
+    return syms
+
+
 def main():
     files = [f for f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Admin*Panel.vue')))
              if not f.endswith('AdminPanel.vue')]
     bad = 0
+    parent = parent_symbols()
     for f in files:
         s = open(f, encoding='utf-8').read()
         if '<template>' not in s:
             continue
         missing = collect(s)
+        # ★ 面板 props 里的每个名字，父级必须真的有 —— 否则父组件模板传不进来，
+        #   面板里 props.xxx 是 undefined，报错发生在子组件内部、堆栈指向 Vue 内部，很难查。
+        head = s[:s.index('<template>')]
+        # kebab-case 的 prop 名要转回 camelCase 再比（父级模板写 :select-menu="selectAdminMenu"）
+        def camel(n):
+            parts = n.split('-')
+            return parts[0] + ''.join(x[:1].upper() + x[1:] for x in parts[1:])
+        for m in re.finditer(r'^  ([\w-]+): \{ type:', head, re.M):
+            pn = camel(m.group(1))
+            if pn == 'adminCtx' or pn in parent:
+                continue
+            # 面板里写了别名（const selectAdminMenu = props.selectMenu）→ 认这个别名
+            if re.search(r'=\s*props\.' + re.escape(pn) + r'\b', head):
+                continue
+            missing.append('%s(父级没有)' % pn)
         name = os.path.basename(f)
         if missing:
             print('  ★ %-34s 缺: %s' % (name, ', '.join(missing)))

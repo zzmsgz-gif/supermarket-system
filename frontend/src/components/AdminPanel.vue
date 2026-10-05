@@ -107,64 +107,7 @@
             </div>
           </div>
 
-          <div v-if="adminMenu === 'refunds'" class="data-panel">
-            <div class="toolbar">
-              <select v-model="refundStatusFilter" class="filter-select" @change="searchRefunds">
-                <option value="APPLYING">申请中</option>
-                <option value="APPROVED">已通过</option>
-                <option value="REJECTED">已拒绝</option>
-              </select>
-              <AdminPageSize v-model="refundOrders.size" @change="changeRefundPageSize" />
-              <button class="ghost" @click="resetRefundSearch">重置</button>
-              <span class="result-count">共 {{ refundOrders.total }} 笔退款</span>
-            </div>
-
-            <div v-if="!refundOrders.items?.length" class="empty">暂无待处理的退款申请</div>
-            <div v-else class="table-wrap">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>订单号</th>
-                    <th>订单状态</th>
-                    <th>退款金额</th>
-                    <th>退款原因</th>
-                    <th>申请时间</th>
-                    <th class="col-action">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template v-for="order in refundOrders.items" :key="order.id">
-                    <tr>
-                      <td><span class="cell-strong order-no-link" @click="openOrderDetail(order)">{{ order.orderNo }}</span></td>
-                      <td><span :class="['tag', refundStatusTag(order.refundStatus)]">{{ formatRefundStatus(order.refundStatus) }}</span></td>
-                      <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
-                      <td>{{ order.refundReason || '未填写' }}</td>
-                      <td>{{ formatDate(order.createdAt) }}</td>
-                      <td class="col-action">
-                        <div class="row-actions">
-                          <button v-if="order.refundStatus === 'APPLYING'" @click="reviewAdminRefund(order.id, true)">同意退款</button>
-                          <button v-if="order.refundStatus === 'APPLYING'" class="danger" @click="reviewAdminRefund(order.id, false)">拒绝</button>
-                          <span v-else>-</span>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr v-if="refundReviewForm.orderId === order.id" class="row-extra-tr">
-                      <td colspan="6">
-                        <div class="row-extra">
-                          <span class="extra-label">{{ refundReviewForm.approved ? '同意退款' : '拒绝退款' }}，处理意见</span>
-                          <input v-model="refundReviewForm.remark" placeholder="处理意见（选填）" />
-                          <button @click="submitRefundReview(order.id)">提交</button>
-                          <button class="ghost" @click="refundReviewForm.orderId = null">取消</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-              <AdminPager :page="refundOrders.page" :total-pages="refundTotalPages" v-model:jump-page="refundJumpPage" @change="changeRefundPage" @jump="goRefundPage" />
-            </div>
-          </div>
-
+          <AdminRefundsPanel v-if="adminMenu === 'refunds'" :admin-ctx="adminCtx" :search-refunds="searchRefunds" :change-refund-page="changeRefundPage" :change-refund-page-size="changeRefundPageSize" :go-refund-page="goRefundPage" :reset-refund-search="resetRefundSearch" :review-admin-refund="reviewAdminRefund" :submit-refund-review="submitRefundReview" :refund-review-form="refundReviewForm" :refund-total-pages="refundTotalPages"/>
           <div v-if="adminMenu === 'stock'" class="data-panel">
             <div v-if="!stockAlerts.length" class="empty">库存充足，暂无预警</div>
             <template v-else>
@@ -281,85 +224,7 @@
             </template>
           </div>
 
-          <div v-if="adminMenu === 'coupons'" class="data-panel">
-            <div class="form-block">
-              <div class="form-title">
-                <span>新增优惠券</span>
-                <small>满减券：订单达到「使用门槛」后立减「优惠金额」，优惠金额不能大于门槛；发放总量填 0 表示不限量</small>
-                <button type="button" class="field-link title-link" @click="fillCouponPeriod(30)">一键填充：今天起 30 天</button>
-              </div>
-              <form class="compact-form form-bar" @submit.prevent="saveCoupon">
-                <label class="field">
-                  <span class="field-label">优惠券名称 <i class="req">*</i></span>
-                  <input v-model="couponForm.name" placeholder="如：新用户满 50 减 10" />
-                </label>
-                <label class="field">
-                  <span class="field-label">使用门槛（元）<i class="req">*</i></span>
-                  <input v-model.number="couponForm.thresholdAmount" type="number" step="0.01" min="0" placeholder="满多少可用，如 50.00" />
-                </label>
-                <label class="field">
-                  <span class="field-label">优惠金额（元）<i class="req">*</i></span>
-                  <input v-model.number="couponForm.discountAmount" type="number" step="0.01" min="0" placeholder="立减多少，如 10.00" />
-                </label>
-                <label class="field">
-                  <span class="field-label">发放总量（张）</span>
-                  <input v-model.number="couponForm.totalCount" type="number" min="0" placeholder="0 表示不限量，如 100" />
-                </label>
-                <label class="field">
-                  <span class="field-label">生效时间 <i class="req">*</i></span>
-                  <input v-model="couponForm.startTime" type="datetime-local" />
-                </label>
-                <label class="field">
-                  <span class="field-label">过期时间 <i class="req">*</i></span>
-                  <input v-model="couponForm.endTime" type="datetime-local" />
-                </label>
-                <div class="field field-action">
-                  <button type="submit">新增优惠券</button>
-                </div>
-              </form>
-            </div>
-            <div v-if="adminCoupons.total === 0" class="empty">暂无优惠券</div>
-            <template v-else>
-              <div class="toolbar">
-                <AdminSearchBox v-model="adminCouponKeyword" placeholder="按优惠券名称搜索" @search="searchAdminCoupons" />
-                <AdminPageSize v-model="adminCoupons.size" @change="changeAdminCouponPageSize" />
-                <button class="ghost" @click="resetAdminCouponSearch">重置</button>
-                <span class="result-count">共 {{ adminCoupons.total }} 张优惠券</span>
-              </div>
-              <div v-if="!adminCoupons.items?.length" class="empty">没有匹配「{{ adminCouponKeyword }}」的优惠券</div>
-              <div v-else class="table-wrap">
-                <table class="admin-table">
-                  <thead>
-                    <tr>
-                      <th>优惠券名称</th>
-                      <th>优惠力度</th>
-                      <th>有效期</th>
-                      <th>领取情况</th>
-                      <th>状态</th>
-                      <th class="col-action">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="coupon in adminCoupons.items" :key="coupon.id">
-                      <td><span class="cell-strong">{{ coupon.name }}</span></td>
-                      <td><span class="tag">满 {{ money(coupon.thresholdAmount) }} 减 {{ money(coupon.discountAmount) }}</span></td>
-                      <td>{{ formatDate(coupon.startTime) }}<span class="cell-sub">至 {{ formatDate(coupon.endTime) }}</span></td>
-                      <td>{{ coupon.receivedCount }}<span class="cell-sub">{{ coupon.totalCount ? `限量 ${coupon.totalCount} 张` : '不限量' }}</span></td>
-                      <td><span :class="['tag', coupon.status === 1 ? 'ok' : 'muted']">{{ coupon.status === 1 ? '启用中' : '已停用' }}</span></td>
-                      <td class="col-action">
-                        <div class="row-actions">
-                          <button class="ghost" @click="toggleCoupon(coupon)">{{ coupon.status === 1 ? '停用' : '启用' }}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <AdminPager :page="adminCoupons.page" :total-pages="adminCouponTotalPages" v-model:jump-page="adminCouponJumpPage" @change="changeAdminCouponPage" @jump="goAdminCouponPage" />
-              </div>
-            </template>
-          </div>
-
-          <!-- ===== 经营看板：时间维度 + 环比 + 结构分析 ===== -->
+          <AdminCouponsPanel v-if="adminMenu === 'coupons'" :admin-ctx="adminCtx" :fill-coupon-period="fillCouponPeriod" :save-coupon="saveCoupon" :search-admin-coupons="searchAdminCoupons" :change-admin-coupon-page-size="changeAdminCouponPageSize" :reset-admin-coupon-search="resetAdminCouponSearch" :toggle-coupon="toggleCoupon" :change-admin-coupon-page="changeAdminCouponPage" :go-admin-coupon-page="goAdminCouponPage" :admin-coupon-total-pages="adminCouponTotalPages" :coupon-form="couponForm"/>
           <AdminInsightsPanel v-if="adminMenu === 'insights'" ref="insightsPanelRef" :admin-ctx="adminCtx" :select-menu="selectAdminMenu" />
 
           <!-- ===== 限时秒杀管理 ===== -->
@@ -810,140 +675,8 @@
             </div>
           </div>
 
-          <div v-if="adminMenu === 'users'" class="data-panel">
-            <div class="toolbar">
-              <AdminSearchBox v-model="adminUserKeyword" placeholder="按用户名 / 昵称搜索" @search="searchAdminUsers" />
-              <select v-model="adminUserRole" class="filter-select" @change="searchAdminUsers">
-                <option value="">全部角色</option>
-                <option value="USER">普通用户</option>
-                <option value="ADMIN">管理员</option>
-              </select>
-              <select v-model="adminUserStatus" class="filter-select" @change="searchAdminUsers">
-                <option value="">全部状态</option>
-                <option :value="1">启用</option>
-                <option :value="0">禁用</option>
-              </select>
-              <AdminPageSize v-model="adminUsers.size" @change="changeAdminUserPageSize" />
-              <button class="ghost" @click="resetAdminUserSearch">重置</button>
-              <span class="result-count">共 {{ adminUsers.total }} 个用户</span>
-            </div>
-
-            <div v-if="!adminUsers.items?.length" class="empty">没有匹配的用户</div>
-            <div v-else class="table-wrap">
-              <table class="admin-table">
-                <thead>
-                  <tr>
-                    <th>用户名</th>
-                    <th>昵称</th>
-                    <th>手机号</th>
-                    <th>角色</th>
-                    <th>钱包余额</th>
-                    <th>会员等级</th>
-                    <th>积分</th>
-                    <th>状态</th>
-                    <th>注册时间</th>
-                    <th class="col-action">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="user in adminUsers.items" :key="user.id">
-                    <td><span class="cell-strong">{{ user.username }}</span></td>
-                    <td>{{ user.nickname || '-' }}</td>
-                    <td>{{ user.phone || '-' }}</td>
-                    <td><span :class="['tag', user.role === 'ADMIN' ? 'warn' : 'muted']">{{ formatRole(user.role) }}</span></td>
-                    <td>{{ money(user.balance) }}</td>
-                    <td><span :class="['tag', Number(user.memberLevel) > 0 ? 'warn' : 'muted']">{{ memberLevelName(user.memberLevel) }}</span></td>
-                    <td>{{ user.points ?? 0 }}</td>
-                    <td><span :class="['tag', user.status === 1 ? 'ok' : 'muted']">{{ user.status === 1 ? '启用' : '禁用' }}</span></td>
-                    <td>{{ formatDate(user.createdAt) }}</td>
-                    <td class="col-action">
-                      <div class="row-actions">
-                        <button class="ghost" @click="toggleUser(user)">{{ user.status === 1 ? '禁用' : '启用' }}</button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-              <AdminPager :page="adminUsers.page" :total-pages="adminUserTotalPages" v-model:jump-page="adminUserJumpPage" @change="changeAdminUserPage" @jump="goAdminUserPage" />
-            </div>
-          </div>
-
-          <!-- ===== 评价管理：看 / 回 / 藏 ===== -->
-          <div v-if="adminMenu === 'reviews'" class="data-panel">
-            <div v-if="adminReviewSummary" class="stat-grid">
-              <div class="stat-card">
-                <small>总评价</small>
-                <strong>{{ adminReviewSummary.total }}</strong>
-              </div>
-              <div class="stat-card">
-                <small>未回复</small>
-                <strong :class="{ danger: adminReviewSummary.unrepliedCount > 0 }">{{ adminReviewSummary.unrepliedCount }}</strong>
-                <span class="growth flat">待你回话</span>
-              </div>
-              <div class="stat-card">
-                <small>平均分</small>
-                <strong>{{ adminReviewSummary.avgRating == null ? '—' : adminReviewSummary.avgRating }}</strong>
-                <span class="growth flat">含已隐藏</span>
-              </div>
-              <div class="stat-card">
-                <small>已隐藏</small>
-                <strong>{{ adminReviewSummary.hiddenCount }}</strong>
-                <span class="growth flat">前台不展示</span>
-              </div>
-            </div>
-
-            <div class="toolbar">
-              <select v-model="adminReviewRating" @change="searchAdminReviews">
-                <option value="">全部星级</option>
-                <option v-for="n in [5, 4, 3, 2, 1]" :key="n" :value="String(n)">{{ n }} 星</option>
-              </select>
-              <select v-model="adminReviewReplied" @change="searchAdminReviews">
-                <option value="">全部状态</option>
-                <option value="no">未回复</option>
-                <option value="yes">已回复</option>
-              </select>
-              <input v-model="adminReviewKeyword" placeholder="搜索评价内容" @keyup.enter="searchAdminReviews" />
-              <button class="ghost" @click="searchAdminReviews">搜索</button>
-              <button class="ghost" @click="adminReviewRating = ''; adminReviewReplied = ''; adminReviewKeyword = ''; searchAdminReviews()">重置</button>
-              <span class="result-count">共 {{ adminReviews.total }} 条</span>
-            </div>
-
-            <empty-state v-if="!adminReviews.items.length" icon="ticket" text="没有符合条件的评价" />
-            <div v-else class="review-admin-list">
-              <div v-for="r in adminReviews.items" :key="r.id" class="review-admin-row">
-                <div class="rar-head">
-                  <span class="rar-stars">{{ '★'.repeat(r.rating || 0) }}{{ '☆'.repeat(5 - (r.rating || 0)) }}</span>
-                  <b class="rar-product">{{ r.productName }}</b>
-                  <span class="rar-user">{{ r.nickname || r.username || '匿名用户' }}</span>
-                  <small>{{ formatDate(r.createdAt) }}</small>
-                  <span class="rar-status" :class="r.hidden ? 'is-hidden' : (r.replyContent ? 'is-replied' : 'is-todo')">
-                    {{ r.hidden ? '已隐藏' : (r.replyContent ? '已回复' : '未回复') }}
-                  </span>
-                </div>
-                <p class="rar-content">{{ r.content || '（无文字评价，仅评分）' }}</p>
-                <div v-if="r.imageUrls && r.imageUrls.length" class="rar-imgs">
-                  <img v-for="(url, i) in r.imageUrls" :key="i" :src="url" alt="评价晒图"  loading="lazy" decoding="async"/>
-                </div>
-                <div v-if="r.replyContent" class="rar-reply">
-                  <b>商家回复</b><small v-if="r.replyAt">（{{ formatDate(r.replyAt) }}）</small>：{{ r.replyContent }}
-                </div>
-                <div class="rar-actions">
-                  <input
-                    v-model="reviewReplyDraft[r.id]"
-                    maxlength="500"
-                    :placeholder="r.replyContent ? '修改回复内容…' : '回复这条评价（会显示在商品详情页）…'"
-                    @keyup.enter="saveReviewReply(r)"
-                  />
-                  <button @click="saveReviewReply(r)">{{ r.replyContent ? '更新回复' : '回复' }}</button>
-                  <button v-if="r.replyContent" class="ghost" @click="reviewReplyDraft[r.id] = ''; saveReviewReply(r)">撤回</button>
-                  <button class="ghost" @click="toggleReviewHidden(r)">{{ r.hidden ? '恢复展示' : '隐藏' }}</button>
-                </div>
-              </div>
-            </div>
-
-            <AdminPager :page="adminReviews.page" :total-pages="adminReviewTotalPages" @change="changeAdminReviewPage" />
-          </div>
-
+          <AdminUsersPanel v-if="adminMenu === 'users'" :admin-ctx="adminCtx" :search-admin-users="searchAdminUsers" :change-admin-user-page="changeAdminUserPage" :change-admin-user-page-size="changeAdminUserPageSize" :go-admin-user-page="goAdminUserPage" :reset-admin-user-search="resetAdminUserSearch" :toggle-user="toggleUser" :member-level-name="memberLevelName" :admin-user-total-pages="adminUserTotalPages"/>
+          <AdminReviewsPanel v-if="adminMenu === 'reviews'" :admin-ctx="adminCtx" :search-admin-reviews="searchAdminReviews" :change-admin-review-page="changeAdminReviewPage" :save-review-reply="saveReviewReply" :toggle-review-hidden="toggleReviewHidden" :admin-review-total-pages="adminReviewTotalPages" :admin-reviews="adminReviews" :admin-review-summary="adminReviewSummary" :admin-review-rating="adminReviewRating" :admin-review-replied="adminReviewReplied" :admin-review-keyword="adminReviewKeyword" :load-admin-reviews="loadAdminReviews" :load-admin-review-unreplied="loadAdminReviewUnreplied" :review-reply-draft="reviewReplyDraft"/>
           <div v-if="adminMenu === 'passwordResets'" class="data-panel">
             <!-- 临时密码：只在这一份响应里存在，关掉就再也拿不到（库里只有 BCrypt 哈希） -->
             <div v-if="passwordResetResult" class="form-card admin-form-card temp-pw-card">
@@ -1050,6 +783,10 @@ const AdminProductsPanel = defineAsyncComponent(() => import('./AdminProductsPan
 const AdminBannersPanel = defineAsyncComponent(() => import('./AdminBannersPanel.vue'));
 const AdminNoticesPanel = defineAsyncComponent(() => import('./AdminNoticesPanel.vue'));
 const AdminHotSearchesPanel = defineAsyncComponent(() => import('./AdminHotSearchesPanel.vue'));
+const AdminRefundsPanel = defineAsyncComponent(() => import('./AdminRefundsPanel.vue'));
+const AdminReviewsPanel = defineAsyncComponent(() => import('./AdminReviewsPanel.vue'));
+const AdminUsersPanel = defineAsyncComponent(() => import('./AdminUsersPanel.vue'));
+const AdminCouponsPanel = defineAsyncComponent(() => import('./AdminCouponsPanel.vue'));
 
 const props = defineProps({
   // 响应式：admin 内会读取 view / categories
