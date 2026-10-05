@@ -32,6 +32,9 @@ GLOBAL = {
     'v', 'k', 'l', 'm', 't', 'on', 'off',
     # class 名（:class="['ghost', 'danger']" 里的 danger 会被当变量）
     'danger', 'ghost', 'muted', 'ok', 'warn', 'tag', 'chip', 'active',
+    # :class="{ on: x, taken: y, today: z, past: w }" 里的键
+    'on', 'taken', 'today', 'past', 'blank', 'is-expired', 'off-word', 'on-word',
+    'off', 'disabled', 'selected', 'checked', 'open', 'hide', 'show', 'clear',
 }
 # HTML 标签与属性名
 TAGLIKE = re.compile(r'^[a-z]+$')
@@ -91,6 +94,8 @@ def parent_symbols():
     syms = set()
     for m in re.finditer(r'const \{([^}]*)\} = ', src):
         syms |= {x.strip() for x in m.group(1).split(',') if x.strip()}
+    for m in re.finditer(r'^(?:async )?function (\w+)\(', src, re.M):
+        syms.add(m.group(1))
     for m in re.finditer(r'const (\w+) = ', src):
         syms.add(m.group(1))
     for m in re.finditer(r'import \{([^}]*)\} from', src):
