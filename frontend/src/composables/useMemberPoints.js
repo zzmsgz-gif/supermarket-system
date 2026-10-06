@@ -6,7 +6,7 @@ import { round2 } from '../utils/format.js';
 
 export function useMemberPoints({
   api, session, isAdmin, wallet, effectiveMemberLevel,
-  orderPayPreview, cartMemberDiscount, expressFreight,
+  orderPayPreview, expressFreight,
 }) {
   const memberProfile = reactive({
     points: 0, memberLevel: 0, levelName: '', totalSpent: 0,
@@ -100,15 +100,13 @@ export function useMemberPoints({
     } catch (e) { /* ignore */ } finally { memberLedger.loading = false; }
   }
 
-  // 结算预览：会员折扣+ 积分抵现（与后端 OrderService 口径一致；当前目录无会员价，cartLocalTotal 即后端 totalAmount）
+  // 结算预览：积分抵现 + 运费（与后端 OrderService 口径一致）。
+  //
+  // ⚠️ 会员让利已经含在每行的成交单价里（后端 unitPriceFor 逐商品取优），orderPayPreview
+  // 拿到的就是会员净额 —— 这里**不能**再减一次 memberDiscount，那会让应付凭空低一截。
   const memberPreview = computed(() => {
     const amountAfterPromo = Number(orderPayPreview.value || 0);
-    const level = session.user?.memberLevel || 0;
-    // 会员等级折扣已下沉到「单品成交价」（后端逐商品取优：会员价 与 等级折扣 取更低、不叠加），
-    // 购物车/预览返回的 regularPrice 已经是折后价。这里不再重复扣，而是把「已省的会员折扣」摊开成一行展示，
-    // 让结算页明确写出「为什么比原价低」——金额口径与后端 Order.memberDiscount 一致（base − 会员净额）。
-    const memberDiscount = round2(cartMemberDiscount.value);
-    const payBeforePoints = Math.max(amountAfterPromo - memberDiscount, 0);
+    const payBeforePoints = Math.max(amountAfterPromo, 0);
     const maxRedeemValue = round2(payBeforePoints * 0.5);
     const maxRedeemPoints = Math.floor(maxRedeemValue * 100);
     const userPoints = Number(session.user?.points || 0);
@@ -118,11 +116,11 @@ export function useMemberPoints({
       pointsUsed = Math.max(0, Math.min(userPoints, want, maxRedeemPoints));
     }
     const pointsValue = round2(pointsUsed / 100);
-    // 运费不参与任何折扣（券/活动/会员/积分都只作用于商品小计），最后加上去——
-    // 与后端 OrderService 同口径，保证「商品小计 + 运费 − 券 − 活动 − 会员 − 积分 = 应付」成立
+    // 运费不参与任何折扣（券/活动/积分都只作用于商品小计），最后加上去——
+    // 与后端 OrderService 同口径，保证「商品金额 + 运费 − 券 − 活动 − 积分 = 应付」成立
     const freight = expressFreight.value;
     const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0) + freight;
-    return { amountAfterPromo, memberDiscount, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, freight, finalPay };
+    return { amountAfterPromo, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, freight, finalPay };
   });
 
   const balanceSufficient = computed(() => Number(wallet.balance || 0) >= memberPreview.value.finalPay);

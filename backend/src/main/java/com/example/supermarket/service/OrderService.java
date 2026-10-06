@@ -112,6 +112,8 @@ public class OrderService {
     /** 即时配送范围校验：可送达范围 = 所有营业中门店服务区域的并集 */
     private final DeliveryRangeService deliveryRangeService;
     private final SkuPriceSupport skuPriceSupport;
+    /** 库存/销量变动后失效商品读缓存，见 {@link ProductCacheEvictor} 的原因说明 */
+    private final ProductCacheEvictor productCacheEvictor;
 
     public OrderService(
             OrderRepository orderRepository,
@@ -131,7 +133,8 @@ public class OrderService {
             FlashSaleService flashSaleService,
             CartService cartService,
             DeliveryRangeService deliveryRangeService,
-            SkuPriceSupport skuPriceSupport
+            SkuPriceSupport skuPriceSupport,
+            ProductCacheEvictor productCacheEvictor
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -151,6 +154,7 @@ public class OrderService {
         this.cartService = cartService;
         this.deliveryRangeService = deliveryRangeService;
         this.skuPriceSupport = skuPriceSupport;
+        this.productCacheEvictor = productCacheEvictor;
     }
 
     /**
@@ -574,6 +578,8 @@ public class OrderService {
             }
             stockLogRepository.save(buildStockLog(orderId, userId, product.getId(), item.getQuantity(), stockBefore, stockAfter));
         }
+        // 库存与销量都变了 → 含这两个字段的商品读缓存必须失效（否则前端重拉也拿到旧值）
+        productCacheEvictor.evictProductReads();
     }
 
     /**
@@ -659,6 +665,8 @@ public class OrderService {
             }
             stockLogRepository.save(buildReturnStockLog(orderId, userId, product.getId(), item.getQuantity(), stockBefore, stockAfter));
         }
+        // 库存还回来了 → 同样要失效商品读缓存（与 deductStocks 对称）
+        productCacheEvictor.evictProductReads();
     }
 
     private StockLog buildReturnStockLog(Long orderId, Long userId, Long productId, int quantity, int stockBefore, int stockAfter) {

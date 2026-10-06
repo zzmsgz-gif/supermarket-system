@@ -106,14 +106,22 @@ export function useFlashSale() {
   }
 
   /**
-   * 购物车里某行最多能加到几件：受库存与秒杀每人限购名额双重约束。
+   * 购物车里某行最多能加到几件：受库存、秒杀每人限购名额、秒杀全场剩余名额三重约束。
    * 秒杀品是纯折扣通道，名额用完后不能再加（连原价都不行），所以这里用「还能买几件」夹住数量。
+   * 全场名额（remainingQuota）同样要算：不限购的场次里 myRemainingQuota 是 null，
+   * 但整场抢完时也应该加不动，否则用户能往车里塞一堆、结算才被拒。
    * 结果至少为 1：即使用户已经超了（比如后台调小了限购），也要让他能把数量改小或删除。
    */
   function cartQtyMax(item) {
     const stock = Number(item?.stock || 0);
     const left = flashLimitOfProduct(item?.productId);
-    const cap = left === null ? stock : Math.min(stock, left);
+    const sale = flashSaleOfProduct(item?.productId);
+    const caps = [stock];
+    if (left !== null) caps.push(left);
+    if (sale && sale.remainingQuota !== null && sale.remainingQuota !== undefined) {
+      caps.push(Number(sale.remainingQuota));
+    }
+    const cap = Math.min(...caps.filter((v) => Number.isFinite(v)));
     return cap > 0 ? cap : 1;
   }
 

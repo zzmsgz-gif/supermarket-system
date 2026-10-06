@@ -11,7 +11,8 @@ export function useCheckout({
   addresses, selectedAddressId, addressForm, usePoints, pointsToUse, memberPreview,
   isPickup, activeStoreId, isExpress, fulfillment,
   QUICKBUY_ITEM_ID,
-  loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales,
+  loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales, loadProducts,
+  refreshProductDetail,
   setPendingAction, goLogin,
 }) {
   async function loadAddresses() {
@@ -83,6 +84,11 @@ export function useCheckout({
     await loadOrders();
     // 下单会占掉秒杀名额（未付款也占），必须重拉，否则「还能买几件」停留在旧值
     await loadFlashSales();
+    // 建单即扣库存（后端 deductStocks 在建单时执行）→ 商品目录里的库存/销量已经变了。
+    // 不重拉的话返回列表页看到的还是下单前的旧值（用户反馈「购买后库存跟销量没正确显示」）。
+    await loadProducts();
+    // 当前正停在商品详情页时（立即购买虚拟项的来源页），把它的库存/销量一并刷新
+    await refreshProductDetail();
     navigate('pay', { id: order.id });
     return order;
   }

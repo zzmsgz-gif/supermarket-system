@@ -7,7 +7,7 @@ export function useProductDetail({
   activeActivities, reviewedMap, loadProducts, ratingSummaryMap,
   // productNavLock 是 App.vue 里的 let 变量，syncRoute 也要用 → 留在原地，这里用读写器操作
   isProductNavLocked, setProductNavLock,
-  getFlashLimitOfProduct, getView,
+  getFlashLimitOfProduct, getFlashSaleOfProduct, getView,
 }) {
   const productDetail = reactive({ data: null, reviews: [], loading: false });
   const detailQuantity = ref(1);
@@ -206,11 +206,37 @@ export function useProductDetail({
     navigate('shop');
   }
 
+  /**
+   * 只重拉当前详情页的商品主体数据（库存 / 销量 / 价格），保留已选规格与图集。
+   *
+   * 为什么要单独有这个：下单、支付、取消订单都会立刻改动库存与销量，但那时用户通常已经
+   * 离开详情页或在收银台上。等他回到列表页，loadProducts() 会刷新卡片；可如果是从浏览器
+   * 历史直接退回详情页，openProductDetail 不会重跑（productDetail.data 还在），看到的仍是旧值。
+   * 所以在这些动作之后主动刷一次当前详情。
+   */
+  async function refreshProductDetail() {
+    const d = productDetail.data;
+    if (!d || !d.id) return;
+    try {
+      const fresh = await api.get(isAdmin.value ? `/admin/products/${d.id}` : `/products/${d.id}`);
+      // 局部合并而非整体替换：保住用户已选的规格/图片下标，避免刷新后跳回第一张图。
+      if (fresh) Object.assign(productDetail.data, fresh);
+    } catch (e) { /* 刷新失败保留旧值，不打断主流程 */ }
+  }
+
   // 详情页数量步进：上限 = min(库存, 秒杀还能买几件)。名额用完后 detailFlashCapped 会禁用按钮，这里再夹一道。
+  // ⚠️ 两个「还能买几件」都要算：每人限购的剩余额度（myRemainingQuota）与全场剩余名额（remainingQuota）——
+  //    只夹前者的话，「全场只剩 1 件、限购还剩 5 件」时用户能选到 5 件，点了才被后端 409 拦。
   function changeDetailQty(delta) {
     const stock = Number(productDetail.data?.stock || 0);
+    const sale = getFlashSaleOfProduct(productDetail.data?.id);
     const left = getFlashLimitOfProduct(productDetail.data?.id);
-    const max = left === null ? stock : Math.min(stock, left);
+    const caps = [stock];
+    if (left !== null) caps.push(left);
+    if (sale && sale.remainingQuota !== null && sale.remainingQuota !== undefined) {
+      caps.push(Number(sale.remainingQuota));
+    }
+    const max = Math.min(...caps.filter((v) => Number.isFinite(v)));
     const next = Number(detailQuantity.value || 1) + delta;
     detailQuantity.value = Math.min(Math.max(next, 1), Math.max(max, 1));
   }
@@ -221,7 +247,7 @@ export function useProductDetail({
     safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage,
     specDimensions, selectedSku, selectedSpecText,
     selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice,
-    openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty,
+    openReviewForm, submitReview, openProductDetail, refreshProductDetail, reportDwell, backFromProduct, changeDetailQty,
     loadRatingSummary,
   };
 }

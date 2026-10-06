@@ -1,7 +1,11 @@
 <template>
 <section class="data-panel checkout" v-if="hasItems">
         <div class="panel-head">
-          <button class="ghost" @click="view = 'cart'">{{ quickBuy ? '取消立即购买' : '返回购物车' }}</button>
+          <!-- ⚠️ 必须用 navigate('cart') 而不是 `view = 'cart'`：
+               view 只是 App.vue 里驱动标题/面包屑的 ref，直接赋值只会把标题换成「购物车」，
+               路由仍停在 /checkout，router-view 渲染的还是本页 —— 表现为「只换了标题、内容没变」。
+               navigate 同时改路由，页面才真的回到购物车。 -->
+          <button class="ghost" @click="backToCart">{{ quickBuy ? '取消立即购买' : '返回购物车' }}</button>
         </div>
 
         <div class="checkout-block">
@@ -135,8 +139,7 @@
             : isExpress
               ? '快递配送 · 第三方物流'
               : '同城即时配送 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
-          <div class="row"><span>商品合计</span><strong>{{ money(cartListTotal) }}</strong></div>
-          <div v-if="memberPreview.memberDiscount > 0" class="row"><span>{{ tierNameFor(session.user.memberLevel) }}会员折扣</span><strong class="minus">- {{ money(memberPreview.memberDiscount) }}</strong></div>
+          <div class="row"><span>商品金额</span><strong>{{ money(cartLocalTotal) }}</strong></div>
           <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
           <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
 
@@ -184,7 +187,7 @@
         <div v-if="cartIssues.length" class="blocker-bar" role="alert">
           <div class="bb-head">
             <b>{{ cartIssues.length }} 件商品现在买不了</b>
-            <button class="ghost danger sm" type="button" @click="view = 'cart'">回购物车处理</button>
+            <button class="ghost danger sm" type="button" @click="backToCart">回购物车处理</button>
           </div>
           <ul class="bb-list">
             <li v-for="it in cartIssues" :key="it.id">
@@ -195,7 +198,7 @@
         </div>
 
         <div class="checkout-actions">
-          <button class="ghost" @click="view = 'cart'">{{ quickBuy ? '取消立即购买' : '返回' }}</button>
+          <button class="ghost" @click="backToCart">{{ quickBuy ? '取消立即购买' : '返回' }}</button>
           <button v-if="blockedCount > 0" class="primary" disabled title="请先移除买不了的商品">有商品买不了，无法提交</button>
           <button v-else-if="outOfRange" class="primary" disabled title="该地址超出同城即时配送范围">超出配送范围，无法提交</button>
           <button v-else-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
@@ -203,7 +206,7 @@
             <span>{{ paying ? '提交中…' : '提交订单 ' + money(memberPreview.finalPay) }}</span>
           </button>
           <button v-else class="primary" disabled>余额不足，无法支付</button>
-          <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="view = 'recharge'">去充值 ›</a>
+          <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="navigate('recharge')">去充值 ›</a>
         </div>
       </section>
       <div v-else class="checkout-empty">
@@ -220,10 +223,22 @@
 import { inject, computed, ref, watch } from 'vue';
 import { cartItemIssue, cartIssueItems } from '../utils/format';
 import { regionData, citiesOf, districtsOf } from '../utils/regions';
+import { QUICKBUY_ITEM_ID } from '../composables/useGuestCart.js';
 export default {
   name: 'CheckoutPage',
   setup() {
     const appCtx = inject('appCtx');
+    // 回购物车：**必须走 navigate**（改路由），不能只改 App.vue 的 view ref ——
+    // view 只驱动标题/面包屑，直接赋值的话标题变了但 router-view 还停在结算页，
+    // 表现为「只把『确认订单』换成『购物车』，其他都没变」。
+    // 「立即购买」态下顺手清掉虚拟项，否则回到购物车会看到一件本不属于它的商品。
+    function backToCart() {
+      if (appCtx.quickBuy.value) {
+        appCtx.quickBuy.value = null;
+        appCtx.cart.items = (appCtx.cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
+      }
+      appCtx.navigate('cart');
+    }
     // 切换省：清空市/区；切换市：清空区，避免联动下级不匹配
     const onRegionProvince = () => { appCtx.addressForm.city = ''; appCtx.addressForm.district = ''; };
     const onRegionCity = () => { appCtx.addressForm.district = ''; };
@@ -281,6 +296,7 @@ export default {
 
     return {
       ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
+      backToCart,
       rangeCheck, outOfRange, hasItems, isMemberItem,
       regionData, citiesOf, districtsOf, onRegionProvince, onRegionCity,
     };

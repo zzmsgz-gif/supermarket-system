@@ -146,7 +146,7 @@
 
 <script>
 import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
-import { orderOriginalSave, formatDate } from '../utils/format';
+import { orderOriginalSave, formatDate, withMinSpinner } from '../utils/format';
 export default {
   name: 'OrderDetailPage',
   setup() {
@@ -182,14 +182,18 @@ export default {
       if (!o || paySubmitting.value || payExpired.value) return;
       paySubmitting.value = true;
       try {
-        await appCtx.run(async () => {
+        // 转圈至少 600ms（见 utils/format.js withMinSpinner）：本地接口太快，
+        // 用户看不见 loading 就会以为点击被吞了、进而重复点。
+        // 注意传的是**函数**——若传 Promise，起始时间会取在请求已完成之后，时长保证失效。
+        await withMinSpinner(() => appCtx.run(async () => {
           await appCtx.api.post(`/orders/${o.id}/pay`);
           await Promise.all([
             appCtx.loadOrders(), appCtx.loadWallet(), appCtx.loadMe(),
-            appCtx.loadMemberProfile(), appCtx.loadFlashSales(),
+            appCtx.loadMemberProfile(), appCtx.loadFlashSales(), appCtx.loadProducts(),
           ]);
+          await appCtx.refreshProductDetail();
           appCtx.orderDetail.data = await appCtx.api.get(`/orders/${o.id}`);
-        }, '支付成功');
+        }, '支付成功'));
       } finally {
         paySubmitting.value = false;
       }

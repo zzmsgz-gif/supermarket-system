@@ -1,13 +1,14 @@
 // 订单：列表、支付、取消、确认收货、退款申请、详情。
 // 金额与状态文案口径对齐后端 OrderService（见 cancelOrder 里的注释）。
 import { reactive } from 'vue';
+import { withMinSpinner } from '../utils/format.js';
 
 export function useOrders({
   api, run, fail, askConfirm, showAlert, money, session, isAdmin, router, navigate,
-  orders, reviewedMap, refundForm, orderDetail,
+  orders, reviewedMap, refundForm, orderDetail, paying,
   // orderNavLock 是 App.vue 的 let 变量，syncRoute 也要读 → 留在原地，这里用读写器
   isOrderNavLocked, setOrderNavLock,
-  loadWallet, loadMe, loadCart, loadFlashSales,
+  loadWallet, loadMe, loadCart, loadFlashSales, loadProducts, refreshProductDetail,
 }) {
   // 「再来一单」的并发锁：老订单里常有已下架商品，逐件回报结果比笼统失败更有用
   let reorderLock = null;
@@ -57,12 +58,30 @@ export function useOrders({
     }));
   }
 
-  async function payOrder(id) {
-    await run(async () => {
-      await api.post(`/orders/${id}/pay`);
-      await Promise.all([loadOrders(), loadWallet(), loadMe()]);
-    }, '支付成功');
-  }
+  /**
+     * 就地支付某笔待付款订单（订单详情页、首页秒杀卡的「去支付」都走这里）。
+     *
+     * 刻意用 {@link withMinSpinner} 包住：支付接口在本地几十毫秒就返回，
+     * 没有这个最短转圈时长的话点击像是「没生效」，用户会重复点。
+     * 同时关掉按钮防连点 —— paying 是共享状态，收银台/详情页在付款中都不该被再次触发。
+     */
+    async function payOrder(id) {
+      if (paying.value) return;
+      paying.value = true;
+      try {
+        await run(async () => {
+          await withMinSpinner(async () => {
+            await api.post(`/orders/${id}/pay`);
+            // 付款落地才真正扣销量、结算限购名额 → 订单/钱包/会员/秒杀名额/商品库存销量都要重拉。
+            // 漏掉 loadProducts 时，用户回到列表页看到的仍是付款前的旧库存与旧销量。
+            await Promise.all([loadOrders(), loadWallet(), loadMe(), loadFlashSales(), loadProducts()]);
+            await refreshProductDetail();
+          });
+        }, '支付成功');
+      } finally {
+        paying.value = false;
+      }
+    }
 
   // 「再来一单」：把历史订单的商品回填购物车。
   // 逐件回报结果 —— 老订单里常有已下架/售罄的商品，必须让用户看清"哪件没加进来、为什么"，
@@ -108,8 +127,9 @@ export function useOrders({
     if (!confirmed) return;
     await run(async () => {
       await api.post(`/orders/${id}/cancel`);
-      // 取消会回退秒杀名额与限购额度，重拉后购物车里的「还能买几件」才会立刻放开
-      await Promise.all([loadOrders(), loadWallet(), loadMe(), loadFlashSales()]);
+      // 取消会回退秒杀名额与限购额度、并把库存还回商品，重拉后「还能买几件」与库存/销量立刻放开
+      await Promise.all([loadOrders(), loadWallet(), loadMe(), loadFlashSales(), loadProducts()]);
+      await refreshProductDetail();
     }, '订单已取消');
   }
 

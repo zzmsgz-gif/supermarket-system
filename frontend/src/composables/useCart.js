@@ -15,20 +15,15 @@ export function useCart({
   const userOptedOutCoupon = ref(false);
   const cartSyncTimers = {};
 
-  // 购物车实时合计：只累加「已勾选」商品（与后端 selectedAmount 口径一致）
+  // 购物车实时合计：只累加「已勾选」商品（与后端 selectedAmount 口径一致）。
+  // 这里仅用于「券门槛判定」（够不够满减）；页面展示用的那份在 useCartTotals（口径已统一到会员成交价）。
   const cartLocalTotal = computed(() => (cart.items || [])
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0));
 
-  // 划线价（原价）相对现价的优惠合计：仅统计已勾选商品，纯展示用、不计入应付
-  const cartOriginalSave = computed(() => (cart.items || [])
-    .filter((item) => item.selected !== false)
-    .reduce((sum, item) => sum + itemOriginalSave(item), 0));
-
-  // 已勾选件数（结算明细展示用）
-  const cartSelectedQty = computed(() => (cart.items || [])
-    .filter((item) => item.selected !== false)
-    .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
+  // 注：这里曾另有一份 cartOriginalSave / cartSelectedQty，但它们既没导出也没被引用，
+  // 且 cartOriginalSave 调用的 itemOriginalSave 未 import —— 压缩后就是个随机的 "xxx is not a function"
+  // 定时炸弹（与 2026-10-06 详情页加购报错的成因同类）。展示口径统一由 useCartTotals 负责，故删除。
 
   async function addToCart(product) {
     if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
@@ -53,6 +48,13 @@ export function useCart({
       const fsName = getFlashSaleOfProduct(product.id)?.name || '该秒杀商品';
       const fsLimit = getFlashSaleOfProduct(product.id)?.perUserLimit || flashLeft;
       fail(`「${fsName}」每人限购 ${fsLimit} 件，已达上限，请去原商品按原价购买`, '超出限购');
+      return;
+    }
+    // 全场名额抢完（不限购场次 myRemainingQuota 为 null，只能看 remainingQuota）
+    const fsSale = getFlashSaleOfProduct(product.id);
+    if (fsSale && fsSale.remainingQuota !== null && fsSale.remainingQuota !== undefined
+        && currentQty + 1 > Number(fsSale.remainingQuota)) {
+      fail(`「${fsSale.name || '该秒杀商品'}」本场名额已抢完（共 ${fsSale.totalQuota} 件），请关注下一场`, '超出限购');
       return;
     }
     await run(async () => {

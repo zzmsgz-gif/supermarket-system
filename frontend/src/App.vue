@@ -632,7 +632,7 @@ const { headerKeyword, hotSearches, subEmail, subMsg, goSearch, quickSearch, loa
 const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
 // 商品详情：SKU 规格、图集、停留上报、评价提交。productNavLock 是 App.vue 的 let 变量
 //（syncRoute 也要用）→ 留在原地，这里用读写器操作，避免两个来源各管一半。
-const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, reportDwell, backFromProduct, changeDetailQty, loadRatingSummary } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadProducts, ratingSummaryMap, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getView: () => view.value });
+const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, refreshProductDetail, reportDwell, backFromProduct, changeDetailQty, loadRatingSummary } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, loadProducts, ratingSummaryMap, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getView: () => view.value });
 
 // 购物车：增删改 + 可用券的数据源。
 // 购物车：金额合计、增删改、可用券。⚠️ 装配点必须在 useGuestCart 之后（要用 guestAdd / guestRemoveItem 等）。
@@ -641,23 +641,23 @@ const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedPro
 const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cartSyncTimers, addToCart, loadCart, loadMyCoupons, loadMoreMyCoupons, loadMyCouponsPage, loadUsableCoupons, couponEligible, couponShortfall, autoSelectCoupon, selectCoupon, chooseNoCoupon, stepQty, onQtyChange, onQtyInput, removeCartItem, clearCart } = useCart({ api, run, fail, askConfirm, session, isAdmin, cart, cartStore, setNotice: (v) => { notice.value = v; }, onAddedFeedback: (src, url) => flyToCart(takeAddSource(), url), guestAdd, guestRemoveItem, guestClear, persistGuestFromItems, recomputeCartTotals, refreshGuestCartView, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getCartQtyMax: cartQtyMax });
 
 // 购物车的纯金额计算层：只读状态，无副作用。⚠️ 必须在 useCart 之后（读它的 usableCoupons /
-//    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview / cartMemberDiscount）。
-const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice, cartMemberDiscount, cartListTotal } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
+//    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview）。
+const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
 
-// 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview / cartMemberDiscount /
+// 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview /
 // effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
-const { memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK, tierRateForLevel, tierNameFor, productMemberView, memberUnitView, loadMemberLevels, loadMemberProfile, loadMemberLedger, memberPreview, balanceSufficient } = useMemberPoints({ api, session, isAdmin, wallet, effectiveMemberLevel, orderPayPreview, cartMemberDiscount, expressFreight });
+const { memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, TIER_NAMES_FALLBACK, TIER_RATES_FALLBACK, tierRateForLevel, tierNameFor, productMemberView, memberUnitView, loadMemberLevels, loadMemberProfile, loadMemberLedger, memberPreview, balanceSufficient } = useMemberPoints({ api, session, isAdmin, wallet, effectiveMemberLevel, orderPayPreview, expressFreight });
 // 订单：列表/支付/取消/收货/退款/详情。orderNavLock 与 orderDetail 被 syncRoute 共用 → 留在原地，
 //    这里用读写器与注入的方式访问，保持单一真相源。
-const { loadOrders, loadMoreOrders, loadOrdersPage, loadReviewedFlags, payOrder, reorder, cancelOrder, confirmReceipt, openRefundForm, submitRefund, openOrderDetail, closeOrderDetail } = useOrders({ api, run, fail, askConfirm, showAlert, money, session, isAdmin, router, navigate, orders, reviewedMap, refundForm, orderDetail, isOrderNavLocked: () => orderNavLock, setOrderNavLock: (v) => { orderNavLock = v; }, loadWallet, loadMe, loadCart, loadFlashSales });
+const { loadOrders, loadMoreOrders, loadOrdersPage, loadReviewedFlags, payOrder, reorder, cancelOrder, confirmReceipt, openRefundForm, submitRefund, openOrderDetail, closeOrderDetail } = useOrders({ api, run, fail, askConfirm, showAlert, money, session, isAdmin, router, navigate, orders, reviewedMap, refundForm, orderDetail, paying, isOrderNavLocked: () => orderNavLock, setOrderNavLock: (v) => { orderNavLock = v; }, loadWallet, loadMe, loadCart, loadFlashSales, loadProducts, refreshProductDetail });
 // 立即购买：虚拟购物车项通道（不写购物车表）。依赖秒杀域与商品详情域的状态。
-const { addDetailToCart, buildQuickBuyCartItem, buyDetailNow, enterQuickBuy, consumePendingQuickBuy } = useQuickBuy({ api, run, fail, session, isAdmin, router, navigate, notice, cart, quickBuy, pendingQuickBuy, productDetail, detailQuantity, selectedSpecText, effectiveDetailPrice, selectedSkuPrice, getFlashSaleOfProduct: flashSaleOfProduct, getFlashLimitOfProduct: flashLimitOfProduct, reportDwell, guestAdd, takeAddSource, flyToCart, setPendingAction, takePendingAction, clearPendingAction, goLogin });
+const { addDetailToCart, buildQuickBuyCartItem, buyDetailNow, enterQuickBuy, consumePendingQuickBuy } = useQuickBuy({ api, run, fail, session, isAdmin, router, navigate, notice, cart, quickBuy, pendingQuickBuy, productDetail, detailQuantity, selectedSpecText, effectiveDetailPrice, selectedSkuPrice, getFlashSaleOfProduct: flashSaleOfProduct, getFlashLimitOfProduct: flashLimitOfProduct, reportDwell, guestAdd, takeAddSource, flyToCart, loadCart, loadProducts, setPendingAction, takePendingAction, clearPendingAction, goLogin });
 // 优惠券中心：可领列表 / 我的券 / 领取。与 useCart 的「可用券选择」是两件事（那边服务结算）。
 const { loadCoupons, receiveCoupon } = useCoupons({ api, run, session, isAdmin, coupons, myCoupons });
 // 后台各列表的数据加载。state 仍留在 App.vue —— 侧栏菜单要读它们的 total 算角标。
 const { loadAdminProducts, loadAdminOrders, loadAdminStatsOverview, loadRefundOrders, loadStockAlerts, loadAdminCoupons, loadAdminUsers } = useAdminLoaders({ api, isAdmin, adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, adminStatsOverview, refundOrders, refundStatusFilter, refundJumpPage, stockAlerts, adminCoupons, adminCouponKeyword, adminCouponJumpPage, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage });
 // 结算下单：地址簿 + 去结算 + 提交订单（购物车 / 立即购买两条路径）。
-const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder } = useCheckout({ api, run, fail, session, isAdmin, router, navigate, route, notice, cart, paying, quickBuy, selectedUserCouponId, userOptedOutCoupon, addresses, selectedAddressId, addressForm, usePoints, pointsToUse, memberPreview, isPickup, activeStoreId, isExpress, fulfillment, QUICKBUY_ITEM_ID, loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales, setPendingAction, goLogin });
+const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder } = useCheckout({ api, run, fail, session, isAdmin, router, navigate, route, notice, cart, paying, quickBuy, selectedUserCouponId, userOptedOutCoupon, addresses, selectedAddressId, addressForm, usePoints, pointsToUse, memberPreview, isPickup, activeStoreId, isExpress, fulfillment, QUICKBUY_ITEM_ID, loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales, loadProducts, refreshProductDetail, setPendingAction, goLogin });
 
 
 function ensureAllowedView() {
@@ -903,8 +903,6 @@ appCtx.loadPriceAlertsPage = loadPriceAlertsPage;
 appCtx.loadMyCoupons = loadMyCoupons;
 appCtx.loadMoreMyCoupons = loadMoreMyCoupons;
 appCtx.loadMyCouponsPage = loadMyCouponsPage;
-appCtx.cartMemberDiscount = cartMemberDiscount;
-appCtx.cartListTotal = cartListTotal;
 appCtx.productMemberView = productMemberView;
 appCtx.memberUnitView = memberUnitView;
 // 管理员「以某会员身份预览价格」：状态暴露给需要直接读取的面板（卡片/详情页走上面两个函数已自动生效）

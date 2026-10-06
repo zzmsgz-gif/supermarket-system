@@ -86,6 +86,7 @@
 <script>
 import { inject, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
+import { withMinSpinner } from '../utils/format.js';
 
 // 待付款收银台：下单之后、真正扣款之前的一步。
 // 之所以加这一步，是因为后端「建单即锁库存」——订单一诞生（PENDING_PAYMENT）就已经占了
@@ -206,16 +207,23 @@ export default {
       if (paying.value || !isPayable.value) return;
       paying.value = true;
       try {
-        await appCtx.api.post(`/orders/${orderId.value}/pay`);
-        // 付款后各项额度都变了：订单列表、钱包、会员成长值、秒杀名额都要重拉
-        await Promise.all([
-          appCtx.loadOrders(),
-          appCtx.loadWallet(),
-          appCtx.loadMe(),
-          appCtx.loadMemberProfile(),
-          appCtx.loadFlashSales(),
-        ]);
-        appCtx.navigate('orders');
+        // 转圈至少转够 600ms：本地接口几十毫秒就返回，用户会看不到加载态、
+        // 以为点击被吞了（进而重复点）。慢接口不受影响，不会被额外拖住。
+        await withMinSpinner(async () => {
+          await appCtx.api.post(`/orders/${orderId.value}/pay`);
+          // 付款后各项额度都变了：订单列表、钱包、会员成长值、秒杀名额都要重拉。
+          // 商品库存/销量同样在付款这一刻才结算 —— 漏掉它们，回到列表页看到的还是付款前的旧值。
+          await Promise.all([
+            appCtx.loadOrders(),
+            appCtx.loadWallet(),
+            appCtx.loadMe(),
+            appCtx.loadMemberProfile(),
+            appCtx.loadFlashSales(),
+            appCtx.loadProducts(),
+          ]);
+          await appCtx.refreshProductDetail();
+          appCtx.navigate('orders');
+        });
       } catch (e) {
         // 付失败最常见的两种：余额不足、订单已被超时关闭。刷新一次状态让用户看到真实情况
         await loadOrder();

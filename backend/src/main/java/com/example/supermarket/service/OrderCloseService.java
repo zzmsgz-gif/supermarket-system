@@ -27,6 +27,8 @@ public class OrderCloseService {
     private final CouponService couponService;
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
+    /** 超时关单也要还库存，因此同样要失效商品读缓存，见 {@link ProductCacheEvictor} */
+    private final ProductCacheEvictor productCacheEvictor;
 
     public OrderCloseService(
             OrderRepository orderRepository,
@@ -35,7 +37,8 @@ public class OrderCloseService {
             StockLogRepository stockLogRepository,
             CouponService couponService,
             MessageService messageService,
-            FlashSaleService flashSaleService
+            FlashSaleService flashSaleService,
+            ProductCacheEvictor productCacheEvictor
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -44,6 +47,7 @@ public class OrderCloseService {
         this.couponService = couponService;
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
+        this.productCacheEvictor = productCacheEvictor;
     }
 
     @Transactional
@@ -73,6 +77,8 @@ public class OrderCloseService {
             logEntry.setRemark("Order timeout close stock return");
             stockLogRepository.save(logEntry);
         }
+        // 库存还回来了 → 失效商品读缓存，否则用户看到的仍是「已被占用」时的旧库存
+        productCacheEvictor.evictProductReads();
         order.setStatus(CLOSED);
         order.setClosedAt(LocalDateTime.now());
         orderRepository.save(order);

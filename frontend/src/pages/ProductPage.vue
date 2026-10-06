@@ -94,17 +94,20 @@
                 <div class="qty-picker">
                   <button type="button" :disabled="flashCapped" @click="changeDetailQty(-1)">−</button>
                   <span>{{ detailQuantity }}</span>
-                  <button type="button" :disabled="flashCapped" @click="changeDetailQty(1)">+</button>
+                  <button type="button" :disabled="flashCapped || qtyOverQuota" @click="changeDetailQty(1)">+</button>
                 </div>
-                <button class="js-add-cart" :disabled="flashCapped" @click="addDetailToCart">加入购物车</button>
-                <button class="ghost" :disabled="flashCapped" @click="buyDetailNow">立即购买</button>
+                <!-- 秒杀名额不够当前选购件数时也要禁用：让用户当场看到「买不了」，
+                     而不是点下去被后端 409 拦。title 是名额原因。 -->
+                <button class="js-add-cart" :disabled="flashCapped || qtyOverQuota" :title="qtyOverQuota ? flashQuotaShortMsg : ''" @click="addDetailToCart">加入购物车</button>
+                <button class="ghost" :disabled="flashCapped || qtyOverQuota" :title="qtyOverQuota ? flashQuotaShortMsg : ''" @click="buyDetailNow">立即购买</button>
                 <button class="ghost fav-detail-btn" :class="{ on: favorited }" @click="toggleFavorite(productDetail.data)">
                   <svg viewBox="0 0 24 24" :fill="favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg>
                   {{ favorited ? '已收藏' : '收藏' }}
                 </button>
               </div>
+              <small v-if="qtyOverQuota && !flashCapped" class="quota-short-tip">{{ flashQuotaShortMsg }}</small>
               <div v-if="flashCapped" class="flash-capped-buy">
-                <p>该秒杀商品你已买满 {{ flashSale.perUserLimit }} 件（每人限购），已不可再购买。</p>
+                <p>{{ flashCappedReason }}</p>
                 <button v-if="flashSale.sourceProductId" class="link-btn" type="button" @click="openOriginalProduct">查看原商品 · 按原价购买</button>
               </div>
             </div>
@@ -181,8 +184,61 @@ export default {
       return list.find((f) => Number(f.productId) === Number(appCtx.productDetail.data?.id)
         && f.state === 'RUNNING') || null;
     });
-    // 秒杀限购买满（myRemainingQuota===0）：这件秒杀品彻底不能下单，引导去原商品按原价购买
-    const flashCapped = computed(() => !!flashSale.value && flashSale.value.myRemainingQuota === 0);
+    // 这件秒杀品此刻是否已经完全买不了。两种「买不到」都要拦住，否则用户点下去才被后端 409 拦：
+    //   ① 我买满了 —— myRemainingQuota === 0（每人限购已用尽，含未付款订单占用的名额）
+    //   ② 全场抢完了 —— remainingQuota <= 0（总名额售罄，跟限购无关）
+    // 注意 myRemainingQuota 为 null 表示「本场不限购」，此时不能当成买满。
+    const flashCapped = computed(() => {
+      const f = flashSale.value;
+      if (!f) return false;
+      const myLeft = f.myRemainingQuota;
+      const myBoughtOut = myLeft !== null && myLeft !== undefined && Number(myLeft) <= 0;
+      const allSoldOut = f.remainingQuota !== null && f.remainingQuota !== undefined && Number(f.remainingQuota) <= 0;
+      return myBoughtOut || allSoldOut;
+    });
+    // 禁用原因文案：区分「我买满了」与「全场抢完了」，前者给去原商品的入口，后者只能等下一场。
+    const flashCappedReason = computed(() => {
+      const f = flashSale.value;
+      if (!f || !flashCapped.value) return '';
+      const myLeft = f.myRemainingQuota;
+      if (myLeft !== null && myLeft !== undefined && Number(myLeft) <= 0) {
+        return `该秒杀商品你已买满 ${f.perUserLimit} 件（每人限购），已不可再购买。`;
+      }
+      return '该场秒杀名额已抢完，本场已结束，如需购买请关注下一场。';
+    });
+    // 「我还能买几件」：优先按每人限购的剩余额度取下限，再与全场剩余名额取更小者。
+    // 两个维度任一为 0 都意味着这件秒杀品当前买不了。返回 null 表示不限购（无上限概念）。
+    const flashMyLeft = computed(() => {
+      const f = flashSale.value;
+      if (!f) return null;
+      const l = f.myRemainingQuota;
+      if (l === null || l === undefined) return null; // 本场不限购
+      return Number(l);
+    });
+    const flashAllLeft = computed(() => {
+      const f = flashSale.value;
+      if (!f) return null;
+      const r = f.remainingQuota;
+      return (r === null || r === undefined) ? null : Number(r);
+    });
+    // 当前选购件数已超出还能买的件数（还没到 0，但比如只剩 1 件却选了 3 件）
+    const qtyOverQuota = computed(() => {
+      if (flashCapped.value) return false;
+      const caps = [flashMyLeft.value, flashAllLeft.value, Number(appCtx.productDetail.data?.stock || 0)]
+        .filter((v) => v !== null && !Number.isNaN(v));
+      if (!caps.length) return false;
+      return Number(appCtx.detailQuantity?.value || 1) > Math.min(...caps);
+    });
+    const flashQuotaShortMsg = computed(() => {
+      const caps = [flashMyLeft.value, flashAllLeft.value, Number(appCtx.productDetail.data?.stock || 0)]
+        .filter((v) => v !== null && !Number.isNaN(v));
+      const left = caps.length ? Math.min(...caps) : 0;
+      const f = flashSale.value;
+      const who = flashMyLeft.value !== null && flashMyLeft.value <= (flashAllLeft.value ?? Infinity)
+        ? `「${f?.name || '该秒杀商品'}」每人限购 ${f?.perUserLimit} 件，你还能买 ${left} 件`
+        : `「${f?.name || '该秒杀商品'}」本场只剩 ${left} 件`;
+      return `${who}，请先把数量调到 ${left} 件`;
+    });
     function openOriginalProduct() {
       const srcId = flashSale.value && flashSale.value.sourceProductId;
       if (srcId && typeof appCtx.openProductDetail === 'function') appCtx.openProductDetail({ id: srcId });
@@ -240,7 +296,7 @@ export default {
       const orig = Number(appCtx.selectedSkuOriginalPrice?.value ?? appCtx.productDetail.data?.originalPrice ?? 0);
       return orig > detailPrice.value ? orig : 0;
     });
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, openOriginalProduct };
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, openOriginalProduct };
   }
 };
 </script>

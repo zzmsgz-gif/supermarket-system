@@ -185,3 +185,42 @@ export function cartIssueItems(items) {
 // 金额保留两位：JS 的浮点加减会漂（0.1+0.2=0.30000000000000004），
 // 所有展示与比较前都要过这一道。与后端 BigDecimal.setScale(2, HALF_UP) 同口径。
 export function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+/**
+ * 让「转圈」至少转够 {@link MIN_SPINNER_MS} 毫秒，配合加载文案消除「点了没反应」的错觉。
+ *
+ * 为什么要它：本地/内网的接口往往几十毫秒就返回，loading 态肉眼根本看不见 ——
+ * 按钮闪一下就跳走，用户会以为点击被吞了（多半还会再点一次，导致重复提交）。
+ * 而真正慢的接口（网关超时）本来就会自然超过阈值，这里**只补最短时长、不拖慢正常流程**。
+ *
+ * 用法（推荐传函数，别传已启动的 Promise）：
+ *   `await withMinSpinner(() => api.post('/orders/1/pay'))`
+ *
+ * ⚠️ **必须先记起始时间、再启动工作**。若像这样写：
+ *     `withMinSpinner(api.post(...))`   // 实参在调用前就已启动
+ *   则 `startedAt` 取到的是「工作已经跑完」的时刻，耗时被算成 0，转圈等于没有。
+ *   所以传函数进来，由本函数在记完时间后才调用它 —— 这也是只支持函数形式的根本原因。
+ *   （传 Promise 形式仍能工作，但拿不到「最短时长」保证，别用。）
+ *
+ * 异常语义：realWork 抛错会正常向外抛（Promise.all 的行为），不会把失败吞成成功。
+ */
+const MIN_SPINNER_MS = 600;
+
+export function withMinSpinner(work, minMs = MIN_SPINNER_MS) {
+  if (typeof work !== 'function') {
+    throw new TypeError('withMinSpinner 需要传函数（如 () => api.post(...)），而不是已启动的 Promise');
+  }
+  const startedAt = Date.now();          // 先记时间
+  let result;
+  try {
+    result = work();                     // 再启动工作
+  } catch (e) {
+    return Promise.reject(e);            // 同步抛错也保持异步语义
+  }
+  const elapsed = Date.now() - startedAt;
+  const rest = Math.max(0, minMs - elapsed);
+  return Promise.all([
+    Promise.resolve(result),
+    new Promise((resolve) => setTimeout(resolve, rest)),
+  ]).then((r) => r[0]);
+}

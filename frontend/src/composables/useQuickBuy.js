@@ -10,7 +10,7 @@ export function useQuickBuy({
   cart, quickBuy, pendingQuickBuy,
   productDetail, detailQuantity, selectedSpecText, effectiveDetailPrice, selectedSkuPrice,
   getFlashSaleOfProduct, getFlashLimitOfProduct,
-  reportDwell, guestAdd, takeAddSource, flyToCart, loadCart,
+  reportDwell, guestAdd, takeAddSource, flyToCart, loadCart, loadProducts,
   setPendingAction, takePendingAction, clearPendingAction, goLogin,
 }) {
   async function addDetailToCart() {
@@ -37,11 +37,19 @@ export function useQuickBuy({
       fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
       return;
     }
+    // 全场名额抢完也要拦（不限购场次 left 为 null，只能看 remainingQuota）
+    if (sale && sale.remainingQuota !== null && sale.remainingQuota !== undefined
+        && qty > Number(sale.remainingQuota)) {
+      fail(`「${sale.name || '该秒杀商品'}」本场名额已抢完（共 ${sale.totalQuota} 件），请关注下一场`, '超出限购');
+      return;
+    }
     const specNote = selectedSpecText.value ? `（${selectedSpecText.value}）` : '';
     await run(async () => {
       reportDwell();
       await api.post('/cart/items', { productId: productDetail.data.id, quantity: detailQuantity.value, skuSpec: selectedSpecText.value || null });
-      await loadCart();
+      // 购物车 + 商品目录一起重拉：加购不改变库存/销量，但详情页的「剩余库存」等
+      // 依赖商品数据，漏刷会与其他入口的表现不一致。
+      await Promise.all([loadCart(), loadProducts()]);
       const src = takeAddSource();
       navigate('cart');
       flyToCart(src, productDetail.data?.coverUrl);
@@ -118,6 +126,11 @@ export function useQuickBuy({
     const left = getFlashLimitOfProduct(productDetail.data?.id);
     if (sale && left !== null && qty > left) {
       fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
+      return;
+    }
+    if (sale && sale.remainingQuota !== null && sale.remainingQuota !== undefined
+        && qty > Number(sale.remainingQuota)) {
+      fail(`「${sale.name || '该秒杀商品'}」本场名额已抢完（共 ${sale.totalQuota} 件），请关注下一场`, '超出限购');
       return;
     }
     if (!session.user) {

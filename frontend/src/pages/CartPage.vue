@@ -127,12 +127,15 @@
         <div v-if="cart.items?.length" class="cart-settle">
           <div class="cs-row">
             <span>商品金额<template v-if="cartSelectedQty">（共 {{ cartSelectedQty }} 件）</template></span>
-            <b>{{ money(cartListTotal) }}</b>
+            <b>{{ money(cartLocalTotal) }}</b>
           </div>
-          <div v-if="cartMemberDiscount > 0" class="cs-row minus">
-            <span>{{ tierNameFor(session.user.memberLevel) }}会员折扣</span>
-            <b>-{{ money(cartMemberDiscount) }}</b>
-          </div>
+          <!-- 这里**只列真正参与减法、且用户能在别处核到来源的行**：活动优惠 / 优惠券。
+               会员价不列：
+                 · 不列「-X」→ 明细行显示的已是会员成交价，再减一次会与商品金额对不上
+                 · 也不列「已省 X」→ 那个 X 是拿「售价」算的，而售价在界面上根本不显示，
+                   用户拿明细行的吊牌价（划线）一核对就发现对不上，只会觉得系统在乱报
+                   （2026-10-06 用户实测：「哪有这回事？省5块省在哪？」）。
+               会员带来的便宜，明细行的「会员价」标签 + 划线价直降已说清楚，无需在此复述。 -->
           <div v-if="Number(cart.activityDiscount) > 0" class="cs-row minus">
             <span>活动优惠<template v-if="cart.activityName">（{{ cart.activityName }}）</template></span>
             <b>-{{ money(cart.activityDiscount) }}</b>
@@ -145,7 +148,7 @@
             <span>应付总额<small v-if="cartTotalSaved > 0" class="cs-saved">已省 {{ money(cartTotalSaved) }}</small></span>
             <b class="cs-pay">{{ money(orderPayPreview) }}</b>
           </div>
-          <small v-if="cartOriginalSave > 0" class="cs-note">另有划线价直降 {{ money(cartOriginalSave) }}，已体现在商品现价中</small>
+          <small v-if="cartOriginalSave > 0" class="cs-note">明细行已标出各商品划线价直降 {{ money(cartOriginalSave) }}，均已含在商品单价里</small>
         </div>
 
         <div v-if="cart.items?.length" class="submit-bar">

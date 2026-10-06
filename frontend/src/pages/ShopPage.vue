@@ -153,7 +153,9 @@
               <template v-if="sale.myRemainingQuota > 0">你还能买 {{ sale.myRemainingQuota }} 件</template>
               <template v-else-if="sale.myUnpaidOrderId">
                 待支付订单占用名额（{{ sale.myUnpaidQuantity || sale.perUserLimit }} 件）：
-                <a class="flash-mine-link" @click.stop="payOrder(sale.myUnpaidOrderId)">去支付</a>
+                <!-- 付款中禁掉并显示文案，避免用户以为点击被吞而反复点（payOrder 已带最短转圈时长） -->
+                <a v-if="paying" class="flash-mine-link disabled">支付处理中…</a>
+                <a v-else class="flash-mine-link" @click.stop="payOrder(sale.myUnpaidOrderId)">去支付</a>
                 <span class="flash-mine-sep">/</span>
                 <a class="flash-mine-link" @click.stop="cancelOrder(sale.myUnpaidOrderId)">取消</a>
               </template>

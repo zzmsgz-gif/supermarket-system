@@ -9,13 +9,13 @@
  * - getCartLocalTotal：expressFreight 判快递免邮门槛要用「商品小计」，
  *   而 cartLocalTotal 属于购物车域。为避免 composable 间循环依赖（购物车也要用履约），
  *   由 App.vue 以 getter 形式注入，不在本模块直接引用购物车。
- * - api / navigate / notice / fail 同理由 App.vue 注入或各自 import：
- *   api 与 navigate 等纯工具直接 import（无状态），notice/fail 属全局提示，由 App.vue 注入。
+ * - api 直接 import（无状态）。这里曾把 notice / fail 列为形参但函数体里一次都没用，
+ *   App.vue 也从未传过 —— 留着只会让「依赖注入漏传」体检误报，已删除。
  */
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api/client';
 
-export function useStores({ getCartLocalTotal, notice, fail }) {
+export function useStores({ getCartLocalTotal }) {
   const stores = ref([]);
   const deliverySlots = ref([]);
   const fulfillment = reactive({ type: 'INSTANT', storeId: null, slot: '' });
