@@ -905,6 +905,11 @@ appCtx.loadMoreMyCoupons = loadMoreMyCoupons;
 appCtx.loadMyCouponsPage = loadMyCouponsPage;
 appCtx.productMemberView = productMemberView;
 appCtx.memberUnitView = memberUnitView;
+// 下单/支付/取消后只刷当前详情页的库存销量（列表由 loadProducts 负责）。
+// ⚠️ 必须挂到 appCtx：PayPage / PayPage 模板里通过 appCtx 调它，漏挂会让
+//    `appCtx.refreshProductDetail is not a function` 抛错 → 整个 withMinSpinner reject
+//    → 支付成功却不跳转、还顺带吞掉转圈（2026-10-07 踩过，症状极具误导性）。
+appCtx.refreshProductDetail = refreshProductDetail;
 // 管理员「以某会员身份预览价格」：状态暴露给需要直接读取的面板（卡片/详情页走上面两个函数已自动生效）
 appCtx.previewTier = previewTier;
 appCtx.isPreviewing = isPreviewing;

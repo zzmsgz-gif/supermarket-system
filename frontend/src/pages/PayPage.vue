@@ -207,8 +207,10 @@ export default {
       if (paying.value || !isPayable.value) return;
       paying.value = true;
       try {
-        // 转圈至少转够 600ms：本地接口几十毫秒就返回，用户会看不到加载态、
-        // 以为点击被吞了（进而重复点）。慢接口不受影响，不会被额外拖住。
+        // ⚠️ **跳转必须放在 withMinSpinner 之外、之后**，绝不能塞进回调里。
+        // 之前 navigate('orders') 写在回调内部 → 页面立刻跳转、组件卸载 → spinner 被随之移除，
+        // 用户只看到 25ms，与 MIN_SPINNER_MS 设多大完全无关（设 3000ms 也一样）。
+        // 所以这里只让「支付 + 各项数据重拉」占满最短时长，跳转留到转圈真正转完之后。
         await withMinSpinner(async () => {
           await appCtx.api.post(`/orders/${orderId.value}/pay`);
           // 付款后各项额度都变了：订单列表、钱包、会员成长值、秒杀名额都要重拉。
@@ -222,8 +224,9 @@ export default {
             appCtx.loadProducts(),
           ]);
           await appCtx.refreshProductDetail();
-          appCtx.navigate('orders');
         });
+        // 转圈转够了再离开收银台：否则用户看到的是「按钮闪一下就没了」，仍会以为点击被吞。
+        appCtx.navigate('orders');
       } catch (e) {
         // 付失败最常见的两种：余额不足、订单已被超时关闭。刷新一次状态让用户看到真实情况
         await loadOrder();

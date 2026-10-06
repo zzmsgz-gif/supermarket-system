@@ -5,6 +5,10 @@
 //   所以这里只提交，剩下的交给收银台倒计时，让用户显式决定要不要付。
 // · 履约三选一：自提要门店，即时配送与快递都要地址，且只有即时配送带自选时段。
 // · 下单会占掉秒杀名额（未付款也占），所以建单后必须重拉 loadFlashSales()。
+// · 「提交中…」的最短时长用 withMinSpinner，与支付转圈**同一常量**（用户要求两处节奏一致），
+//   别再写裸的 setTimeout —— 那会让「提交订单」与「支付」的等待感不一致。
+import { withMinSpinner } from '../utils/format.js';
+
 export function useCheckout({
   api, run, fail, session, isAdmin, router, navigate, route, notice,
   cart, paying, quickBuy, selectedUserCouponId, userOptedOutCoupon,
@@ -111,10 +115,9 @@ export function useCheckout({
       applyDiscounts(body);
       paying.value = true;
       try {
-        await new Promise((r) => setTimeout(r, 700));
         // 这里只「提交订单」，不自动付款 —— 订单一建成就已经锁了库存（后端 deductStocks 在建单时执行），
         // 若此刻直接扣款，用户根本不知道自己刚才跨过了「下单」这一步。改由收银台显式倒计时后再决定。
-        const order = await api.post('/orders/quick-buy', body);
+        const order = await withMinSpinner(() => api.post('/orders/quick-buy', body));
         quickBuy.value = null;
         cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
         await afterOrderCreated(order);
@@ -128,16 +131,16 @@ export function useCheckout({
     if (!itemIds.length) { fail('请先在购物车勾选要购买的商品'); return; }
     paying.value = true;
     try {
-      // 模拟支付网关受理：先展示加载态，使模拟支付更逼真
-      await new Promise((r) => setTimeout(r, 700));
       await run(async () => {
         const body = { cartItemIds: itemIds, remark: '前端下单' };
         applyFulfillment(body);
         applyDiscounts(body);
-        // 只提交、不付款：创建即锁定库存，剩下交给收银台倒计时，由用户决定是否真正扣款
-        const order = await api.post('/orders', body);
-        await afterOrderCreated(order);
-        return order;
+        // 只提交、不付款：创建即锁定库存，剩下交给收银台倒计时，由用户决定是否真正扣款。
+        // withMinSpinner 让「提交中…」至少显示够长（与支付同一时长），否则本地几十毫秒就返回、像没反应。
+        await withMinSpinner(async () => {
+          const order = await api.post('/orders', body);
+          await afterOrderCreated(order);
+        });
       }, '订单已提交，请在限定时间内完成支付');
     } finally {
       paying.value = false;

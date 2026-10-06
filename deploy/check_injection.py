@@ -96,6 +96,55 @@ def parse_app_calls(app_src: str) -> dict[str, set[str]]:
     return calls
 
 
+def check_appctx_exports(src: Path) -> list[str]:
+    """查「模板用 appCtx.X 调函数，但 appCtx 上没挂 X」。
+
+    这类漏挂**注入体检查不出来**：composable 形参都传全了，只是没人把返回值挂到 provide 的对象上。
+    症状极具误导性 —— 页面一切正常，直到用户点那��按钮：
+      appCtx.refreshProductDetail is not a function
+    抛错发生在 await 链中间时，会把**外层整个流程**（如支付后的跳转、以及转圈的时长保证）一起吞掉，
+    表现为「支付成功了却停在原地 / 转圈只闪一下」，与真正的报错点隔着好几层。
+
+    两道检查：
+      ① 所有 .vue / .js 里出现的 `appCtx.<ident>`，必须在 App.vue 里有对应的挂载语句
+      ② App.vue 里从 composable 解构出来的标识符，凡是出现在 appCtx.* 的，必须真的被挂上
+    """
+    problems: list[str] = []
+    app_src = (src / 'App.vue').read_text(encoding='utf-8')
+
+    # App.vue 上「实际挂载了哪些键」：appCtx.x = ... 以及 appCtx 对象字面量里的 x
+    mounted: set[str] = set()
+    mounted.update(re.findall(r'appCtx\.([A-Za-z_$][\w$]*)\s*=', app_src))
+    obj_match = re.search(r'const appCtx\s*=\s*\{(.*?)\};', app_src, re.S)
+    if obj_match:
+        for part in split_top_level(obj_match.group(1)):
+            key = part.split(':')[0].split('=')[0].strip()
+            if re.fullmatch(r'[A-Za-z_$][\w$]*', key):
+                mounted.add(key)
+
+    # 全站实际被当作函数调用的 appCtx.X
+    called: dict[str, list[str]] = {}
+    for f in list(src.rglob('*.vue')) + list(src.rglob('*.js')):
+        text = f.read_text(encoding='utf-8', errors='ignore')
+        # 只看「调用」形态：appCtx.x( 或 appCtx.x.await —— 纯读取不算错
+        for name in re.findall(r'appCtx\.([A-Za-z_$][\w$]*)\s*\(', text):
+            called.setdefault(name, []).append(str(f.relative_to(src)))
+
+    for name, where in sorted(called.items()):
+        if name not in mounted:
+            uniq = ', '.join(sorted(set(where))[:4])
+            problems.append(f'  appCtx.{name} 被调用但未挂载   ← {uniq}')
+
+    # 反向：解构出来、又被当作 appCtx.X 调用，却没挂载的（覆盖情况更全）
+    for m in re.finditer(r'const\s*\{([^}]*)\}\s*=\s*use[A-Z]\w*\(', app_src):
+        for part in split_top_level(m.group(1)):
+            key = part.split(':')[0].split('=')[0].strip()
+            if re.fullmatch(r'[A-Za-z_$][\w$]*', key) and key in called and key not in mounted:
+                problems.append(f'  appCtx.{key} 被调用但未挂载（已从 composable 解构）')
+
+    return sorted(set(problems))
+
+
 def parse_composable_params(src: str, fname: str) -> list[str] | None:
     m = re.search(r'export\s+function\s+' + re.escape(fname) + r'\s*\(\{(.*?)\}\)\s*\{',
                   src, re.S)
@@ -136,11 +185,22 @@ def main() -> int:
             if missing:
                 problems.append(f'  {f.name:24s} {fname:22s} 漏传: {missing}')
 
+    appctx_problems = check_appctx_exports(src)
+    if appctx_problems:
+        print('appCtx 挂载漏项（页面会报 "appCtx.X is not a function"）：')
+        print('\n'.join(appctx_problems))
+        problems.append('')
+
     if problems:
-        print('依赖注入漏传（会在运行时炸成 "xxx is not a function"）：')
-        print('\n'.join(problems))
+        if appctx_problems:
+            print('另：以上问题之外的注入漏传检查——')
+        else:
+            print('依赖注入漏传（会在运行时炸成 "xxx is not a function"）：')
+        for p in problems:
+            if p:
+                print(p)
         return 1
-    print('依赖注入体检通过：未发现漏传。')
+    print('体检通过：composable 注入无漏传，appCtx 挂载无漏项。')
     return 0
 
 

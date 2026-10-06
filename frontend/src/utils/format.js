@@ -203,8 +203,15 @@ export function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
  *   （传 Promise 形式仍能工作，但拿不到「最短时长」保证，别用。）
  *
  * 异常语义：realWork 抛错会正常向外抛（Promise.all 的行为），不会把失败吞成成功。
+ *
+ * **只给「用户主动点击、期待立刻反馈」的动作用**（支付、提交订单这类不可逆或耗时操作）。
+ * 不要套在后台自动触发的刷新上 —— 那是自己给自己添堵，用户并没有在等任何反馈。
+ *
+ * @param {() => any} work 要执行的异步工作（传函数，不传已启动的 Promise）
+ * @param {number} [minMs=MIN_SPINNER_MS] 本次的最短转圈时长；
+ *   绝大多数场景用默认值即可（即「与支付一致」），需要单独时长的才传第二个参数。
  */
-const MIN_SPINNER_MS = 600;
+export const MIN_SPINNER_MS = 1000;
 
 export function withMinSpinner(work, minMs = MIN_SPINNER_MS) {
   if (typeof work !== 'function') {

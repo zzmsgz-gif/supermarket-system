@@ -182,8 +182,8 @@ export default {
       if (!o || paySubmitting.value || payExpired.value) return;
       paySubmitting.value = true;
       try {
-        // 转圈至少 600ms（见 utils/format.js withMinSpinner）：本地接口太快，
-        // 用户看不见 loading 就会以为点击被吞了、进而重复点。
+        // 转圈时长由 withMinSpinner 的 MIN_SPINNER_MS 统一决定（与收银台/提交订单一致）：
+        // 本地接口太快，用户看不见 loading 就会以为点击被吞了、进而重复点。
         // 注意传的是**函数**——若传 Promise，起始时间会取在请求已完成之后，时长保证失效。
         await withMinSpinner(() => appCtx.run(async () => {
           await appCtx.api.post(`/orders/${o.id}/pay`);
