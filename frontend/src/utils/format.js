@@ -181,21 +181,22 @@ export const SAVE_CHIP_THRESHOLD = 1;
  *   · `memberSource === 'tier'`   → 只靠等级折扣（如银卡 0.98）便宜 → 写「会员价」是错的，
  *     这时写「银卡 9.8折」，与商品页/详情页 `productMemberView` 的既有口径一致
  *
- * 单件省不到 {@link SAVE_CHIP_THRESHOLD} 元就不显示 —— 省三毛专门标标签是噪音。
+ * **不设金额阈值 —— 这是 2026-10-07 用户明确纠正过的**：只有「省 ¥X」那个胶囊
+ * 需要阈值（省三毛还专门挂个胶囊是噪音），但「你是金卡、享 9.5 折」是**身份与权益的告知**，
+ * 省得多与省得少都该显示 —— 否则金卡用户看鸡蛋（只省几毛）完全不知道自己享了折扣，
+ * 「我的会员等级到底起什么作用」就答不上来。
+ * 换句话说：**金额阈值管「省了多少」，不该管「你是什么档位」。**
  *
  * 抽成共用函数而不是在购物车/结算页各写一份：两页本来就有同样的复制粘贴隐患，
  * 而「标签写错」是用户一眼就能发现的问题。
  *
  * @param {object} item 购物车/结算行（需含 memberDiscount / memberSource / quantity）
- * @param {number} [memberLevel] 用户档位，'tier' 来源时用来拼「银卡 9.8折」
- * @param {string} [tierName] 档位中文名（如「银卡会员」），缺省用「会员」
+ * @param {number} [memberLevel] 用户档位，'tier' 来源时用来拼「金卡 9.5折」
+ * @param {string} [tierName] 档位中文名（如「金卡会员」），缺省用「会员」
  */
 export function memberTagText(item, memberLevel, tierName) {
   if (!item || item.flashSaleId || Number(item.flashPrice || 0) > 0) return '';
-  const total = Number(item.memberDiscount || 0);
-  if (!(total > 0)) return '';
-  const perUnit = total / Math.max(Number(item.quantity || 1), 1);
-  if (perUnit < SAVE_CHIP_THRESHOLD) return '';
+  if (!(Number(item.memberDiscount || 0) > 0)) return '';
   if (item.memberSource === 'tier') {
     const rates = { 0: 1, 1: 0.98, 2: 0.95, 3: 0.9, 4: 0.88, 5: 0.85, 6: 0.8 };
     const r = rates[Number(memberLevel || 0)] ?? 0.98;

@@ -53,9 +53,9 @@
       </div>
       <div class="meta-line">
         <small :class="{ 'low-stock': lowStock }">
-          <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="salesText"> · </template></template>
-          <template v-if="salesText">已售 {{ salesText }}</template>
-          <template v-if="!lowStock && !salesText">7 天内发货</template>
+          <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="soldCountText"> · </template></template>
+          <template v-if="soldCountText">{{ soldCountText }}</template>
+          <template v-if="!lowStock && !soldCountText">7 天内发货</template>
         </small>
         <span v-if="ratingInfo" class="rating-brief"><i>★</i>{{ ratingInfo.avg.toFixed(1) }}<em>({{ ratingInfo.count }})</em></span>
       </div>
@@ -130,10 +130,23 @@ const lowStock = computed(() => {
   return threshold > 0 && n <= threshold;
 });
 
+// 「已售 N」：秒杀品必须用 flash_sale.soldQuota，不能用 product.sales。
+// 两者是两条独立加减路径 —— 下单只加 soldQuota，product.sales 建秒杀品时置 0 之后没人再动，
+// 于是卖出去一件也仍显示「已售 0」（2026-10-07 用户实测：牛奶秒杀 1 件、销量 0）。
+// ⚠️ 定义在 flashSale 之前也没关系：computed 是惰性求值，读取时才解析依赖。
 const salesText = computed(() => {
   const sales = Number(props.product.sales || 0);
   if (sales <= 0) return '';
   return sales >= 10000 ? `${(sales / 10000).toFixed(1)}万` : String(sales);
+});
+
+// 秒杀品的销量文案（已抢 N 件）；非秒杀回落到 salesText
+const soldCountText = computed(() => {
+  if (flashSale.value) {
+    const n = Number(flashSale.value.soldQuota || 0);
+    return n > 0 ? `已抢 ${n} 件` : '';
+  }
+  return salesText.value ? `已售 ${salesText.value}` : '';
 });
 
 // 限时秒杀：从 appCtx 已加载的秒杀列表里按 productId 匹配，因此不必在商品接口上透出秒杀价，

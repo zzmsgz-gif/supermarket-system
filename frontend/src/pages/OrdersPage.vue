@@ -39,11 +39,15 @@
                  订单详情里同样有入口，两条路都不会让人进入「退出后就找不到付款页」的死角。 -->
             <button v-if="order.status === 'PENDING_PAYMENT'" @click="navigate('pay', { id: order.id })">去付款</button>
             <button v-if="order.status === 'SHIPPED'" @click="confirmReceipt(order.id)">确认收货</button>
+            <!-- 售后入口：仅「已收货(COMPLETED)」可申请。
+                 原先 PAID/SHIPPED 都能申请，与常理相反 —— 货还没发就能退单，
+                 而真收到货有问题反而没处申诉。条件与后端 applyRefund 一致（2026-10-07 改）。
+                 未发货想退用「取消订单」，那条路径不受影响。 -->
             <button
-              v-if="['PAID', 'SHIPPED'].includes(order.status) && order.refundStatus !== 'APPLYING'"
+              v-if="order.status === 'COMPLETED' && order.refundStatus !== 'APPLYING' && order.refundStatus !== 'APPROVED'"
               class="ghost"
               @click="openRefundForm(order.id)"
-            >申请退款</button>
+            >申请售后</button>
             <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
             <button v-if="order.status === 'COMPLETED' && !reviewedMap[order.id]" class="ghost" @click="openReviewForm(order.id)">评价</button>
             <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->

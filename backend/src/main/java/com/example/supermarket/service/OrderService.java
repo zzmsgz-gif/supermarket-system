@@ -548,8 +548,15 @@ public class OrderService {
     public OrderResponse applyRefund(Long userId, Long orderId, String reason) {
         OrderEntity order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        if (!PAID.equals(order.getStatus()) && !SHIPPED.equals(order.getStatus())) {
-            throw new BusinessException(409, "Only paid or shipped orders can apply for refund");
+        // ⚠️ 2026-10-07 收紧为「**已收货**才能申请售后」，原先是 PAID 或 SHIPPED —— 与常理相反：
+        //   · PAID（待发货）允许退 → 货还没发就能退单，等于给「下单反悔」开了口子；
+        //   · COMPLETED（已收货）反而禁退 → 真收到货有问题反而没处申诉。
+        // 主流电商的顺序也是这样：确认收货 → 才能申请售后（含 7 天无理由）。
+        // 未发货想要退的用户有更直接的入口：cancelOrder（直接取消订单）。
+        if (!COMPLETED.equals(order.getStatus())) {
+            throw new BusinessException(409,
+                    "Only completed orders can apply for aftersales; "
+                    + "you can still cancel the order before it ships");
         }
         if (REFUND_APPLYING.equals(order.getRefundStatus())) {
             throw new BusinessException(409, "Refund request is already under review");

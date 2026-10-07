@@ -42,14 +42,17 @@
           <!-- ===== 履约操作区 =====
                此前「确认收货」「申请售后」只挂在订单列表页的行尾按钮里，用户点进详情
                （查看订单状态最自然的地方）却办不了事，得跳回列表 —— 2026-10-07 补上。
-               可用性条件与后端一致（OrderService.applyRefund 只收 PAID / SHIPPED）：
-                 · 确认收货：仅 SHIPPED（已发货/待取货）
-                 · 申请售后：PAID / SHIPPED 且未在审核中；COMPLETED 不可申请（确认收货即放弃售后） -->
+               可用性条件与后端一致（OrderService.applyRefund 现只收 COMPLETED）：
+                 · 确认收货：仅 SHIPPED
+                 · 申请售后：仅 COMPLETED（收到货之后）。
+               SHIPPED 时额外给一句「确认收货后可申请售后」—— 售后按钮此时不出现，
+               不解释的话用户只会以为页面坏了（后端 409 的文案他看不到）。 -->
           <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions">
             <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
               确认收货
             </button>
             <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">申请售后</button>
+            <small v-if="canConfirmReceipt" class="refund-hint">确认收货后，如有问题可申请售后</small>
           </div>
           <!-- 售后申请表单：与列表页同一套 submitRefund/openRefundForm -->
           <form v-if="localRefund.open" class="refund-form-inline" @submit.prevent="sendRefund">
@@ -256,10 +259,11 @@ export default {
     //   · 申请售后：仅 PAID / SHIPPED，且不在审核中（applyRefund 同规则）
     const acting = ref(false);
     const canConfirmReceipt = computed(() => currentOrder.value?.status === 'SHIPPED');
+    // 售后入口：仅「已收货(COMPLETED)」可申请，与后端 applyRefund 一致（2026-10-07 改）。
+    // 原先 PAID/SHIPPED 都能申请 —— 货还没发就能退单，而收到货有问题反而不能申诉。
     const canApplyRefund = computed(() => {
       const o = currentOrder.value;
-      if (!o) return false;
-      if (!['PAID', 'SHIPPED'].includes(o.status)) return false;
+      if (!o || o.status !== 'COMPLETED') return false;
       return o.refundStatus !== 'APPLYING' && o.refundStatus !== 'APPROVED';
     });
     // 售后原因选项：与订单列表页共用同一套口径，避免两个页面选项不一样

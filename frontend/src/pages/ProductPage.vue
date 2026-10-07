@@ -68,7 +68,15 @@
                      加减路径，实测 159 差 2、162 差 5），显示一个不准的数字比不显示更糟。
                      买不了时页面下方直接给「已售罄」提示，信息量足够。
                      「累计销量」保留 —— 它是销量榜与热销排序的依据，对用户有参考意义。 -->
-                <div><dt>累计销量</dt><dd>{{ productDetail.data.sales ?? 0 }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
+                <!-- 累计销量：秒杀品必须用 flash_sale.soldQuota，不能用 product.sales。
+                     两者是**两条独立加减路径**：下单走 flash_sale.reserveQuota 加 soldQuota，
+                     product.sales 只在 deductStock/returnStock 里动 —— 秒杀品建商品时 sales 置 0，
+                     此后基本没人再改它。于是卖出去一件也仍显示 0（2026-10-07 用户实测发现，
+                     牛奶秒杀 1 件、销量 0）。对普通商品 sales 才是对的，所以按是否秒杀分流。 -->
+                <div>
+                  <dt>{{ flashSale ? '已抢' : '累计销量' }}</dt>
+                  <dd>{{ flashSale ? (flashSale.soldQuota ?? 0) : (productDetail.data.sales ?? 0) }} {{ formatUnit(productDetail.data.unit) }}</dd>
+                </div>
                 <div><dt>所属分类</dt><dd>{{ categoryName(productDetail.data.categoryId) }}</dd></div>
                 <div><dt>商品编号</dt><dd>{{ productDetail.data.sku }}</dd></div>
               </dl>
