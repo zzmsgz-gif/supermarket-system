@@ -84,7 +84,7 @@
               {{ money(item.productPrice) }} × {{ item.quantity }}
               <template v-if="itemOriginalSave(item) > 0"> = <b>{{ money(item.productPrice * item.quantity) }}</b></template>
               <span v-if="itemOriginalSave(item) >= 1" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
-              <span v-if="isMemberItem(item)" class="member-price-tag">会员价</span>
+              <span v-if="memberTagText(item)" class="member-price-tag">{{ memberTagText(item) }}</span>
             </small>
           </div>
           <div class="row-actions">
@@ -170,7 +170,7 @@
 
 <script>
 import { inject, computed, ref, watch } from 'vue';
-import { cartItemIssue, cartIssueItems } from '../utils/format';
+import { cartItemIssue, cartIssueItems, memberTagText as fmtMemberTagText } from '../utils/format';
 export default {
   name: 'CartPage',
   setup() {
@@ -229,15 +229,23 @@ export default {
       () => { loadUpsell(); }
     );
 
-    // 该购物项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）：用于挂「会员价」标签。
-    // 直接用后端 memberDiscount 判定，避免依赖前端商品目录是否加载。
+    // 该购物项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）
     function isMemberItem(item) {
       if (!item || item.flashSaleId || Number(item.flashPrice || 0) > 0) return false;
       return Number(item.memberDiscount || 0) > 0;
     }
 
+    /**
+     * 会员优惠标签文案。真正的判定与文案规则在 `utils/format.js` 的 `memberTagText`
+     * （按 memberSource 区分「商品会员价」与「等级折扣」，单件省不到 1 元不显示），
+     * 购物车与结算页共用同一份，避免两页各写一套又漂移。
+     */
+    function memberTagText(item) {
+      return fmtMemberTagText(item, appCtx.session?.user?.memberLevel, appCtx.tierNameFor?.(appCtx.session?.user?.memberLevel));
+    }
+
     return {
-      ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell, isMemberItem,
+      ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell, isMemberItem, memberTagText,
     };
   }
 };

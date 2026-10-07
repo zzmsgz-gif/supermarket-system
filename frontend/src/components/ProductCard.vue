@@ -46,14 +46,14 @@
              整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
         <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop="$emit('add', product)">＋</button>
         <span v-else-if="flashCapped" class="flash-cap-note">
-          {{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : '已达限购（每人 ' + flashLimitText + ' 件）' }}
+          {{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : flashCappedReason }}
           <button v-if="flashSale && flashSale.sourceProductId && !flashSale.myUnpaidOrderId" type="button" class="link-btn" @click.stop="openOriginal">去原商品</button>
         </span>
         <span v-else-if="isAdmin" class="admin-inline-note">管理员仅查看上架商品</span>
       </div>
       <div class="meta-line">
         <small :class="{ 'low-stock': lowStock }">
-          <template v-if="lowStock">仅剩 {{ product.stock }} 件<template v-if="salesText"> · </template></template>
+          <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="salesText"> · </template></template>
           <template v-if="salesText">已售 {{ salesText }}</template>
           <template v-if="!lowStock && !salesText">7 天内发货</template>
         </small>
@@ -109,11 +109,25 @@ const activityTag = computed(() => (appCtx && typeof appCtx.productActivityTag =
   ? appCtx.productActivityTag(props.product)
   : ''));
 
-// 库存预警：低于阈值且仍有货时高亮，比干巴巴的「库存 N」更能促单
+// 库存预警：低于阈值且仍有货时高亮。
+// ⚠️ 秒杀品一律走「剩余名额」而不是 product.stock（2026-10-07）：
+// 秒杀品的 product.stock 初始等于总名额、且与 flash_sale 名额是两条独立加减路径，
+// 历史数据已漂移（实测 159 差 2、162 差 5）。拿 stock 判「仅剩 N 件」会显示一个
+// 比真实名额大的数字，用户加购时才被拒。
+// 阈值：普通品用 lowStockThreshold，秒杀品固定 10（与详情页的「仅剩 N 件」一致）。
+const lowStockCount = computed(() => {
+  if (flashSale.value) {
+    const left = flashAllLeft.value;
+    return left === null ? 0 : Math.max(left, 0);
+  }
+  return Number(props.product.stock || 0);
+});
 const lowStock = computed(() => {
-  const stock = Number(props.product.stock || 0);
+  const n = lowStockCount.value;
+  if (n <= 0) return false;
+  if (flashSale.value) return n <= 10;              // 秒杀：统一 10 件口径
   const threshold = Number(props.product.lowStockThreshold || 0);
-  return threshold > 0 && stock > 0 && stock <= threshold;
+  return threshold > 0 && n <= threshold;
 });
 
 const salesText = computed(() => {
@@ -138,15 +152,38 @@ const flashPrice = computed(() => {
   return fp > 0 && fp < floor ? fp : 0;
 });
 
-// 秒杀每人限购已用满（含购物车里已有的 + 已下单占用的）。
-// myRemainingQuota 是后端算好的「我还能买几件」，再购入一件即越界，就算到顶。
-// 处理方式是「换一句能读懂的话」而不是留个点不动的灰按钮 —— 灰按钮不解释原因，用户只会以为坏了。
+// 秒杀「还能买几件」= min(每人限购剩余, 全场剩余名额)，与详情页 ProductPage 的 flashCapped 同口径。
+// ⚠️ 2026-10-07 修正：原实现有三处错 ——
+//   ① 只看 myRemainingQuota，漏判「全场名额被抢完」→ 详情页已禁、列表页还能点；
+//   ② 拿购物车件数去比「剩余额度」，车里已有 1 件就判买满，其实还能再买；
+//   ③ myRemainingQuota 为 null（不限购场次）直接 return false → 全场抢完也不禁。
+// 三者都是「前端显示与真实可买数脱节」，用户在列表页加购成功、到结算才被拒。
+const flashMyLeft = computed(() => {
+  const l = flashSale.value?.myRemainingQuota;
+  return (l === null || l === undefined) ? null : Number(l);   // null = 本场不限购
+});
+const flashAllLeft = computed(() => {
+  const r = flashSale.value?.remainingQuota;
+  return (r === null || r === undefined) ? null : Number(r);
+});
 const flashCapped = computed(() => {
-  const left = flashSale.value?.myRemainingQuota;
-  if (left === null || left === undefined) return false;
-  const items = (appCtx && appCtx.cart && appCtx.cart.items) || [];
-  const inCart = items.find((i) => Number(i.productId) === Number(props.product.id));
-  return Number(inCart?.quantity || 0) >= Number(left);
+  const my = flashMyLeft.value;
+  const all = flashAllLeft.value;
+  // 任一维度为 0 就买不了；都不限购时才不禁用（此时只能靠库存，加购接口会兜）
+  if (my === null && all === null) return false;
+  if (my !== null && my <= 0) return true;
+  if (all !== null && all <= 0) return true;
+  return false;
+});
+// 买满原因：区分「我买满」与「全场抢完」，文案与给出的出路不同
+const flashCappedReason = computed(() => {
+  const my = flashMyLeft.value;
+  const all = flashAllLeft.value;
+  const limit = Number(flashSale.value?.perUserLimit || 0);
+  if (my !== null && my <= 0) {
+    return `已达限购（每人 ${limit} 件）`;
+  }
+  return `本场已抢完（共 ${Number(flashSale.value?.totalQuota || 0)} 件）`;
 });
 
 const flashLimitText = computed(() => Number(flashSale.value?.perUserLimit || 0));

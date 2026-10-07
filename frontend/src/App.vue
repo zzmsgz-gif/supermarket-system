@@ -287,7 +287,7 @@ import ProductCard from './components/ProductCard.vue';
 import StarRating from './components/StarRating.vue';
 import CouponCard from './components/CouponCard.vue';
 import AddressCard from './components/AddressCard.vue';
-import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, round2, discountSave, discountRate, itemOriginalSave, imgFallback } from './utils/format';
+import { money, initials, formatRole, orderStatusLabel, fulfillmentLabel, formatPaymentStatus, formatRefundStatus, refundStatusTag, formatCouponStatus, formatDate, formatProductStatus, orderStatusTag, formatUnit, resolveUnit, round2, discountSave, discountRate, itemOriginalSave, imgFallback, userOrderStatus } from './utils/format';
 // 后台面板较重且仅管理员进入，改为懒加载（首屏不进主包）
 import { defineAsyncComponent } from 'vue'
 const AdminPanel = defineAsyncComponent(() => import('./components/AdminPanel.vue'));
@@ -736,20 +736,12 @@ function fail(message, title) {
 }
 
 
-// 用户订单的「发货进度」状态：让“发没发货”一眼可辨
-// 状态徽标。注意 SHIPPED 对自提单要显示「待取货」——自提单没有物流，
-// 后台走的是「备货完成」，叫「已发货」会让用户以为有快递在路上。
+// 用户订单的「订单状态」徽标。**唯一实现已上移到 utils/format.js 的 userOrderStatus**，
+// 订单详情页也改用它 —— 此前两页各写一套且文案不同（详情页 PAID 说「已支付」、
+// 列表页说「待发货」），用户看着觉得状态乱（2026-10-07）。
+// 保留这个函数名是因为它被多处模板引用，改名收益小、风险大。
 function shipStatusOf(order) {
-  const pickup = order?.fulfillmentType === 'PICKUP';
-  const map = {
-    PENDING_PAYMENT: { label: '待付款', cls: 'warn' },
-    PAID: { label: pickup ? '备货中' : '待发货', cls: 'amber' },
-    SHIPPED: { label: pickup ? '待取货' : '已发货', cls: 'info' },
-    COMPLETED: { label: '已完成', cls: 'ok' },
-    CANCELED: { label: '已取消', cls: 'muted' },
-    CLOSED: { label: '已关闭', cls: 'muted' },
-  };
-  return map[order.status] || { label: orderStatusLabel(order), cls: 'muted' };
+  return userOrderStatus(order);
 }
 
 function categoryName(categoryId) {

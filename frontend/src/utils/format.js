@@ -67,6 +67,35 @@ export function orderStatusLabel(order) {
   return formatOrderStatus(status);
 }
 
+/**
+ * 面向用户的「订单状态」文案 —— **列表页与详情页必须用同一个来源**。
+ *
+ * <p><b>为什么不能直接用 {@link orderStatusLabel}</b>：它在 PAID 时说「已支付」，
+ * 而用户看到的是「商家还没发货」。同一个状态在两个页面显示不同（详情页「已支付」、
+ * 列表页「待发货」），用户会以为是两笔不同的单、或者系统状态乱了。
+ * 这个不一致 2026-10-07 被用户点出来：「订单状态...看着感觉很乱」。
+ *
+ * <p>自提单的 PAID 说「备货中」而不是「待发货」——没有快递可发，说待发货是骗人。
+ *
+ * <p>⚠️ 物流维度（运输中 / 派送中）目前**不存在**，本函数只是把订单状态翻译成
+ * 用户能理解的话，不代表有独立的物流状态列。要加得先在 OrderEntity 独立建列。
+ *
+ * @returns {{label: string, cls: string}} cls 是徽标配色，与 {@link orderStatusTag} 同源
+ */
+export function userOrderStatus(order) {
+  const status = typeof order === 'string' ? order : order?.status;
+  const fulfillment = typeof order === 'string' ? null : order?.fulfillmentType;
+  const map = {
+    PENDING_PAYMENT: { label: '待付款', cls: 'warn' },
+    PAID: { label: fulfillment === 'PICKUP' ? '备货中' : '待发货', cls: 'amber' },
+    SHIPPED: { label: fulfillment === 'PICKUP' ? '待取货' : '待收货', cls: 'info' },
+    COMPLETED: { label: '已完成', cls: 'ok' },
+    CANCELED: { label: '已取消', cls: 'muted' },
+    CLOSED: { label: '已关闭', cls: 'muted' },
+  };
+  return map[status] || { label: orderStatusLabel(order), cls: 'muted' };
+}
+
 export function formatPaymentStatus(status) {
   const statusMap = { UNPAID: '未支付', PAID: '已支付', REFUNDED: '已退款' };
   return statusMap[status] || status || '-';
@@ -138,6 +167,42 @@ export function discountRate(orig, price) {
 export function itemOriginalSave(item) {
   const save = discountSave(item.productOriginalPrice, item.productPrice);
   return save > 0 ? save * Number(item.quantity || 1) : 0;
+}
+
+/** 省不到这个数就不值得标「省 ¥X」—— 省三毛还专门挂个标签，用户只会以为是 bug */
+export const SAVE_CHIP_THRESHOLD = 1;
+
+/**
+ * 会员优惠标签的文案，**按优惠来源区分**，不能一律写「会员价」。
+ *
+ * 两种来源是性质不同的钱，冠同一个名字就是张冠李戴（2026-10-07 用户当场驳回：
+ * 「关银卡会员价(0.98)什么事」）：
+ *   · `memberSource === 'member'` → 商品专属会员价（商品表 member_price 更低）→ 写「会员价」成立
+ *   · `memberSource === 'tier'`   → 只靠等级折扣（如银卡 0.98）便宜 → 写「会员价」是错的，
+ *     这时写「银卡 9.8折」，与商品页/详情页 `productMemberView` 的既有口径一致
+ *
+ * 单件省不到 {@link SAVE_CHIP_THRESHOLD} 元就不显示 —— 省三毛专门标标签是噪音。
+ *
+ * 抽成共用函数而不是在购物车/结算页各写一份：两页本来就有同样的复制粘贴隐患，
+ * 而「标签写错」是用户一眼就能发现的问题。
+ *
+ * @param {object} item 购物车/结算行（需含 memberDiscount / memberSource / quantity）
+ * @param {number} [memberLevel] 用户档位，'tier' 来源时用来拼「银卡 9.8折」
+ * @param {string} [tierName] 档位中文名（如「银卡会员」），缺省用「会员」
+ */
+export function memberTagText(item, memberLevel, tierName) {
+  if (!item || item.flashSaleId || Number(item.flashPrice || 0) > 0) return '';
+  const total = Number(item.memberDiscount || 0);
+  if (!(total > 0)) return '';
+  const perUnit = total / Math.max(Number(item.quantity || 1), 1);
+  if (perUnit < SAVE_CHIP_THRESHOLD) return '';
+  if (item.memberSource === 'tier') {
+    const rates = { 0: 1, 1: 0.98, 2: 0.95, 3: 0.9, 4: 0.88, 5: 0.85, 6: 0.8 };
+    const r = rates[Number(memberLevel || 0)] ?? 0.98;
+    const name = (tierName || '会员').replace(/会员$/, '');
+    return `${name} ${(r * 10).toFixed(1)}折`;
+  }
+  return '会员价';
 }
 
 // 订单的「已优惠」合计：优惠券 + 活动优惠 + 会员等级折扣 + 积分抵扣。

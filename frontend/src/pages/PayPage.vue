@@ -226,7 +226,17 @@ export default {
           await appCtx.refreshProductDetail();
         });
         // 转圈转够了再离开收银台：否则用户看到的是「按钮闪一下就没了」，仍会以为点击被吞。
-        appCtx.navigate('orders');
+        //
+        // 跳「订单详情」而不是订单列表（2026-10-07 用户要求）：付完最想知道的是
+        // 「这一单到底怎么样了」——付了多少、还剩几天送达、有没有售后入口，详情页一次看全。
+        //
+        // ⚠️ 必须先把详情数据填进 appCtx.orderDetail.data 再跳：OrderDetailPage 靠这份数据
+        // 渲染，而它 onMounted 只启动倒计时、**不自己拉订单**。直接 navigate 会白屏一瞬
+        // （甚至一直空着），因为没有第二个地方会去补这次请求。
+        const paidOrderId = orderId.value;
+        const fresh = await appCtx.api.get(`/orders/${paidOrderId}`).catch(() => null);
+        if (fresh) appCtx.orderDetail.data = fresh;
+        appCtx.navigate('orderDetail', { id: paidOrderId });
       } catch (e) {
         // 付失败最常见的两种：余额不足、订单已被超时关闭。刷新一次状态让用户看到真实情况
         await loadOrder();

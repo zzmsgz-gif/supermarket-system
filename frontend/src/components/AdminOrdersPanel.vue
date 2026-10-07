@@ -45,7 +45,10 @@ const { adminOrders, adminOrderStatus, adminOrderTotalPages, shipForm, searchAdm
         <option value="PAID">待发货</option>
         <option value="SHIPPED">待收货</option>
         <option value="COMPLETED">已完成</option>
-        <option value="CANCELLED">已取消</option>
+        <!-- ⚠️ 这里是 CANCELED（一个 L），与后端 AdminOrderService.ALLOWED_STATUSES / orders 表
+             CHECK 约束完全一致。曾写成 CANCELLED（两个 L），后端校验直接抛 400
+             Invalid order status —— 选「已取消」筛选项一行都查不出来（2026-10-07 修）。 -->
+        <option value="CANCELED">已取消</option>
         <option value="CLOSED">已关闭</option>
       </select>
       <AdminPageSize v-model="adminOrders.size" @change="changeAdminOrderPageSize" />

@@ -63,7 +63,11 @@
               </div>
 
               <dl class="detail-meta">
-                <div><dt>剩余库存</dt><dd>{{ productDetail.data.stock }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
+                <!-- 2026-10-07 去掉「剩余库存」：对普通商品是废话（能买就说明有货），
+                     对秒杀品又会与真实名额脱节（product.stock 与 flash_sale 名额两条独立
+                     加减路径，实测 159 差 2、162 差 5），显示一个不准的数字比不显示更糟。
+                     买不了时页面下方直接给「已售罄」提示，信息量足够。
+                     「累计销量」保留 —— 它是销量榜与热销排序的依据，对用户有参考意义。 -->
                 <div><dt>累计销量</dt><dd>{{ productDetail.data.sales ?? 0 }} {{ formatUnit(productDetail.data.unit) }}</dd></div>
                 <div><dt>所属分类</dt><dd>{{ categoryName(productDetail.data.categoryId) }}</dd></div>
                 <div><dt>商品编号</dt><dd>{{ productDetail.data.sku }}</dd></div>
@@ -97,9 +101,11 @@
                   <button type="button" :disabled="flashCapped || qtyOverQuota" @click="changeDetailQty(1)">+</button>
                 </div>
                 <!-- 秒杀名额不够当前选购件数时也要禁用：让用户当场看到「买不了」，
-                     而不是点下去被后端 409 拦。title 是名额原因。 -->
-                <button class="js-add-cart" :disabled="flashCapped || qtyOverQuota" :title="qtyOverQuota ? flashQuotaShortMsg : ''" @click="addDetailToCart">加入购物车</button>
-                <button class="ghost" :disabled="flashCapped || qtyOverQuota" :title="qtyOverQuota ? flashQuotaShortMsg : ''" @click="buyDetailNow">立即购买</button>
+                     而不是点下去被后端 409 拦。
+                     title 要在「已买满」时也给原因 —— 否则禁用按钮是纯灰的，用户不知道该做什么
+                     （下方横幅只在 flashCapped 时出现，qtyOverQuota 的场景没有横幅） -->
+                <button class="js-add-cart" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="addDetailToCart">加入购物车</button>
+                <button class="ghost" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="buyDetailNow">立即购买</button>
                 <button class="ghost fav-detail-btn" :class="{ on: favorited }" @click="toggleFavorite(productDetail.data)">
                   <svg viewBox="0 0 24 24" :fill="favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg>
                   {{ favorited ? '已收藏' : '收藏' }}
@@ -206,6 +212,14 @@ export default {
       }
       return '该场秒杀名额已抢完，本场已结束，如需购买请关注下一场。';
     });
+    // 禁用原因文案：买满时给 buyDisabledTitle 的内容，数量超限时给「请把数量调到 N 件」。
+    // 两种都要有 —— 禁用的灰按钮不解释原因，用户只会以为页面坏了。
+    const buyDisabledTitle = computed(() => {
+      if (flashCapped.value) return flashCappedReason.value;
+      if (qtyOverQuota.value) return flashQuotaShortMsg.value;
+      return '';
+    });
+
     // 「我还能买几件」：优先按每人限购的剩余额度取下限，再与全场剩余名额取更小者。
     // 两个维度任一为 0 都意味着这件秒杀品当前买不了。返回 null 表示不限购（无上限概念）。
     const flashMyLeft = computed(() => {
@@ -296,7 +310,7 @@ export default {
       const orig = Number(appCtx.selectedSkuOriginalPrice?.value ?? appCtx.productDetail.data?.originalPrice ?? 0);
       return orig > detailPrice.value ? orig : 0;
     });
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, openOriginalProduct };
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct };
   }
 };
 </script>

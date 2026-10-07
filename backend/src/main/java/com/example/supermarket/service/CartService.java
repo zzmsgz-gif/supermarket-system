@@ -87,10 +87,62 @@ public class CartService {
                 .orElseGet(() -> newCartItem(userId, productId));
         int newQuantity = cartItem.getQuantity() + quantity;
         validateStock(product, newQuantity);
+        validateFlashQuota(userId, product, newQuantity);
         cartItem.setQuantity(newQuantity);
         cartItem.setSelected(SELECTED);
         cartItem.setSkuSpec(spec);
         cartItemRepository.save(cartItem);
+    }
+
+    /**
+     * 秒杀名额校验：加购时就拦，不要拖到提交订单才 409。
+     *
+     * <p><b>为什么必须在这里守一道</b>：前端「买满禁用」只是体验优化，是可绕过的装饰 ——
+     * 用户可以反复点，也可以直接调 {@code POST /cart/items}。而加购接口原先<b>只查
+     * {@code product.stock}，完全没有名额校验</b>，于是能一路加进购物车，到结算才被
+     * {@code OrderService} 拒绝（2026-10-07 用户反馈「买满后不禁用」时发现）。
+     *
+     * <p><b>三重约束取最小</b>，缺一个就等于没守：
+     * <ol>
+     *   <li>每人限购 {@code perUserLimit − 已买}（不限购场次为 null，不参与）</li>
+     *   <li>全场剩余名额 {@code totalQuota − soldQuota}（不限购场次也有效）</li>
+     *   <li>库存 —— 已在 {@link #validateStock} 校验</li>
+     * </ol>
+     * 只查前两者会漏掉「不限购场次」的第三种失效场景（全场抢完但每人额度未满）。
+     *
+     * <p><b>为什么以名额为准而不是 stock</b>：秒杀品的 {@code product.stock} 与
+     * {@code flash_sale} 名额是两条独立加减路径，历史数据已经漂移（实测 159 差 2、162 差 5）。
+     * 真正决定「还能不能买」的是名额，所以这里一律以名额为准。
+     */
+    private void validateFlashQuota(Long userId, Product product, int newQuantity) {
+        if (userId == null || product == null) {
+            return;
+        }
+        FlashSale sale = flashSaleService.bestRunning(List.of(product.getId()), product.getId());
+        if (sale == null) {
+            return;   // 非秒杀商品，名额规则不适用
+        }
+        String name = sale.getName() != null ? sale.getName() : product.getName();
+
+        // ① 全场剩余名额（对不限购场次同样有效）
+        int totalQuota = sale.getTotalQuota() == null ? 0 : sale.getTotalQuota();
+        int soldQuota = sale.getSoldQuota() == null ? 0 : sale.getSoldQuota();
+        int allLeft = Math.max(totalQuota - soldQuota, 0);
+        if (allLeft <= 0) {
+            throw new BusinessException(409, "「" + name + "」本场名额已抢完（共 " + totalQuota
+                    + " 件），请关注下一场");
+        }
+        if (newQuantity > allLeft) {
+            throw new BusinessException(409, "「" + name + "」本场仅剩 " + allLeft
+                    + " 件，请调整数量");
+        }
+
+        // ② 每人限购剩余额度（不限购场次为 null，不参与）
+        Integer myLeft = flashSaleService.remainingForUser(userId, sale);
+        if (myLeft != null && newQuantity > myLeft) {
+            throw new BusinessException(409, "「" + name + "」每人限购 " + sale.getPerUserLimit()
+                    + " 件，已达上限，请去原商品按原价购买");
+        }
     }
 
     @Transactional
@@ -106,6 +158,9 @@ public class CartService {
             if (request.getQuantity() > cartItem.getQuantity()) {
                 Product product = getAvailableProduct(cartItem.getProductId());
                 validateStock(product, request.getQuantity());
+                // 加量同样要守秒杀名额：购物车页的 + 按钮就是走这条路径，
+                // 只守 addItemInternal 的话，用户在购物车里能一路加到超名额
+                validateFlashQuota(userId, product, request.getQuantity());
             }
             cartItem.setQuantity(request.getQuantity());
         }

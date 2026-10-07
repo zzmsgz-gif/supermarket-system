@@ -39,6 +39,59 @@
             <button class="ghost" :disabled="paySubmitting" @click="cancelThisOrder">取消订单</button>
           </div>
 
+          <!-- ===== 履约操作区 =====
+               此前「确认收货」「申请售后」只挂在订单列表页的行尾按钮里，用户点进详情
+               （查看订单状态最自然的地方）却办不了事，得跳回列表 —— 2026-10-07 补上。
+               可用性条件与后端一致（OrderService.applyRefund 只收 PAID / SHIPPED）：
+                 · 确认收货：仅 SHIPPED（已发货/待取货）
+                 · 申请售后：PAID / SHIPPED 且未在审核中；COMPLETED 不可申请（确认收货即放弃售后） -->
+          <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions">
+            <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
+              确认收货
+            </button>
+            <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">申请售后</button>
+          </div>
+          <!-- 售后申请表单：与列表页同一套 submitRefund/openRefundForm -->
+          <form v-if="localRefund.open" class="refund-form-inline" @submit.prevent="sendRefund">
+            <h4>申请售后</h4>
+            <label>
+              售后原因
+              <select v-model="localRefund.reason">
+                <option value="">请选择原因</option>
+                <option v-for="r in REFUND_REASONS" :key="r" :value="r">{{ r }}</option>
+              </select>
+            </label>
+            <p class="refund-hint">提交后由商家审核；审核通过将原路退回余额，库存同步回补。</p>
+            <div class="refund-actions">
+              <button type="submit" class="primary" :disabled="acting">{{ acting ? '提交中…' : '提交申请' }}</button>
+              <button type="button" class="ghost" :disabled="acting" @click="closeRefund">取消</button>
+            </div>
+          </form>
+
+          <!-- ===== 区块顺序 =====
+               用户看订单详情是「买了什么 → 花了多少 → 订单信息」这条线。
+               原先是「金额明细 → 订单信息 → 购买商品」，商品排在最后、金额在最前，
+               视线要来回跳（2026-10-07 用户要求把购买商品放到金额明细上面）。 -->
+
+          <h3 class="items-title">购买商品（{{ (orderDetail.data.items || []).length }} 件）</h3>
+          <div class="order-items">
+            <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
+              <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)"  loading="lazy" decoding="async"/>
+              <div class="order-item-info">
+                <div class="order-item-name">{{ it.productName }}</div>
+                <div v-if="it.skuSpec" class="order-item-spec">规格：{{ it.skuSpec }}</div>
+                <div class="order-item-meta">
+                  <span>
+                    <s v-if="Number(it.originalPrice || 0) > Number(it.productPrice || 0)" class="original-price">{{ money(it.originalPrice) }}</s>
+                    {{ money(it.productPrice) }}
+                  </span>
+                  <span class="order-item-qty">× {{ it.quantity }}</span>
+                  <span class="subtotal">{{ money(it.subtotalAmount) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- ===== 金额明细：每一项优惠都摊开，且「小计 + 运费 − 优惠合计 = 实付」恒成立 ===== -->
           <div class="amount-block" v-if="amount">
             <h3 class="amount-title">金额明细</h3>
@@ -53,7 +106,7 @@
             </div>
 
             <div class="amount-row save" v-if="amount.originalSave > 0">
-              <span>划线优惠（已省）<small>原价与售价的差额，已含在商品小计中，不重复扣减</small></span>
+              <span>会员优惠（已省）<small>售价与你的成交价之差，已含在商品小计中，不重复扣减</small></span>
               <b>- {{ money(amount.originalSave) }}</b>
             </div>
 
@@ -97,7 +150,13 @@
 
           <!-- ===== 订单信息 ===== -->
           <div class="order-summary">
-            <div class="order-row"><span>订单状态</span><b>{{ orderStatusLabel(orderDetail.data) }}</b></div>
+            <!-- 状态文案与配色统一走 userOrderStatus（utils/format.js），与订单列表页同一来源。
+                 此前这里用 orderStatusLabel，PAID 会显示成「已支付」而列表页显示「待发货」——
+                 同一状态两页不同文案，正是用户说的「看着很乱」（2026-10-07 修）。 -->
+            <div class="order-row">
+              <span>订单状态</span>
+              <b :class="['tag', userOrderStatus(orderDetail.data).cls]">{{ userOrderStatus(orderDetail.data).label }}</b>
+            </div>
             <div class="order-row"><span>支付状态</span><b>{{ formatPaymentStatus(orderDetail.data.paymentStatus) }}</b></div>
             <div class="order-row" v-for="t in timeRows" :key="t.label"><span>{{ t.label }}</span><b>{{ t.value }}</b></div>
             <div class="order-row"><span>配送方式</span><b>{{ fulfillmentLabel(orderDetail.data)
@@ -121,32 +180,14 @@
             </div>
             <div class="order-row" v-if="orderDetail.data.remark"><span>备注</span><b>{{ orderDetail.data.remark }}</b></div>
           </div>
-
-          <h3 class="items-title">购买商品（{{ (orderDetail.data.items || []).length }} 件）</h3>
-          <div class="order-items">
-            <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
-              <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)"  loading="lazy" decoding="async"/>
-              <div class="order-item-info">
-                <div class="order-item-name">{{ it.productName }}</div>
-                <div v-if="it.skuSpec" class="order-item-spec">规格：{{ it.skuSpec }}</div>
-                <div class="order-item-meta">
-                  <span>
-                    <s v-if="Number(it.originalPrice || 0) > Number(it.productPrice || 0)" class="original-price">{{ money(it.originalPrice) }}</s>
-                    {{ money(it.productPrice) }}
-                  </span>
-                  <span class="order-item-qty">× {{ it.quantity }}</span>
-                  <span class="subtotal">{{ money(it.subtotalAmount) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </template>
       </section>
 </template>
 
 <script>
-import { computed, inject, ref, onMounted, onUnmounted } from 'vue';
-import { orderOriginalSave, formatDate, withMinSpinner } from '../utils/format';
+import { computed, inject, reactive, ref, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
+import { orderOriginalSave, formatDate, withMinSpinner, userOrderStatus } from '../utils/format';
 export default {
   name: 'OrderDetailPage',
   setup() {
@@ -209,10 +250,96 @@ export default {
       if (fresh) appCtx.orderDetail.data = fresh;
     }
 
+    // ===== 履约操作：确认收货 / 申请售后（2026-10-07 补，此前只有列表页行尾有） =====
+    // 条件与后端校验对齐，别让用户点了才吃 409：
+    //   · 确认收货：仅 SHIPPED（OrderService.confirmReceipt 拒绝其他状态）
+    //   · 申请售后：仅 PAID / SHIPPED，且不在审核中（applyRefund 同规则）
+    const acting = ref(false);
+    const canConfirmReceipt = computed(() => currentOrder.value?.status === 'SHIPPED');
+    const canApplyRefund = computed(() => {
+      const o = currentOrder.value;
+      if (!o) return false;
+      if (!['PAID', 'SHIPPED'].includes(o.status)) return false;
+      return o.refundStatus !== 'APPLYING' && o.refundStatus !== 'APPROVED';
+    });
+    // 售后原因选项：与订单列表页共用同一套口径，避免两个页面选项不一样
+    const REFUND_REASONS = ['商品缺货', '商品质量问题', '配送破损', '与描述不符', '不想要了', '其他'];
+
+    async function confirmThisOrder() {
+      const o = currentOrder.value;
+      if (!o || acting.value) return;
+      acting.value = true;
+      try {
+        await appCtx.confirmReceipt(o.id);
+        const fresh = await appCtx.api.get(`/orders/${o.id}`).catch(() => null);
+        if (fresh) appCtx.orderDetail.data = fresh;
+      } finally {
+        acting.value = false;
+      }
+    }
+
+    // 本页局部表单。**刻意不叫 refundForm** —— appCtx 上已有一个同名共享 state
+    //（列表页/本页共用的提交状态），同名会遮蔽它，两处状态互不同步（2026-10-07 踩过）。
+    const localRefund = reactive({ open: false, reason: '' });
+    function startRefund() {
+      localRefund.reason = '';
+      localRefund.open = true;
+    }
+    function closeRefund() {
+      localRefund.open = false;
+    }
+    async function sendRefund() {
+      const o = currentOrder.value;
+      if (!o || acting.value) return;
+      if (!localRefund.reason) {
+        appCtx.fail('请选择售后原因');
+        return;
+      }
+      acting.value = true;
+      try {
+        // 复用 appCtx 上与列表页同一个 submitRefund：它内部用共享的 refundForm.reason、
+        // 自带二次确认弹窗，成功后会重拉订单/钱包/会员/秒杀名额。
+        // 这里先把本页的选项写进共享 state 再调，避免两页各维护一份原因与提交逻辑。
+        appCtx.refundForm.reason = localRefund.reason;
+        await appCtx.submitRefund(o.id);
+        localRefund.open = false;
+        const fresh = await appCtx.api.get(`/orders/${o.id}`).catch(() => null);
+        if (fresh) appCtx.orderDetail.data = fresh;
+      } finally {
+        acting.value = false;
+      }
+    }
+
     let payTick = null;
-    onMounted(() => {
+    // 路由里的订单 id：用于「本页自己没数据时去拉」。
+    // 用 route 而不是 currentOrder —— 后者正是要从数据里读 id 的，data 为空时拿不到。
+    // ⚠️ 走 useRoute() 而不是 appCtx.route：appCtx 上并没有挂 route（只有 ROUTE_VIEWS 常量），
+    //    写 appCtx.route?.params?.id 会静默拿到 undefined，兜底逻辑永远不触发。
+    const route = useRoute();
+    const routeOrderId = computed(() => {
+      const raw = route.params?.id ?? route.query?.id;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    });
+
+    onMounted(async () => {
       recomputePayRemaining();
       payTick = setInterval(recomputePayRemaining, 1000);
+      // ⚠️ 本页此前**完全依赖 appCtx.orderDetail.data**，自己从不拉数据。后果有两个：
+      //   ① 用户刷新详情页（F5）或直接粘地址栏进来 → data 为空 → 整个页面空白；
+      //   ② 支付后跳详情页时若没先填好数据，同样白屏。
+      // 所以这里兜底：data 缺失或与路由 id 不一致时，主动拉一次。
+      const d = currentOrder.value;
+      const id = routeOrderId.value;
+      if (id && (!d || Number(d.id) !== id)) {
+        appCtx.orderDetail.loading = true;
+        try {
+          const fresh = await appCtx.api.get(`/orders/${id}`).catch(() => null);
+          if (fresh) appCtx.orderDetail.data = fresh;
+        } finally {
+          appCtx.orderDetail.loading = false;
+        }
+      }
     });
     onUnmounted(() => {
       if (payTick) clearInterval(payTick);
@@ -266,7 +393,7 @@ export default {
       };
     });
 
-    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder };
+    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, closeRefund, sendRefund, userOrderStatus, routeOrderId };
   }
 };
 </script>

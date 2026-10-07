@@ -613,12 +613,16 @@ public class OrderService {
             }
         }
         item.setProductPrice(unitPrice);
-        // 划线价的对照价：命中秒杀时用商品正常售价（秒杀前的价），否则用商品自带的划线价。
-        // 仅用于订单详情展示「划线优惠（已省）」，不参与实付扣减。
-        // 命中秒杀时的对照价 = 该规格未打折时的价（规格价优先），否则用商品自带划线价
-        item.setOriginalPrice(item.getFlashSaleId() != null
-                ? (skuPrice != null ? skuPrice : product.getPrice())
-                : product.getOriginalPrice());
+        // 划线对照价 = <b>售价</b>（会员折前），不是 product.original_price（吊牌价）。
+        //
+        // 2026-10-07 修正：原口径用吊牌价，于是订单详情页那行「划线优惠（已省）」的文案
+        // 「原价与售价的差额」与实际算法不符 —— 实际算的是「吊牌价 − 会员成交价」，
+        // 用户拿界面上任何数字都核不出这笔钱。现在差额 = 售价 − 成交价 = 会员让利，文案才成立。
+        //
+        // ⚠️ 历史订单的原价快照里存的还是吊牌价，改口径只影响**新下单**的订单；
+        // 老订单的「划线优惠」会与当时展示的不一致（那批数据无法回填，除非重算）。
+        // 统一用「规格价优先，否则商品售价」，与 CartItemResponse 的划线价同源。
+        item.setOriginalPrice(skuPrice != null ? skuPrice : product.getPrice());
         item.setQuantity(quantity);
         item.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(quantity)));
         return item;

@@ -21,6 +21,17 @@ public class CartItemResponse {
     private String productCoverUrl;
     private String skuSpec;
     private BigDecimal productPrice;
+    /**
+     * 划线对照价 = <b>售价</b>（即会员折前、非会员看到的价格），不是吊牌价。
+     *
+     * <p><b>为什么是售价而不是吊牌价</b>：用户把划线数字减一下，得到的差额必须<b>恰好等于会员优惠</b>。
+     * 用吊牌价（product.original_price）会得到「吊牌价 − 会员价」，那笔差额里混着商家的
+     * 定价让利，用户拿界面上任何一个数字都核不出「省了多少」——2026-10-07 用户原话：
+     * 「省5块省在哪？」。改成售价后，划线数字 − 成交价 = 会员让利，一目了然。
+     *
+     * <p>吊牌价仍有其用途（展示商品原价促销），但它与会员折扣是两笔不同的钱，
+     * 混在同一个划线数字里会让用户误以为会员白拿了商家的促销。
+     */
     private BigDecimal productOriginalPrice;
     private Integer stock;
     private String unit;
@@ -45,6 +56,17 @@ public class CartItemResponse {
      * 供前端结算页把「会员折扣」单独拆出一行，与活动 / 优惠券并列展示。
      */
     private BigDecimal memberDiscount;
+    /**
+     * 本行会员让利的<b>来源</b>：{@code "member"} = 商品专属会员价更低，
+     * {@code "tier"} = 等级折扣（如银卡 0.98）更低，{@code null} = 本行没有会员让利。
+     *
+     * <p><b>为什么必须透出</b>：银卡 0.98 折和「商品专属会员价」是两笔不同来源的钱，
+     * 冠同一个名字就是张冠李戴——用户看到鸡蛋（无 member_price，只靠 0.98 折便宜 3 毛）
+     * 被标成「会员价」时会问「关会员价什么事，我又不是因为会员价便宜」。
+     * 商品页/详情页本来就按 source 分开显示（「会员价 ¥X」/「银卡 9.8折」），
+     * 购物车与结算页此前缺这个分支，现已对齐。
+     */
+    private String memberSource;
     /**
      * 商品是否仍在售（未下架、未软删）。购物车/结算页必须能提前看出「这行已经买不了」——
      * 否则用户要等到提交订单才被后端拦下，而且只能拿到一句笼统的错误。
@@ -130,23 +152,35 @@ public class CartItemResponse {
         response.setRegularPrice(regular);
         // 会员折扣（仅常规成交；秒杀行的优惠走秒杀行，不计入会员折扣）
         BigDecimal memberDiscount = BigDecimal.ZERO;
+        // 让利来源：与 MemberService.unitPriceFor 的取值优先级逐字对齐 ——
+        // 商品会员价更低 → 'member'；否则等级折扣更低 → 'tier'。两者都不更低则无让利。
+        String memberSource = null;
         if (!flashApplies) {
             BigDecimal baseUnit = skuPrice != null ? skuPrice : product.getPrice();
             BigDecimal perUnitMd = baseUnit.subtract(regular);
             if (perUnitMd.compareTo(BigDecimal.ZERO) > 0) {
                 memberDiscount = perUnitMd.multiply(BigDecimal.valueOf(qty));
+                // unitPriceFor 里 memberPrice 只在 skuPrice == null 时参与比较（规格价不与商品会员价比），
+                // 这里必须用同一条判定，否则来源会标错
+                boolean memberPriceWon = skuPrice == null
+                        && product.getMemberPrice() != null
+                        && product.getMemberPrice().compareTo(baseUnit) < 0
+                        && product.getMemberPrice().compareTo(regular) <= 0;
+                memberSource = memberPriceWon ? "member" : "tier";
             }
         }
         response.setMemberDiscount(memberDiscount.setScale(2, java.math.RoundingMode.HALF_UP));
+        response.setMemberSource(memberSource);
         if (fq > 0) {
             response.setFlashSaleId(flashSale.getId());
             response.setFlashPrice(flashUnit);
             response.setFlashEndTime(flashSale.getEndTime());
         }
         response.setFlashQty(fq);
-        // 划线对照价：命中秒杀时用「秒杀前的价」—— 走了规格价就是规格价，否则商品基准价
+        // 划线对照价 = 售价（会员折前）。见字段注释：差额必须恰好等于会员让利，用户才核得出来。
+        // 秒杀行用 regular（min(售价, 会员价)）= 秒杀前的价，同样与 unitPriceFor 同源。
         response.setProductOriginalPrice(flashApplies
-                ? regular : product.getOriginalPrice());
+                ? regular : (skuPrice != null ? skuPrice : product.getPrice()));
         response.setStock(product.getStock());
         response.setOnSale(ON_SALE.equals(product.getStatus())
                 && product.getDeleted() != null && product.getDeleted() == NOT_DELETED);
@@ -314,6 +348,14 @@ public class CartItemResponse {
 
     public void setMemberDiscount(BigDecimal memberDiscount) {
         this.memberDiscount = memberDiscount;
+    }
+
+    public String getMemberSource() {
+        return memberSource;
+    }
+
+    public void setMemberSource(String memberSource) {
+        this.memberSource = memberSource;
     }
 
 }
