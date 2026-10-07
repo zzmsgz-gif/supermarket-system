@@ -1,5 +1,5 @@
 <script setup>
-import { toRefs } from 'vue';
+import { toRefs, onMounted } from 'vue';
 // 后台「售后管理」面板：从 AdminPanel.vue 整块搬过来的（模板 56 行）。
 //
 // adminCtx 给数据与动作；分页/表单/审核这些由父级 composable 装配产出，
@@ -7,16 +7,13 @@ import { toRefs } from 'vue';
 //
 // ⚠️ 解构列表照抄父级：漏一个就是运行时 undefined，模板编译不报错、
 //    要跑起来才在 console 报 xxx is not a function。改完跑 _check_panels.py。
-import { formatDate, formatRefundStatus, money, userOrderStatus } from '../utils/format';
+import { formatDate, formatRefundStatus, money, userOrderStatus, refundStatusTag, orderSavedTotal } from '../utils/format';
 import AdminPageSize from './AdminPageSize.vue';
 import AdminPager from './AdminPager.vue';
 
 const props = defineProps({
   adminCtx: { type: Object, required: true },
   searchRefunds: { type: Function, required: true },
-  openOrderDetail: { type: Function, required: true },
-  orderSavedTotal: { type: Function, required: true },
-  refundStatusTag: { type: Function, required: true },
   changeRefundPage: { type: Function, required: true },
   changeRefundPageSize: { type: Function, required: true },
   goRefundPage: { type: Function, required: true },
@@ -35,6 +32,37 @@ const refundStatusFilter = defineModel('refundStatusFilter', { type: String, req
 const refundJumpPage = defineModel('refundJumpPage', { type: Number, required: true });
 const { refundOrders, loadRefundOrders } = props.adminCtx;
 const { searchRefunds, changeRefundPage, changeRefundPageSize, goRefundPage, resetRefundSearch, reviewAdminRefund, submitRefundReview, refundTotalPages, refundReviewForm } = toRefs(props);
+
+// ⚠️ **openOrderDetail 也不在 props 里**（父组件从没传），它挂在 adminCtx 上。
+// refundStatusTag / orderSavedTotal / userOrderStatus / formatDate / money 都是
+// utils/format.js 的纯函数，直接 import —— 不依赖父级注入。
+//
+// 这里踩过三次同源的坑（2026-10-07「售后管理打不开」）：
+// 组件把 X 声明成 required props，父组件**根本没传** → Vue 给 undefined →
+// 模板 `X(...)` 变成 `undefined(...)` → TypeError → **整个组件渲染中断、空白一片，
+// 且必须刷新页面才恢复**。而且「有时正常」：这些调用只在**列表有数据时**才执行，
+// 默认筛选「申请中」库里 0 条走空态分支就永远碰不到，一切到「全部」就崩。
+// 所以下面的 props 列表必须与 AdminPanel.vue 实际传入的**逐字对齐**，多一个都是雷。
+const { openOrderDetail } = props.adminCtx;
+
+// 面板是 `v-if="adminMenu === 'refunds'"` 挂的 —— 切走就卸载、切回来就重建。
+// 父级只在进后台时加载一次，所以本面板**挂载时自己再拉一次**：
+// 不依赖任何卸载前残留的 state（否则「请求在卸载后才返回」会让 state 停在半路）。
+onMounted(() => {
+  loadRefundOrders();
+});
+
+// 面板是 `v-if="adminMenu === 'refunds'"` 挂的 —— 切走就卸载、切回来就重建。
+// 父级只在进后台时加载一次，本面板**不自己拉数据**，所以「重建后拿什么渲染」全靠
+// 上一次卸载前残留的 state。若那次请求恰好在卸载后才回来（切换菜单很快时很常见），
+// state 会停在半路（items 空 / total NaN），AdminPager 算不出 totalPages 直接抛错，
+// 结果就是「售后管理打不开，只有刷新页面才恢复」（2026-10-07 用户报）。
+//
+// 这里挂载即拉一次：数据一定来自本次请求，不依赖任何残留。
+// loadRefundOrders 内部有 isAdmin 守卫 + 出错不影响别的面板。
+onMounted(() => {
+  loadRefundOrders();
+});
 </script>
 
 <template>

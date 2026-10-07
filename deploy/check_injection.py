@@ -145,6 +145,86 @@ def check_appctx_exports(src: Path) -> list[str]:
     return sorted(set(problems))
 
 
+def check_props_declared_vs_passed(src: Path) -> list[str]:
+    """查「组件声明了某 prop，但父组件根本没传」。
+
+    **这是注入漏项里最阴的一种**：Vue 对未传的 prop 给 `undefined`，
+    组件里 `required: true` **不会报错**（只在 devtools 里提示），
+    模板里 `someFn(...)` 就成了 `undefined(...)` → TypeError →
+    **整个组件渲染中断、页面一片空白，且必须刷新才恢复**。
+
+    为什么难查（2026-10-07「管理端售后管理打不开」连踩三次同源的）：
+    - 控制台 errors 有记录但堆栈指向压缩产物，看不出是哪个 prop；
+    - **「有时正常」**：这些调用只在**列表有数据时**才执行。
+      默认筛选库里 0 条 → 走空态分支 → 永远碰不到；一切换筛选拿到数据就崩。
+    - 原体检只查 `appCtx.X(` 调用点 vs App.vue 挂载，**查不到组件 props 这一层**。
+
+    做法：解析子组件的 `defineProps({...})` / `defineModel('x')` 声明，
+    与父组件模板里该组件标签上实际写的 `:prop` / `v-model:prop` 求差集。
+    ⚠️ 这条**不会误报** —— props 是显式声明的字面量，不涉及跨文件语义猜测。
+    """
+    problems: list[str] = []
+    vue_files = list(src.rglob('*.vue'))
+
+    def camel(kebab: str) -> str:
+        parts = kebab.split('-')
+        return parts[0] + ''.join(p.capitalize() for p in parts[1:])
+
+    for child in vue_files:
+        ctext = child.read_text(encoding='utf-8', errors='ignore')
+        m = re.search(r'defineProps\(\{(.*?)\}\)\s*;', ctext, re.S)
+        # ⚠️ 只报 `required: true` 的：非 required 的 prop 本来就允许不传
+        # （Vue 给 undefined + 组件内应有默认值处理），把它们报出来全是噪音。
+        # 2026-10-07 首版把整段 props 都当必传，误报了 7 个（withDefaults 的可选 prop、
+        # defineProps(['x']) 简写形式等）→ 信噪比太差，等于没检查。
+        required: set[str] = set()
+        if m:
+            body = m.group(1)
+            for pm in re.finditer(r'^\s*([A-Za-z_$][\w$]*)\s*:\s*\{(.*?)\}',
+                                 body, re.M | re.S):
+                if re.search(r'required\s*:\s*true', pm.group(2)):
+                    required.add(pm.group(1))
+        # defineModel('x', { required: true }) 同理
+        for dm in re.finditer(r"defineModel\(\s*'([A-Za-z_$][\w$]*)'\s*,?\s*(\{[^}]*\})?", ctext):
+            if dm.group(2) and re.search(r'required\s*:\s*true', dm.group(2)):
+                required.add(dm.group(1))
+        if not required:
+            continue
+
+        tag = child.stem
+        for parent in vue_files:
+            if parent == child:
+                continue
+            ptext = parent.read_text(encoding='utf-8', errors='ignore')
+            tm = re.search(r'<' + re.escape(tag) + r'[\s/>]', ptext)
+            if not tm:
+                continue
+            end = ptext.find('/>', tm.start())
+            if end < 0:
+                end = ptext.find('>', tm.start())
+            if end < 0:
+                continue
+            seg = ptext[tm.start():end]
+            passed = {camel(x) for x in re.findall(r'(?<![\w-]):([A-Za-z][\w-]*)\s*=', seg)}
+            passed |= {camel(x) for x in re.findall(r'v-model:([A-Za-z][\w-]*)', seg)}
+            # ⚠️ 排掉「连字符逐字母拆写」：Vue 会把 :m-d-c-_-w-e-e-k 归一化成 MDC_WEEK，
+            #    这类写法（依赖 kebab→camel 归一化）是**能正常工作**的，不能报。
+            #    比对时忽略大小写 —— 模板里通常是全小写、声明里是驼峰或全大写缩写。
+            lower_required = {r.lower() for r in required}
+            for kebab in re.findall(r'(?<![\w-]):([A-Za-z][\w-]*)\s*=', seg):
+                flat = kebab.replace('-', '').lower()
+                if flat in lower_required:
+                    passed.add(flat)
+            missing = sorted(r for r in (required - passed)
+                             if r.lower() not in {camel(x).lower() for x in
+                                                 re.findall(r'(?<![\w-]):([A-Za-z][\w-]*)\s*=', seg)})
+            if missing:
+                problems.append(
+                    f'  {child.name:26s} required 但 {parent.name} 未传: {missing}')
+            break   # 每个父组件只报一次
+    return sorted(set(problems))
+
+
 def parse_composable_params(src: str, fname: str) -> list[str] | None:
     m = re.search(r'export\s+function\s+' + re.escape(fname) + r'\s*\(\{(.*?)\}\)\s*\{',
                   src, re.S)
@@ -191,8 +271,14 @@ def main() -> int:
         print('\n'.join(appctx_problems))
         problems.append('')
 
+    props_problems = check_props_declared_vs_passed(src)
+    if props_problems:
+        print('组件 props 声明了但父组件没传（undefined(...) → 整块面板空白且刷新才恢复）：')
+        print('\n'.join(props_problems))
+        problems.append('')
+
     if problems:
-        if appctx_problems:
+        if appctx_problems or props_problems:
             print('另：以上问题之外的注入漏传检查——')
         else:
             print('依赖注入漏传（会在运行时炸成 "xxx is not a function"）：')
@@ -200,7 +286,7 @@ def main() -> int:
             if p:
                 print(p)
         return 1
-    print('体检通过：composable 注入无漏传，appCtx 挂载无漏项。')
+    print('体检通过：composable 注入无漏传，appCtx 挂载无漏项，组件 props 声明与父组件一致。')
     return 0
 
 

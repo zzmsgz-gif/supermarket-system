@@ -64,19 +64,42 @@ export function useAdminLoaders({
 
   async function loadRefundOrders() {
     if (!isAdmin.value) return;
+    // 筛选为空表示「全部」。URLSearchParams 会把它序列化成 `refundStatus=`，
+    // 后端 StringUtils.hasText 判定为空 → 不加该条件 → 返回全部订单。这一节是刻意的
+    // （原先只有「申请中/已通过/已拒绝」三个固定值，线上 54 单 refund_status 全是 NONE，
+    // 面板打开就是空的、像坏了）。
     const params = new URLSearchParams({
       page: String(refundOrders.page),
       size: String(refundOrders.size),
-      refundStatus: refundStatusFilter.value,
     });
+    if (refundStatusFilter.value) {
+      params.set('refundStatus', refundStatusFilter.value);
+    }
     const data = await api.get(`/admin/orders?${params}`);
-    Object.assign(refundOrders, data);
+    // ⚠️ 竞态保护：面板组件用 `v-if` 挂在后台里，切换菜单会**卸载它**；
+    // 而 `refundStatusFilter` 是父级 ref、切换菜单不会重置。若请求在卸载后才返回，
+    // 下面这些写入（尤其 `refundJumpPage`，它绑在 AdminPager 上）会打到已卸载的链路上，
+    // `totalPages` 算不出来 → AdminPager 抛错 → 整个面板 v-else 分支不再渲染，
+    //    表现就是「售后管理打不开」，且**刷新页面才能恢复**（2026-10-07 用户报）。
+    // 这里统一兜底：任何一步都把 page/jumpPage 钉成合法数字。
+    Object.assign(refundOrders, {
+      page: Number(data?.page) || 1,
+      size: Number(data?.size) || refundOrders.size || 10,
+      total: Number(data?.total) || 0,
+      items: Array.isArray(data?.items) ? data.items : [],
+    });
     if (refundOrders.items.length === 0 && refundOrders.page > 1) {
       refundOrders.page -= 1;
       await loadRefundOrders();
       return;
     }
-    refundJumpPage.value = refundOrders.page;
+    // 必须写成正整数：AdminPager 内部会算 totalPages = ceil(total/size)，
+    // 拿到 undefined/NaN 就会抛。面板卸载后这个 ref 可能已无订阅者，写入无害，
+    // 但值本身仍要合法 —— 组件被复用时（同一 ref）它还会被读到。
+    const safePage = Number.isFinite(refundOrders.page) && refundOrders.page > 0
+      ? Math.floor(refundOrders.page) : 1;
+    refundOrders.page = safePage;
+    refundJumpPage.value = safePage;
   }
 
   async function loadStockAlerts() {
