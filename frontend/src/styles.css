@@ -2373,6 +2373,26 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 
 .detail-buy { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .detail-buy > button { min-width: 126px; }
+/* 禁用态（秒杀买满/全场抢完/名额不足）：必须明显可辨 ——
+   2026-10-07 用户实测「按钮还是能点击啊，只是点完后没反应」：
+   disabled 属性在生效（点击确实不触发），但按钮看起来完全正常，等于没禁。
+   灰化 + not-allowed + 去掉 hover 变化，让「点不动」在动手之前就能看出来。 */
+.detail-buy > button:disabled,
+.detail-buy > button:disabled:hover {
+  background: #e3e6e0;
+  color: #9aa39c;
+  border-color: #d7dcd5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  opacity: 1;
+}
+.qty-picker button:disabled,
+.qty-picker button:disabled:hover {
+  background: #eef0ed;
+  color: #b6bdb7;
+  cursor: not-allowed;
+}
 /* 秒杀限购买满：整件秒杀品禁买，给出「去原商品按原价购买」出口 */
 .flash-capped-buy {
   margin-top: 12px;

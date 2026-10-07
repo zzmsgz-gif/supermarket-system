@@ -111,9 +111,13 @@
                 <!-- 秒杀名额不够当前选购件数时也要禁用：让用户当场看到「买不了」，
                      而不是点下去被后端 409 拦。
                      title 要在「已买满」时也给原因 —— 否则禁用按钮是纯灰的，用户不知道该做什么
-                     （下方横幅只在 flashCapped 时出现，qtyOverQuota 的场景没有横幅） -->
-                <button class="js-add-cart" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="addDetailToCart">加入购物车</button>
-                <button class="ghost" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="buyDetailNow">立即购买</button>
+                     （下方横幅只在 flashCapped 时出现，qtyOverQuota 的场景没有横幅）。
+                2026-10-07 用户实测返工：disabled 属性生效了（点击无反应），但 .detail-buy
+                     的按钮**没有 :disabled 样式**，看起来完全正常 —— 用户不知道被禁用了，
+                     只觉得「点了没反应、页面坏了」。所以：① 文案直接换状态（下方两个
+                     computed）；② styles.css 补 .detail-buy button:disabled 灰化。 -->
+                <button class="js-add-cart" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="addDetailToCart">{{ addCartLabel }}</button>
+                <button class="ghost" :disabled="flashCapped || qtyOverQuota" :title="buyDisabledTitle" @click="buyDetailNow">{{ buyNowLabel }}</button>
                 <button class="ghost fav-detail-btn" :class="{ on: favorited }" @click="toggleFavorite(productDetail.data)">
                   <svg viewBox="0 0 24 24" :fill="favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg>
                   {{ favorited ? '已收藏' : '收藏' }}
@@ -228,6 +232,24 @@ export default {
       return '';
     });
 
+    // 禁用时的按钮文案：把状态直接写在按钮上，不依赖悬停 title 或下方横幅。
+    // ⚠️ disabled 只是让点击失效，**不提供任何视觉/文字信息** ——
+    // 2026-10-07 用户实测：「秒杀商品按钮还是能点击啊，只是点完后没反应罢了」，
+    // 根因不是禁用失效，而是按钮看起来完全正常（缺 :disabled 样式 + 文案不变）。
+    // 正常态两个按钮各回各的原文案；禁用态共用同一个状态词（两个动作都做不了）。
+    const buyBtnState = computed(() => {
+      if (!flashCapped.value && !qtyOverQuota.value) return '';
+      const f = flashSale.value;
+      if (flashCapped.value) {
+        const myLeft = f?.myRemainingQuota;
+        if (myLeft !== null && myLeft !== undefined && Number(myLeft) <= 0) return '已买满';
+        return '已抢完';
+      }
+      return '名额不足';
+    });
+    const addCartLabel = computed(() => buyBtnState.value || '加入购物车');
+    const buyNowLabel = computed(() => buyBtnState.value || '立即购买');
+
     // 「我还能买几件」：优先按每人限购的剩余额度取下限，再与全场剩余名额取更小者。
     // 两个维度任一为 0 都意味着这件秒杀品当前买不了。返回 null 表示不限购（无上限概念）。
     const flashMyLeft = computed(() => {
@@ -318,7 +340,7 @@ export default {
       const orig = Number(appCtx.selectedSkuOriginalPrice?.value ?? appCtx.productDetail.data?.originalPrice ?? 0);
       return orig > detailPrice.value ? orig : 0;
     });
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct };
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
   }
 };
 </script>
