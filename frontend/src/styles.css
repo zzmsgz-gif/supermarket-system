@@ -5428,3 +5428,24 @@ a.brand-link { text-decoration: none; color: inherit; }
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/* ===== 个人资料页：必填星号 / 选填标记 / 头像可点（2026-10-09）=====
+   ⚠️ .req 标红的字段必须在 validate() 里真的校验 —— 标了却不校验等于骗用户。 */
+.pf-row .req {
+  color: #d93025;
+  font-style: normal;
+  margin-right: 3px;
+  font-weight: 600;
+}
+.pf-row .opt {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f0f2f1;
+  color: #98a09b;
+  font-style: normal;
+  font-size: 11px;
+}
+/* 有头像才可点开看大图：没图时点了没反应会更困惑，所以不给指针也不给 hover */
+.pf-avatar.is-clickable { cursor: zoom-in; }
+.pf-avatar.is-clickable:hover { opacity: 0.88; }

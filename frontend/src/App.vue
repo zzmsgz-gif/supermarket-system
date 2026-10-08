@@ -308,7 +308,9 @@ import { api, setToken, isRemembered } from './api/client';
 import { setPendingAction, takePendingAction, clearPendingAction } from './composables/pendingAction.js';
 import { useStores } from './composables/useStores.js';
 import { useLegalDoc } from './composables/useLegalDoc.js';
-import { ImageViewer, openImageViewer } from './utils/imageViewer.js';
+// 预览器组件是 .vue（SFC 才会被编译）；状态与 open/close 函数仍在 utils/imageViewer.js
+import ImageViewer from './components/ImageViewer.vue';
+import { openImageViewer } from './utils/imageViewer.js';
 import { useMessages } from './composables/useMessages.js';
 import { useAuth } from './composables/useAuth';
 import { useRecharge } from './composables/useRecharge';

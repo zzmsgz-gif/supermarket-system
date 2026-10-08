@@ -15,6 +15,8 @@
  *   · 打开时锁 body 滚动；关闭时**恢复原样**（记 scrollY，用 position:fixed 技巧）
  *   · 监听 Esc / 遮罩点击 / 左右键；每次打开都重置监听，避免重复绑定导致关不掉
  */
+
+
 import { reactive } from 'vue';
 
 const state = reactive({
@@ -84,25 +86,10 @@ export function absImageUrl(u) {
   return u.startsWith('/') ? u : `/${u}`;
 }
 
-/** Vue 组件：直接 <ImageViewer /> 放进 App.vue 模板一次即可 */
-export const ImageViewer = {
-  name: 'ImageViewer',
-  setup() {
-    return { state, closeImageViewer, step, absImageUrl };
-  },
-  template: `
-    <Teleport to="body">
-      <div v-if="state.open" class="img-viewer" @click.self="closeImageViewer">
-        <button class="iv-close" type="button" aria-label="关闭" @click="closeImageViewer">&times;</button>
-        <button v-if="state.list.length > 1" class="iv-nav iv-prev" type="button" aria-label="上一张"
-                @click.stop="step(-1)">&#10094;</button>
-        <img class="iv-img" :src="absImageUrl(state.src)" alt="预览图" />
-        <button v-if="state.list.length > 1" class="iv-nav iv-next" type="button" aria-label="下一张"
-                @click.stop="step(1)">&#10095;</button>
-        <div v-if="state.list.length > 1" class="iv-count">{{ state.index + 1 }} / {{ state.list.length }}</div>
-      </div>
-    </Teleport>
-  `,
-};
+// ⚠️ 组件本身在 components/ImageViewer.vue —— 不要在这里用字符串 template 定义。
+// Vite 默认 runtime-only 构建**不编译**字符串 template，组件会静默不渲染
+// （控制台只有一行警告），2026-10-09 就是这么踩的：以为预览器坏了，其实是根本没挂载。
 
 export { state as imageViewerState };
+// step 供组件左右切换用（原来只在组件内部闭包里，抽成 .vue 后必须显式导出）
+export { step };

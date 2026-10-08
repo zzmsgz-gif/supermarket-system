@@ -306,7 +306,7 @@ export function useAuth(deps) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      fail('头像图片大小不能超过 10MB，请压缩后重试');
+      notice.value = '头像图片大小不能超过 10MB，请压缩后重试';
       e.target.value = '';
       return;
     }
@@ -319,7 +319,9 @@ export function useAuth(deps) {
       await loadMe();
       notice.value = '头像已更新';
     } catch (err) {
-      fail(err?.message || '头像上传失败');
+      // 上传失败用轻提示而不是 fail() 弹窗（2026-10-09 用户要求）：
+      // 弹窗要手动点掉，换头像失败这种小事打断感太强，toast 足够。
+      notice.value = err?.message || '头像上传失败，请重试';
     } finally {
       e.target.value = '';
     }

@@ -5,26 +5,34 @@
       <small>昵称、性别、生日、邮箱可直接改；手机号换绑需要验证新号</small>
     </div>
 
-    <!-- 头像：单击放大（与导航栏一致），改头像走上传 -->
+    <!-- 头像：点图片**放大看大图**，改头像走下面的「更换头像」按钮（2026-10-09）。
+         两个动作分开：点图片是想看清，点按钮是想换。混在一起会误触。 -->
     <div class="pf-avatar-row">
-      <span class="pf-avatar">
+      <span
+        class="pf-avatar"
+        :class="{ 'is-clickable': !!form.avatarUrl }"
+        :title="form.avatarUrl ? '点击看大图' : ''"
+        @click="previewAvatar"
+      >
         <img v-if="form.avatarUrl" :src="form.avatarUrl" alt="头像" />
         <span v-else class="avatar-default">{{ initial }}</span>
       </span>
       <div class="pf-avatar-ops">
         <button class="ghost sm" type="button" @click="pickAvatar">更换头像</button>
-        <small>支持 jpg / png，建议方形</small>
+        <small>支持 jpg / png</small>
       </div>
     </div>
 
     <form class="pf-form" @submit.prevent="save">
+      <!-- 必填项标红色 *：只标**真的会校验**的字段（昵称、手机号）。
+           标了 * 却不校验，等于骗用户 —— 见 validate() 里的对应规则。 -->
       <label class="pf-row">
-        <span>昵称</span>
+        <span><i class="req">*</i>昵称</span>
         <input v-model.trim="form.nickname" maxlength="40" placeholder="给自己起个名字" />
       </label>
 
       <label class="pf-row">
-        <span>性别</span>
+        <span>性别<em class="opt">选填</em></span>
         <select v-model="form.gender">
           <option value="">未设置</option>
           <option value="MALE">男</option>
@@ -34,18 +42,18 @@
       </label>
 
       <label class="pf-row">
-        <span>生日</span>
+        <span>生日<em class="opt">选填</em></span>
         <input v-model="form.birthday" type="date" :max="today" />
       </label>
 
       <label class="pf-row">
-        <span>邮箱</span>
+        <span>邮箱<em class="opt">选填</em></span>
         <input v-model.trim="form.email" type="email" placeholder="用于接收通知" />
       </label>
 
       <!-- 手机号：换绑要验证新号（第 9 条的关键安全点） -->
       <div class="pf-row">
-        <span>手机号</span>
+        <span><i class="req">*</i>手机号</span>
         <div class="pf-phone">
           <input v-model.trim="form.phone" type="tel" placeholder="11 位手机号" />
           <template v-if="phoneChanged">
@@ -153,8 +161,12 @@ export default {
 
     async function save() {
       pfError.value = '';
-      if (phoneChanged.value && !verifyToken.value) {
-        pfError.value = '更换手机号需要先验证新手机号';
+      const err = validate();
+      if (err) {
+        // 表单内红字 + 轻提示双保险：红字持续可见（用户改完字段还在），
+        // 轻提示吸引注意（有些用户不会往下看表单）
+        pfError.value = err;
+        notify(err);
         return;
       }
       saving.value = true;
@@ -178,9 +190,11 @@ export default {
           verifyToken.value = '';
           devCode.value = '';
         }
-        appCtx?.flash?.('资料已保存');
+        notify('资料已保存');
       } catch (e) {
-        pfError.value = e?.message || '保存失败';
+        const msg = e?.message || '保存失败';
+        pfError.value = msg;
+        notify(msg);          // 失败同样要提示，否则用户不知道到底存没存上
       } finally {
         saving.value = false;
       }
@@ -193,9 +207,11 @@ export default {
         const res = await api.post('/auth/phone-verify/request', { phone: form.phone });
         // 未接短信通道时后端会回传验证码（联调），接上通道后为 null
         devCode.value = res?.devCode || '';
-        appCtx?.flash?.(devCode.value ? `验证码：${devCode.value}` : '验证码已发送');
+        notify(devCode.value ? `验证码：${devCode.value}` : '验证码已发送');
       } catch (e) {
-        pfError.value = e?.message || '发送失败';
+        const msg = e?.message || '验证码发送失败';
+        pfError.value = msg;
+        notify(msg);
       } finally {
         sending.value = false;
       }
@@ -207,9 +223,11 @@ export default {
           { phone: form.phone, code: verifyCode.value });
         verifyToken.value = res?.verifyToken || '';
         pfError.value = '';
-        appCtx?.flash?.('验证通过，别忘了点保存资料');
+        notify('验证通过，别忘了点保存资料');
       } catch (e) {
-        pfError.value = e?.message || '验证失败';
+        const msg = e?.message || '验证失败';
+        pfError.value = msg;
+        notify(msg);
       }
     }
 
@@ -226,9 +244,11 @@ export default {
           confirmPassword: pw.confirmPassword,
         });
         pw.oldPassword = pw.newPassword = pw.confirmPassword = '';
-        appCtx?.flash?.('密码已修改');
+        notify('密码已修改');
       } catch (e) {
-        pwError.value = e?.message || '修改失败';
+        const msg = e?.message || '修改失败';
+        pwError.value = msg;
+        notify(msg);
       } finally {
         pwSaving.value = false;
       }
@@ -241,6 +261,39 @@ export default {
       localStorage.setItem('supermarket_user', JSON.stringify(session.user));
     }
 
+    /**
+     * 轻提示（toast）。
+     *
+     * <p>⚠️ 这里**不能写 `appCtx?.flash?.()`** —— appCtx 上压根没有 flash 这个方法，
+     * 可选链会把它变成一次静默的空操作：代码看起来执行了、用户却什么都看不到
+     * （2026-10-09「保存资料没提示」就是这个原因）。
+     * 项目里真正的提示是 `notice`（ref，3.2 秒后自动消失）。
+     */
+    function notify(msg) {
+      const n = appCtx?.notice;
+      if (n && typeof n === 'object' && 'value' in n) n.value = msg;
+    }
+
+    /** 点头像看大图 —— 复用全局图片预览器 */
+    function previewAvatar() {
+      if (form.avatarUrl) appCtx?.openImageViewer?.(form.avatarUrl);
+    }
+
+    /**
+     * 必填校验。
+     *
+     * <p>只校验**标了红色 ***的字段（昵称、手机号）。
+     * 标了星号却不校验等于骗用户 —— 所以这里的规则必须和模板上的 * 一一对应。
+     */
+    function validate() {
+      if (!form.nickname || !form.nickname.trim()) return '请填写昵称';
+      const phone = (form.phone || '').trim();
+      if (!phone) return '请填写手机号';
+      if (!/^1[3-9]\d{9}$/.test(phone)) return '手机号格式不正确';
+      if (phoneChanged.value && !verifyToken.value) return '更换手机号需要先验证新手机号';
+      return '';
+    }
+
     /** 复用导航栏那套头像上传（App.vue 的隐藏 input + onAvatarPick），
      *  不自己再实现一遍 —— 两处各写一套上传必然出现「一处能传一处不能传」。 */
     function pickAvatar() {
@@ -250,11 +303,21 @@ export default {
     // 导航栏上传完头像后 session.user.avatarUrl 会变，这里跟着刷新显示
     watch(() => session?.user?.avatarUrl, (v) => { if (v) form.avatarUrl = v; });
 
-    onMounted(fill);
+    /**
+     * ⚠️ 这里必须 **等 loadMe() 回来再 fill 一次**（2026-10-09 修的真 bug）：
+     * 首次 fill 用的是 localStorage 里的 user 快照，它可能缺字段（老版本缓存、
+     * 或别处写入时没带 phone），于是表单一直是空的、用户一点保存就报「请填写手机号」。
+     * 用服务端返回的权威数据再填一遍才靠谱。
+     */
+    onMounted(async () => {
+      fill();
+      await appCtx?.loadMe?.();
+      fill();
+    });
 
     return { form, pw, saving, pwSaving, pfError, pwError, sending, verifyCode, devCode,
              verifyToken, today, initial, phoneChanged,
-             save, sendVerify, confirmVerify, savePassword, pickAvatar };
+             save, sendVerify, confirmVerify, savePassword, pickAvatar, previewAvatar };
   },
 };
 </script>
