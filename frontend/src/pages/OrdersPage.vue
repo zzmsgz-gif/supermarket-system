@@ -15,6 +15,17 @@
               <span :class="['tag', order.fulfillmentType === 'PICKUP' ? 'ok' : 'muted']">{{ fulfillmentLabel(order) }}</span>
               <span class="order-amount">{{ money(order.payAmount) }}</span>
             </div>
+            <!-- 找订单的关键信息（2026-10-07 用户反馈：「光看一个订单编号很难找到想找的订单」）。
+                 编号对人无意义，用户真正记得住的是「什么时候买的」「买了什么」。
+                 最多列 3 件 —— 再多会把卡片撑高，反而更难扫。 -->
+            <div class="order-goods" v-if="(order.items || []).length">
+              <span v-for="it in (order.items || []).slice(0, 3)" :key="it.id" class="order-goods-item">
+                <img v-if="it.productCoverUrl" :src="it.productCoverUrl" :alt="it.productName" loading="lazy" />
+                <em>{{ it.productName }}</em><i>×{{ it.quantity }}</i>
+              </span>
+              <small v-if="order.items.length > 3" class="og-more">另有 {{ order.items.length - 3 }} 件</small>
+            </div>
+            <small class="order-time">下单 {{ formatDate(order.createdAt) }}</small>
             <small>{{ formatPaymentStatus(order.paymentStatus) }}<template v-if="orderSavedTotal(order) > 0"> · 已优惠 -{{ money(orderSavedTotal(order)) }}</template></small>
             <small v-if="order.status === 'PAID'" class="ship-hint">{{ order.fulfillmentType === 'PICKUP'
               ? '门店备货中，备好后凭自提码到店取货'

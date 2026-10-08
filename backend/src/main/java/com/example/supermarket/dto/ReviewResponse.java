@@ -13,6 +13,15 @@ public class ReviewResponse {
     private Long productId;
     private String productName;
     private String nickname;
+    /**
+     * 评价者头像（2026-10-07 用户要求「用户评价时显示头像」）。
+     *
+     * <p>与 {@code nickname} 的脱敏策略**刻意不同**：昵称打码是为了不泄露真实姓名/手机号，
+     * 而头像是用户自己主动上传的公开形象，不属于隐私，电商平台普遍展示。
+     *
+     * <p>为 null 时前端渲染昵称首字母占位（见 ProductPage 的 review-avatar）。
+     */
+    private String avatarUrl;
     private Integer rating;
     private String content;
     private List<String> imageUrls;
@@ -28,6 +37,7 @@ public class ReviewResponse {
         response.setProductId(review.getProductId());
         response.setProductName(productName);
         response.setNickname(maskNickname(user));
+        response.setAvatarUrl(user == null ? null : user.getAvatarUrl());
         response.setRating(review.getRating() == null ? null : review.getRating().intValue());
         response.setContent(review.getContent());
         response.setImageUrls(parseImageUrls(review.getImageUrls()));
@@ -99,6 +109,14 @@ public class ReviewResponse {
 
     public void setNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
     public Integer getRating() {

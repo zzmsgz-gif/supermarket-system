@@ -46,7 +46,10 @@ export function useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal,
   }
 
   function resetRefundSearch() {
-    refundStatusFilter.value = 'APPLYING';
+    // 与 App.vue 的 refundStatusFilter 初值保持一致（空 = 全部）。
+    // 保持一致很重要：这两处不同步的话，「重置」会把筛选从「全部」弹回「申请中」，
+    // 用户立刻又看不到已通过的记录，以为记录又被删了。
+    refundStatusFilter.value = '';
     refundOrders.page = 1;
     loadRefundOrders();
   }

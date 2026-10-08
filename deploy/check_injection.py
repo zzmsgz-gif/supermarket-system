@@ -142,6 +142,30 @@ def check_appctx_exports(src: Path) -> list[str]:
             if re.fullmatch(r'[A-Za-z_$][\w$]*', key) and key in called and key not in mounted:
                 problems.append(f'  appCtx.{key} 被调用但未挂载（已从 composable 解构）')
 
+    # App.vue 上「真正有定义」的标识符：import / const / let / function / 解构
+    defined: set[str] = set()
+    for group in re.findall(r'import\s*\{([^}]*)\}', app_src):
+        for piece in group.split(','):
+            piece = piece.strip()
+            if piece:
+                defined.add(piece.split(' as ')[-1].strip())
+    defined |= set(re.findall(r'(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)', app_src))
+    for group in re.findall(r'const\s*\{([^}]*)\}\s*=', app_src):
+        for part in split_top_level(group):
+            key = part.split(':')[0].split('=')[0].strip()
+            if re.fullmatch(r'[A-Za-z_$][\w$]*', key):
+                defined.add(key)
+    # Vue 生命周期钩子与宏
+    defined |= {'defineProps', 'defineEmits', 'defineModel', 'defineExpose', 'defineOptions'}
+
+    # ⚠️ appCtx 上挂了「App.vue 里根本没定义」的符号 —— 页面直接白屏。
+    # 实例（2026-10-07）：给 appCtx 加了 openImageViewer 却忘了 import，
+    # 运行时报 `openImageViewer is not defined`、整页正文长度为 0。
+    # 这与「声明了但没传」正好相反：前者是 appCtx 有、定义无；后者是定义有、appCtx 无。
+    ghosts = sorted(m for m in mounted if m not in defined)
+    for g in ghosts:
+        problems.append(f'  appCtx 挂了 {g}，但 App.vue 里没有它的定义（import/声明）')
+
     return sorted(set(problems))
 
 

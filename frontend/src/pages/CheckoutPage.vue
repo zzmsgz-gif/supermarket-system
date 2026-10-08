@@ -142,23 +142,41 @@
           <div class="row"><span>商品金额</span><strong>{{ money(cartLocalTotal) }}</strong></div>
           <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
           <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
+          <!-- 积分抵扣金额与券/活动并排成同一组（原先它被夹在运费行前面，读起来像在算运费） -->
+          <div v-if="usePoints && memberPreview.pointsUsed > 0" class="row">
+            <span>积分抵扣（{{ memberPreview.pointsUsed }} 分）</span>
+            <strong class="minus">- {{ money(memberPreview.pointsValue) }}</strong>
+          </div>
 
-          <div class="checkout-points" v-if="session.user">
+<div class="checkout-points" v-if="session.user">
+            <!-- 2026-10-07 布局优化：原先积分撑成 3 个独立行（勾选 / 输入 / 抵扣结果），
+                 纵向拉得很高，且抵扣结果夹在运费行前面、顺序反直觉。
+                 现在合成一张卡片：开关 + 用多少分 + 抵多少 + 全部抵扣，
+                 抵扣金额本身移到下面的优惠区，与券/活动对齐成同一组。 -->
             <label class="points-toggle">
               <input type="checkbox" v-model="usePoints" :disabled="memberPreview.maxRedeemPoints <= 0 || memberPreview.userPoints <= 0" />
               <span>使用积分抵扣</span>
-              <small v-if="memberPreview.maxRedeemPoints > 0 && memberPreview.userPoints > 0">（可用 {{ Math.min(memberPreview.userPoints, memberPreview.maxRedeemPoints) }} 分，最多抵 {{ money(memberPreview.maxRedeemValue) }}）</small>
+              <small v-if="memberPreview.maxRedeemPoints > 0 && memberPreview.userPoints > 0">可用 {{ memberPreview.userPoints }} 分</small>
               <small v-else>当前无可用积分</small>
             </label>
-            <div class="points-input" v-if="usePoints && memberPreview.maxRedeemPoints > 0">
-              <input type="number" min="0" :max="memberPreview.maxRedeemPoints" v-model.number="pointsToUse" @input="clampPoints" placeholder="输入抵扣积分" />
+            <div class="points-panel" v-if="usePoints && memberPreview.maxRedeemPoints > 0">
+              <div class="pp-field">
+                <label for="checkoutPointsInput">使用分数</label>
+                <input id="checkoutPointsInput" type="number" min="0" :max="memberPreview.maxRedeemPoints"
+                       v-model.number="pointsToUse" @input="clampPoints" />
+                <span class="pp-unit">分</span>
+              </div>
+              <div class="pp-result">
+                <span>可抵扣</span>
+                <strong>- {{ money(memberPreview.pointsValue || 0) }}</strong>
+              </div>
               <button class="ghost sm" @click="useMaxPoints" type="button">全部抵扣</button>
             </div>
-            <div class="row points-row" v-if="usePoints && memberPreview.pointsUsed > 0">
-              <span>积分抵扣（{{ memberPreview.pointsUsed }} 分）</span>
-              <strong class="minus">- {{ money(memberPreview.pointsValue) }}</strong>
-            </div>
+            <small v-if="!usePoints && memberPreview.maxRedeemPoints > 0" class="points-hint">
+              最多可用 {{ memberPreview.maxRedeemPoints }} 分，本单可抵 {{ money(memberPreview.maxRedeemPoints / 100) }}
+            </small>
           </div>
+
 
           <div v-if="memberPreview.freight > 0" class="row"><span>运费（快递配送）</span><strong>+ {{ money(memberPreview.freight) }}</strong></div>
           <div v-else-if="isExpress" class="row"><span>运费（快递配送）</span><strong class="text-ok">已满 ¥99 免运费</strong></div>

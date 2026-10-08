@@ -39,21 +39,9 @@
             <button class="ghost" :disabled="paySubmitting" @click="cancelThisOrder">取消订单</button>
           </div>
 
-          <!-- ===== 履约操作区 =====
-               此前「确认收货」「申请售后」只挂在订单列表页的行尾按钮里，用户点进详情
-               （查看订单状态最自然的地方）却办不了事，得跳回列表 —— 2026-10-07 补上。
-               可用性条件与后端一致（OrderService.applyRefund 现只收 COMPLETED）：
-                 · 确认收货：仅 SHIPPED
-                 · 申请售后：仅 COMPLETED（收到货之后）。
-               SHIPPED 时额外给一句「确认收货后可申请售后」—— 售后按钮此时不出现，
-               不解释的话用户只会以为页面坏了（后端 409 的文案他看不到）。 -->
-          <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions">
-            <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
-              确认收货
-            </button>
-            <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">申请售后</button>
-            <small v-if="canConfirmReceipt" class="refund-hint">确认收货后，如有问题可申请售后</small>
-          </div>
+<!-- 履约操作区已移到页面最底部（order-summary 之后）——
+     2026-10-07 用户要求「确认收货按钮改到右下角」。原先夹在顶部状态旁很突兀，
+     且和「申请售后」并排容易误点（收货是常规履约，售后是异常处理）。 -->
           <!-- 售后申请表单：与列表页同一套 submitRefund/openRefundForm -->
           <form v-if="localRefund.open" class="refund-form-inline" @submit.prevent="sendRefund">
             <h4>申请售后</h4>
@@ -182,6 +170,25 @@
               <b>{{ formatRefundStatus(orderDetail.data.refundStatus) }}<template v-if="orderDetail.data.refundReason"> · {{ orderDetail.data.refundReason }}</template><template v-if="orderDetail.data.refundRemark"> · 处理意见：{{ orderDetail.data.refundRemark }}</template><template v-if="amount"> · 退款额 {{ money(amount.pay) }}</template></b>
             </div>
             <div class="order-row" v-if="orderDetail.data.remark"><span>备注</span><b>{{ orderDetail.data.remark }}</b></div>
+          </div>
+
+          <!-- ===== 履约操作区（放在页面最底部）=====
+               2026-10-07 用户要求「确认收货按钮改到右下角」。原先它挂在顶部状态旁，
+               而用户读订单详情是自上而下扫的：状态在最上、金额在中、收货信息在底，
+               操作按钮却夹在中间很突兀；而且它和「申请售后」性质不同
+               （收货是履约动作，售后是异常处理），并排放在一起容易误点。
+
+               ⚠️ 条件与后端严格一致：
+                 · 确认收货：仅 SHIPPED（已发货/待取货）
+                 · 申请售后：仅 COMPLETED（收到货之后）
+               SHIPPED 时补一句「确认收货后，如有问题可申请售后」——
+               售后按钮此时不出现，不解释用户只会以为页面坏了（后端 409 文案他看不到）。 -->
+          <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions detail-actions">
+            <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
+              确认收货
+            </button>
+            <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">申请售后</button>
+            <small v-if="canConfirmReceipt" class="refund-hint">确认收货后，如有问题可申请售后</small>
           </div>
         </template>
       </section>

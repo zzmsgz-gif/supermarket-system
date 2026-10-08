@@ -145,7 +145,7 @@
             <b>-{{ money(selectedCoupon.discountAmount) }}</b>
           </div>
           <div class="cs-row total">
-            <span>应付总额<small v-if="cartTotalSaved > 0" class="cs-saved">已省 {{ money(cartTotalSaved) }}</small></span>
+            <span>应付总额</span>
             <b class="cs-pay">{{ money(orderPayPreview) }}</b>
           </div>
           <small v-if="cartOriginalSave > 0" class="cs-note">明细行已标出各商品划线价直降 {{ money(cartOriginalSave) }}，均已含在商品单价里</small>
@@ -154,7 +154,6 @@
         <div v-if="cart.items?.length" class="submit-bar">
           <div class="submit-meta">
             <span class="total">应付 <b>{{ money(orderPayPreview) }}</b></span>
-            <span v-if="cartTotalSaved > 0" class="total-save">已省 {{ money(cartTotalSaved) }}</span>
             <!-- 有失效行就地把结算口堵住：不让用户填完一遍配送信息才被打回 -->
             <span v-if="blockedCount > 0" class="total-warn">有 {{ blockedCount }} 件已勾选商品买不了，请先移除</span>
           </div>

@@ -65,8 +65,14 @@
                 @keydown.space.prevent="toggleAccountMenu"
               >
                 <span class="account-avatar-wrap tier-ring" :class="'lv' + (session.user?.memberLevel || 0)" :title="'等级：' + tierNameFor(session.user?.memberLevel)">
-                  <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击更换头像" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="avatarInput?.click()" />
-                  <span v-else class="avatar-img avatar-default avatar-clickable" title="点击更换头像" @click.stop="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
+                  <!-- 单击 → 放大看头像（2026-10-07 用户要求）。
+                       ⚠️ 用户原话是「双击放大、双击改头像」，但**双击在触屏上是浏览器缩放手势**、
+                       误触率高，而且双击这个意图用户根本看不见。
+                       改成：单击放大 → 预览层里放「更换头像」按钮，意图明确、一步可达。
+                       原来的行为是「单击直接弹文件选择器」—— 没有任何预览，用户
+                       连自己头像长什么样都看不到。 -->
+                  <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击查看大图" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="avatarPreviewOpen = true" />
+                  <span v-else class="avatar-img avatar-default avatar-clickable" title="点击设置头像" @click.stop="avatarPreviewOpen = true">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
                   <!-- 导航条取消后，未读提醒收在头像上：不展开下拉也能看见 -->
                   <span v-if="!isAdmin && accountDotTitle" class="account-dot" :title="accountDotTitle"></span>
                 </span>
@@ -103,6 +109,7 @@
                   <button role="menuitem" class="menu-danger" @click="logout">退出登录</button>
                 </div>
               </div>
+
             </div>
           </template>
           <template v-else>
@@ -249,6 +256,29 @@
     </Transition>
 
     <!-- 登录 / 注册 / 改密 / 找回 已拆成独立路由页 /login（见 pages/LoginPage.vue），此处不再渲染 modal -->
+
+    <!-- 图片预览器：全局挂一个就够。评价晒图、头像放大等都由 openImageViewer() 调起
+         （见 utils/imageViewer.js）—— 放在模板末尾而不是某个页面里，
+         是为了让任何组件都能唤起它，且 Teleport 到 body 不会被局部 overflow 裁掉。 -->
+    <ImageViewer />
+
+    <!-- 头像预览层（第 8 条：单击头像放大，换头像放在这一层里做）。
+         不用「双击改头像」：双击在触屏上是浏览器缩放手势、误触高，
+         且这个意图用户看不见；单击放大 + 明确的「更换头像」按钮更直接。 -->
+    <Teleport to="body">
+      <div v-if="avatarPreviewOpen" class="avatar-preview" @click.self="avatarPreviewOpen = false">
+        <div class="ap-card">
+          <button class="ap-close" type="button" aria-label="关闭" @click="avatarPreviewOpen = false">&times;</button>
+          <div class="ap-img">
+            <img v-if="session.user?.avatarUrl" :src="session.user.avatarUrl" alt="头像大图" />
+            <span v-else class="avatar-default ap-default">{{ (session.user?.nickname || session.user?.username || '?').charAt(0) }}</span>
+          </div>
+          <div class="ap-name">{{ session.user?.nickname || session.user?.username }}</div>
+          <div class="ap-tier">{{ isAdmin ? '管理员' : tierNameFor(session.user?.memberLevel) }}</div>
+          <button class="ap-change" type="button" @click="avatarPreviewOpen = false; avatarInput?.click()">更换头像</button>
+        </div>
+      </div>
+    </Teleport>
   </main>
 </template>
 
@@ -260,6 +290,7 @@ import { api, setToken, isRemembered } from './api/client';
 import { setPendingAction, takePendingAction, clearPendingAction } from './composables/pendingAction.js';
 import { useStores } from './composables/useStores.js';
 import { useLegalDoc } from './composables/useLegalDoc.js';
+import { ImageViewer, openImageViewer } from './utils/imageViewer.js';
 import { useMessages } from './composables/useMessages.js';
 import { useAuth } from './composables/useAuth';
 import { useRecharge } from './composables/useRecharge';
@@ -371,6 +402,8 @@ const avatarInput = ref(null);
 // 右上角「我的」下拉：导航收敛后，个人中心的全部入口都收在这里。
 // ⚠️ 宿主 .account-menu-wrap 必须 position:relative，否则 absolute 面板会挂到视口上（同 .nav-badge 的教训）。
 const accountMenuOpen = ref(false);
+// 头像预览层开关（第 8 条）。单击头像打开，里面同时提供「更换头像」。
+const avatarPreviewOpen = ref(false);
 function toggleAccountMenu() { accountMenuOpen.value = !accountMenuOpen.value; }
 function closeAccountMenu() { accountMenuOpen.value = false; }
 function onDocumentClick(event) { if (!event.target.closest('.account-menu-wrap')) closeAccountMenu(); }
@@ -456,7 +489,11 @@ const adminOrderStatus = ref('');
 const adminOrderJumpPage = ref(1);
 
 // 管理后台退款（售后）列表：筛选与分页状态
-const refundStatusFilter = ref('APPLYING');
+// 后台售后列表默认筛选。**默认为空（全部）而不是锁死「申请中」**：
+// 审核通过后 refund_status 变 APPROVED，订单行并没有被删除，但在「申请中」筛选下
+// 就看不见了 —— 用户以为「同意退款后那条记录被删掉了」（2026-10-07 用户报）。
+// 售后是**需要留痕的财务记录**，管理员默认就该看到全部历史。
+const refundStatusFilter = ref('');
 const refundJumpPage = ref(1);
 
 // 管理后台用户列表：查询条件与分页状态
@@ -883,7 +920,7 @@ onBeforeUnmount(() => {
 });
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
-const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
+const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, openImageViewer, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCart, loadCategories, loadCoupons, loadDwellRank, loadGuess, loadHomeChannels, loadHot, loadMe, loadMyCoupons, loadNew, loadOrders, loadProducts, loadRefundOrders, loadReviewedFlags, loadStockAlerts, loadUsableCoupons, loadWallet, loginForm, logout, methodLabel, money, myCoupons, navigate, newProducts, nextTick, notice, onAvatarPick, onBeforeUnmount, onCustomAmountInput, onMounted, onQtyChange, onQtyInput, openAuth, openOrderDetail, openProductDetail, openRefundForm, openReviewForm, orderDetail, orderPayPreview, orderStatusTag, orders, payOrder, payRechargeOrder, paying, productDetail, productForm, products, provide, qrSvg, reactive, receiveCoupon, recharge, rechargePresets, ref, refreshAdminData, refreshForSession, refundForm, refundJumpPage, refundOrders, refundStatusFilter, refundStatusTag, registerForm, relatedProducts, rememberUser, removeCartItem, reportDwell, resetAuthErrors, resetFilters, resetRecharge, resolveConfirm, resolveUnit, reviewForm, reviewedMap, run, safeParseSpec, saveAddress, selectCoupon, selectRechargePreset, selectedAddress, selectedAddressId, selectedCoupon, selectedSku, selectedSpec, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, selectedUserCouponId, session, setToken, shipStatusOf, showAlert, specDimensions, startCountdown, stepQty, stockAlerts, submitLogin, submitRefund, submitRegister, submitReview, switchAuth, usableCoupons, useAddress, userOptedOutCoupon, validateRegisterForm, memberProfile, memberLedger, memberLevels, usePoints, pointsToUse, tierRateForLevel, tierNameFor, memberPreview, loadMemberProfile, loadMemberLedger, loadMemberLevels, favoriteIds, favorites, priceAlerts, alertUnread, isFavorite, toggleFavorite, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadAlertUnread, markAlertsRead, stores, deliverySlots, fulfillment, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment, messages, messageUnread, messageTypeFilter, loadMessages, loadMessageUnread, changeMessageFilter, markMessagesRead, openMessage, flashSales, runningFlashSales, loadFlashSales, flashRemaining, flashDeadlineText, formatDuration, nowTick, legalDocs, loadLegalDoc, view, wallet, watch, cartQtyMax, cartQtyCapped, isFlashSplit, flashSplitNote, flashSaleOfProduct, flashLimitOfProduct, flashLimitMessage };
 appCtx.orders = orders;
 appCtx.loadOrders = loadOrders;
 appCtx.loadMoreOrders = loadMoreOrders;

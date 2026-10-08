@@ -1838,6 +1838,35 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 .ship-line { color: var(--ink); }
 .ship-flag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; background: #e8f1fd; color: #2f74d0; font-size: 12px; }
 
+/* 订单列表里的商品摘要 + 下单时间（问题 10：光看订单编号找不到订单）。
+   紧凑单行横向排列：用户扫一行就能认出「买了什么」，多行反而会挤乱卡片。 */
+.order-goods {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+.order-goods-item { display: inline-flex; align-items: center; gap: 5px; max-width: 210px; }
+.order-goods-item img {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f4f5f3;
+  flex: none;
+}
+.order-goods-item em {
+  font-style: normal;
+  color: var(--ink);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-goods-item i { font-style: normal; color: var(--muted); font-size: 12px; flex: none; }
+.order-goods .og-more { color: var(--muted); font-size: 12px; }
+.order-time { color: var(--muted); font-size: 12px; }
+
 .row-extra-tr > td {
   padding: 0;
   border-bottom: 1px solid var(--line);
@@ -4947,3 +4976,218 @@ button.mini.danger:hover {
   border-radius: 8px; padding: 7px; font-size: 12px; cursor: pointer;
 }
 .tier-preview-fab .tpf-clear:hover { background: #f3f4f6; }
+
+/* ==========================================================================
+   全局：去掉输入类控件点击后的「莫名轮廓」（2026-10-07 用户报）
+   --------------------------------------------------------------------------
+   现象：点进任何输入框/下拉/文本域，元素上出现一圈浏览器默认焦点环，
+        在这套浅色圆角设计里显得很脏；有时 textarea 右下角还出现可拖拽的 resize 抓手。
+
+   ⚠️ 为什么不能直接写 `*:focus { outline: none }`：那会连**键盘用户的可见焦点指示**
+      一起干掉 —— 纯键盘 Tab 导航时完全看不出焦点在哪，这是无障碍倒退。
+      正确做法：只对**鼠标点击**（:focus-visible 不匹配）去掉，
+      键盘 Tab 仍然保留可见焦点环。
+   ========================================================================== */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus,
+[contenteditable]:focus {
+  outline: none;
+}
+/* 键盘可达性：Tab 走焦点的控件仍给品牌色焦点环 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible,
+[contenteditable]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+/* 文本域右下角那个拖拽把手在本项目没有实际用途，去掉 */
+textarea {
+  resize: none;
+}
+/* select 的原生下拉箭头在部分浏览器里是双层箭头 + 点击时出现轮廓框，一并规整 */
+select {
+  outline: none;
+}
+
+/* 订单详情页底部的履约操作区（问题 5：确认收货按钮挪到右下角）。
+   ⚠️ 不能靠 .pay-actions：它在 2648 行是 grid、4898 行被覆盖成 flex，
+   且这些是支付页共用的类。detail-actions 独立定义并右对齐。 */
+.detail-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+}
+.detail-actions .refund-hint {
+  flex-basis: 100%;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+/* 窄屏下按钮占满一行，避免挤成两半 */
+@media (max-width: 480px) {
+  .detail-actions { flex-direction: column; align-items: stretch; }
+  .detail-actions button { width: 100%; }
+  .detail-actions .refund-hint { text-align: center; }
+}
+
+/* ==========================================================================
+   图片预览器 Lightbox（utils/imageViewer.js）
+   全站共用一个，评价晒图 / 头像放大都调它。
+   ========================================================================== */
+.img-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(20, 22, 21, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: iv-fade 140ms ease;
+}
+@keyframes iv-fade { from { opacity: 0; } to { opacity: 1; } }
+.iv-img {
+  max-width: 90vw;
+  max-height: 86vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.iv-close {
+  position: absolute;
+  top: 16px; right: 20px;
+  width: 38px; height: 38px;
+  border: none; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff; font-size: 26px; line-height: 1;
+  cursor: pointer;
+}
+.iv-close:hover { background: rgba(255, 255, 255, 0.28); }
+.iv-nav {
+  position: absolute; top: 50%;
+  transform: translateY(-50%);
+  width: 44px; height: 60px;
+  border: none; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff; font-size: 22px;
+  cursor: pointer;
+}
+.iv-nav:hover { background: rgba(255, 255, 255, 0.26); }
+.iv-prev { left: 18px; }
+.iv-next { right: 18px; }
+.iv-count {
+  position: absolute; bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  color: #fff; font-size: 13px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 4px 12px; border-radius: 999px;
+}
+
+/* 评价区：头像 + 可放大的晒图 */
+.review-item { display: block; }
+.review-head { display: flex; align-items: center; gap: 8px; }
+.review-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #eef1ee;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6f7a72;
+  font-size: 12px;
+  font-style: normal;
+  overflow: hidden;
+}
+.review-user { font-weight: 500; color: var(--ink); }
+.review-imgs img { cursor: zoom-in; transition: opacity 140ms ease; }
+.review-imgs img:hover { opacity: 0.85; }
+
+/* 头像预览层（第 8 条：单击放大 + 层内换头像） */
+.avatar-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  background: rgba(20, 22, 21, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: iv-fade 140ms ease;
+}
+.ap-card {
+  position: relative;
+  width: min(300px, 88vw);
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px 20px 20px;
+  text-align: center;
+}
+.ap-close {
+  position: absolute;
+  top: 8px; right: 10px;
+  width: 30px; height: 30px;
+  border: none; border-radius: 50%;
+  background: #f1f3f1; color: #5b6660;
+  font-size: 20px; line-height: 1;
+  cursor: pointer;
+}
+.ap-close:hover { background: #e6e9e6; }
+.ap-img {
+  width: 128px; height: 128px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #eef1ee;
+}
+.ap-img img { width: 100%; height: 100%; object-fit: cover; }
+.ap-default { font-size: 46px; color: #6f7a72; }
+.ap-name { font-weight: 600; color: var(--ink); font-size: 15px; }
+.ap-tier { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.ap-change {
+  margin-top: 16px;
+  width: 100%;
+  padding: 9px 0;
+  border: none; border-radius: 8px;
+  background: var(--brand); color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ap-change:hover { filter: brightness(1.06); }
+
+/* ===== 确认订单页：积分抵扣卡片（问题 3 布局优化）=====
+   原先是「勾选行 / 输入行 / 结果行」三个独立行，纵向拉得很高。
+   现在合成一张浅色卡片：开关一行，下面「用多少分 / 抵多少 / 全部抵扣」并排一行。 */
+.points-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f7f9f8;
+  border: 1px solid #e6ece9;
+  border-radius: 10px;
+}
+.pp-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+.pp-field input {
+  width: 110px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.pp-unit { color: var(--muted); font-size: 12px; }
+.pp-result { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+.pp-result strong { color: #c0392b; font-weight: 600; }
+.points-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }

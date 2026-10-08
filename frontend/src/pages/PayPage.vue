@@ -53,15 +53,34 @@
         </div>
       </div>
 
-      <!-- 金额明细 -->
+      <!-- 金额明细。
+           ⚠️ 这里原先只渲染了「优惠券抵扣」和「积分抵扣」两项，导致用户反馈
+           「我 200-50 他就没显示出来」——**满减属于 activityDiscount 字段，
+           本页从头到尾没有渲染它**，等于金额对不上（下方实付却是减过的）。
+           现在补齐四类，与订单详情页/后台的口径一致：
+             · discountAmount   优惠券抵扣
+             · activityDiscount 活动优惠（满减/秒杀折扣）
+             · memberDiscount   会员等级优惠
+             · pointsDiscount   积分抵扣
+           会员优惠「已含在商品单价里、不重复扣减」—— 这句话要显示，否则用户会以为漏算。 -->
       <div class="pay-summary">
         <div class="row"><span>商品合计</span><strong>{{ money(order.totalAmount) }}</strong></div>
         <div class="row"><span>运费</span><strong>{{ money(order.freightAmount) }}</strong></div>
-        <div v-if="Number(order.couponName ? order.discountAmount : 0) > 0" class="row">
-          <span>优惠券抵扣</span><strong class="minus">- {{ money(order.discountAmount) }}</strong>
+        <div v-if="num(order.discountAmount) > 0" class="row">
+          <span>{{ order.couponName || '优惠券' }}抵扣</span>
+          <strong class="minus">- {{ money(order.discountAmount) }}</strong>
         </div>
-        <div v-if="Number(order.pointsDiscount) > 0" class="row">
-          <span>积分抵扣</span><strong class="minus">- {{ money(order.pointsDiscount) }}</strong>
+        <div v-if="num(order.activityDiscount) > 0" class="row">
+          <span>活动优惠</span>
+          <strong class="minus">- {{ money(order.activityDiscount) }}</strong>
+        </div>
+        <div v-if="num(order.memberDiscount) > 0" class="row">
+          <span>会员优惠<small class="sum-note">已含在商品单价里，不重复扣减</small></span>
+          <strong class="minus">- {{ money(order.memberDiscount) }}</strong>
+        </div>
+        <div v-if="num(order.pointsDiscount) > 0" class="row">
+          <span>积分抵扣</span>
+          <strong class="minus">- {{ money(order.pointsDiscount) }}</strong>
         </div>
       </div>
 
@@ -100,6 +119,9 @@ export default {
     const route = useRoute();
 
     const order = ref(null);
+    // 金额比较统一走它：接口可能给 null（未参与某项优惠时），直接 Number(null)===0 没问题，
+    // 但 `order.x ? order.x : 0` 这种写法会把「有值但为 0」和「无值」混在一起，容易写错判断。
+    const num = (v) => Number(v || 0);
     const loading = ref(true);
     const loadError = ref('');
     const paying = ref(false);
@@ -269,7 +291,7 @@ export default {
       ...appCtx,
       order, loading, loadError, paying, remainingSec, mmss, totalQuantity,
       isPending, isPayable, stateClass, stateBadge, stateTitle, stateDesc,
-      doPay, doCancel,
+      doPay, doCancel, num,
     };
   },
 };

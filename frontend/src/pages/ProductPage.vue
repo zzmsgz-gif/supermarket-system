@@ -166,13 +166,22 @@
             <div v-else class="review-list">
               <div v-for="review in productDetail.reviews" :key="review.id" class="review-item">
                 <div class="review-head">
+                  <!-- 评价者头像（2026-10-07 用户要求）。没有头像时用昵称首字占位，
+                       不留空白 —— 空白头像会被误读成「加载失败」。 -->
+                  <span class="review-avatar">
+                    <img v-if="review.avatarUrl" :src="review.avatarUrl" :alt="review.nickname || '用户'" loading="lazy" />
+                    <template v-else>{{ initials(review.nickname || '匿') }}</template>
+                  </span>
                   <span class="review-user">{{ review.nickname || '匿名用户' }}</span>
                   <StarRating :rating="review.rating" />
                   <span class="review-date">{{ formatDate(review.createdAt) }}</span>
                 </div>
                 <p>{{ review.content || '默认好评' }}</p>
+                <!-- 晒图可点开看大图：一次传整个列表才能左右切换（2026-10-07 用户要求） -->
                 <div v-if="review.imageUrls && review.imageUrls.length" class="review-imgs">
-                  <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片" @error="imgFallback($event, '晒图')"  loading="lazy" decoding="async"/>
+                  <img v-for="(img, idx) in review.imageUrls" :key="idx" :src="img" alt="评价图片"
+                       @error="imgFallback($event, '晒图')" loading="lazy" decoding="async"
+                       @click="openImageViewer(img, { all: review.imageUrls, index: idx })" />
                 </div>
                 <!-- 商家回复：后台回完必须在这里露出来，否则"回复"这个动作等于白做 -->
                 <div v-if="review.replyContent" class="review-reply">
