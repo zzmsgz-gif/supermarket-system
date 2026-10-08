@@ -32,7 +32,7 @@
       </label>
 
       <label class="pf-row">
-        <span><i class="req"></i>性别<em class="opt">选填</em></span>
+        <span><i class="req"></i>性别</span>
         <select v-model="form.gender">
           <option value="">未设置</option>
           <option value="MALE">男</option>
@@ -42,12 +42,12 @@
       </label>
 
       <label class="pf-row">
-        <span><i class="req"></i>生日<em class="opt">选填</em></span>
+        <span><i class="req"></i>生日</span>
         <input v-model="form.birthday" type="date" :max="today" />
       </label>
 
       <label class="pf-row">
-        <span><i class="req"></i>邮箱<em class="opt">选填</em></span>
+        <span><i class="req"></i>邮箱</span>
         <input v-model.trim="form.email" type="email" placeholder="用于接收通知" />
       </label>
 
@@ -296,8 +296,16 @@ export default {
 
     /** 复用导航栏那套头像上传（App.vue 的隐藏 input + onAvatarPick），
      *  不自己再实现一遍 —— 两处各写一套上传必然出现「一处能传一处不能传」。 */
+    /**
+     * 打开文件选择器 —— 必须用 appCtx.pickAvatar()。
+     *
+     * <p>⚠️ 不能写 `appCtx?.avatarInput?.click?.()`：那是 **ref 对象**，
+     * JS 上下文没有模板的自动解包，`.click` 是 undefined，`?.` 把它变成静默空操作 ——
+     * 用户点「更换头像」毫无反应就是这么来的（2026-10-09）。
+     */
     function pickAvatar() {
-      appCtx?.avatarInput?.click?.();
+      if (typeof appCtx?.pickAvatar === 'function') appCtx.pickAvatar();
+      else appCtx?.avatarInput?.value?.click?.();   // 兜底：至少不会静默失败
     }
 
     // 导航栏上传完头像后 session.user.avatarUrl 会变，这里跟着刷新显示
