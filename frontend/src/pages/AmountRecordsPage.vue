@@ -36,7 +36,10 @@
             <span v-if="r.orderNo" class="arr-order" @click="goOrder(r.orderId)">
               订单 {{ r.orderNo }}
             </span>
-            <span v-if="r.remark">{{ r.remark }}</span>
+            <!-- ⚠️ 刻意**不展示** r.remark（2026-10-09 用户反馈）：
+                 那是给财务对账用的内部备注，内容是英文（Order payment / Refund approved /
+                 User recharge），夹在中文界面里既看不懂、也没有信息量 ——
+                 用户能看懂的部分（是支付还是退款）已经由上方 typeLabel 说明了。 -->
           </div>
         </div>
         <small class="arr-time">{{ formatDate(r.createdAt) }}</small>
