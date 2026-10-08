@@ -5449,3 +5449,10 @@ a.brand-link { text-decoration: none; color: inherit; }
 /* 有头像才可点开看大图：没图时点了没反应会更困惑，所以不给指针也不给 hover */
 .pf-avatar.is-clickable { cursor: zoom-in; }
 .pf-avatar.is-clickable:hover { opacity: 0.88; }
+
+/* 金额明细：汇总只有「支出/收入」两项时改两列 ——
+   原来三列（含「优惠省下」）已废弃：优惠属于订单金额构成，不该在流水里单列。 */
+.ar-summary.two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 560px) {
+  .ar-summary.two { grid-template-columns: 1fr; }
+}

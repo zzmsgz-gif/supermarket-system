@@ -5,11 +5,17 @@ import com.example.supermarket.dto.RechargeRequest;
 import com.example.supermarket.dto.WalletResponse;
 import com.example.supermarket.dto.WalletTransactionResponse;
 import com.example.supermarket.entity.SysUser;
+import com.example.supermarket.repository.OrderRepository;
 import com.example.supermarket.entity.WalletTransaction;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.SysUserRepository;
 import com.example.supermarket.repository.WalletTransactionRepository;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import com.example.supermarket.entity.OrderEntity;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -38,10 +44,13 @@ public class WalletService {
 
     private final SysUserRepository userRepository;
     private final WalletTransactionRepository transactionRepository;
+    private final OrderRepository orderRepository;
 
-    public WalletService(SysUserRepository userRepository, WalletTransactionRepository transactionRepository) {
+    public WalletService(SysUserRepository userRepository, WalletTransactionRepository transactionRepository,
+            OrderRepository orderRepository) {
         this.userRepository = userRepository;
         this.transactionRepository = transactionRepository;
+        this.orderRepository = orderRepository;
     }
 
     @Transactional(readOnly = true)
@@ -68,10 +77,53 @@ public class WalletService {
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<WalletTransaction> transactions = transactionRepository.findAll(byUserId(userId), pageable);
+        Map<Long, String> orderNos = orderNosOf(transactions.getContent());
         List<WalletTransactionResponse> items = transactions.getContent().stream()
-                .map(WalletTransactionResponse::from)
+                .map(t -> WalletTransactionResponse.from(t, orderNos.get(t.getOrderId())))
                 .toList();
         return PageResponse.of(items, safePage, safeSize, transactions.getTotalElements());
+    }
+
+    /** 批量取订单号：逐条查会 N+1，这里一次性 findAllById */
+    private Map<Long, String> orderNosOf(List<WalletTransaction> rows) {
+        Set<Long> ids = rows.stream()
+                .map(WalletTransaction::getOrderId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> map = new HashMap<>();
+        for (OrderEntity o : orderRepository.findAllById(ids)) {
+            map.put(o.getId(), o.getOrderNo());
+        }
+        return map;
+    }
+
+    /**
+     * 金额明细的汇总：累计支出 / 累计收入。
+     *
+     * <p><b>只统计真正的资金进出</b>（支付 / 退款 / 充值），
+     * **不把运费、优惠、积分算进来** —— 那些已经包含在订单实付金额里，
+     * 再单拎出来加一遍就是重复计算（2026-10-09 用户指出的问题）。
+     *
+     * <p>想知道「这单省了多少」去看订单详情，那里有完整的金额构成。
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public com.example.supermarket.dto.WalletSummaryResponse summarize(Long userId) {
+        List<WalletTransaction> all = transactionRepository.findAll(
+                byUserId(userId), org.springframework.data.domain.Pageable.unpaged()).getContent();
+        BigDecimal out = BigDecimal.ZERO;
+        BigDecimal income = BigDecimal.ZERO;
+        for (WalletTransaction t : all) {
+            BigDecimal v = t.getAmount() == null ? BigDecimal.ZERO : t.getAmount();
+            if ("RECHARGE".equals(t.getType()) || "REFUND".equals(t.getType())) {
+                income = income.add(v);
+            } else {
+                out = out.add(v);
+            }
+        }
+        return new com.example.supermarket.dto.WalletSummaryResponse(out, income);
     }
 
     @Transactional

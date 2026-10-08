@@ -65,7 +65,6 @@ public class ReturnRequestService {
     private final OrderItemRepository orderItemRepository;
     private final PaymentRecordRepository paymentRecordRepository;
     private final WalletService walletService;
-    private final AmountRecordService amountRecordService;
     private final MessageService msgService;
 
     public ReturnRequestService(ProductRepository productRepository,
@@ -74,15 +73,13 @@ public class ReturnRequestService {
                                 OrderItemRepository orderItemRepository,
                                 PaymentRecordRepository paymentRecordRepository,
                                 WalletService walletService,
-                                AmountRecordService amountRecordService,
-                                MessageService msgService) {
+                                                    MessageService msgService) {
         this.productRepository = productRepository;
         this.returnRepository = returnRepository;
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.paymentRecordRepository = paymentRecordRepository;
         this.walletService = walletService;
-        this.amountRecordService = amountRecordService;
         this.msgService = msgService;
     }
 
@@ -330,8 +327,6 @@ public class ReturnRequestService {
         order.setStatus("CLOSED");
         order.setRefundedAt(LocalDateTime.now());
         orderRepository.save(order);
-        amountRecordService.recordRefund(order.getUserId(), order.getId(),
-                order.getOrderNo(), order.getPayAmount());
     }
 
     private ReturnRequest ownedBy(Long userId, Long returnId) {

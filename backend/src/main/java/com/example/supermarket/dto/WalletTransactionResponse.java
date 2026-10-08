@@ -16,9 +16,24 @@ public class WalletTransactionResponse {
     private BigDecimal balanceAfter;
     private String status;
     private String remark;
+    /** 关联订单号（join 出来的，用户看一串 id 认不出是哪单） */
+    private String orderNo;
+    /**
+     * 方向：1=支出（钱出去），-1=收入（钱进来）。
+     *
+     * <p><b>由后端根据 type 算好，前端不要自己猜</b> —— 方向判断写死在前端的话，
+     * 以后新增一种流水类型就会漏改（2026-10-09「金额明细」按这个字段染色）。
+     */
+    private Integer direction;
+    /** 展示用文案，如「订单支付」「退款到账」「账户充值」 */
+    private String typeLabel;
     private LocalDateTime createdAt;
 
     public static WalletTransactionResponse from(WalletTransaction transaction) {
+        return from(transaction, null);
+    }
+
+    public static WalletTransactionResponse from(WalletTransaction transaction, String orderNo) {
         WalletTransactionResponse response = new WalletTransactionResponse();
         response.setId(transaction.getId());
         response.setTransactionNo(transaction.getTransactionNo());
@@ -31,7 +46,57 @@ public class WalletTransactionResponse {
         response.setStatus(transaction.getStatus());
         response.setRemark(transaction.getRemark());
         response.setCreatedAt(transaction.getCreatedAt());
+        response.setOrderNo(orderNo);
+        response.setDirection(directionOf(transaction.getType()));
+        response.setTypeLabel(labelOf(transaction.getType()));
         return response;
+    }
+
+    /**
+     * 方向由 type 决定：RECHARGE（充值）/ REFUND（退款）是**钱进来**，
+     * PAYMENT（支付）是**钱出去**。未知类型按支出处理并留空文案 ——
+     * 宁可显示成支出让人发现，也不要静默不显示。
+     */
+    private static Integer directionOf(String type) {
+        if (type == null) return 1;
+        return switch (type) {
+            case "RECHARGE", "REFUND" -> -1;
+            default -> 1;
+        };
+    }
+
+    private static String labelOf(String type) {
+        if (type == null) return "";
+        return switch (type) {
+            case "RECHARGE" -> "账户充值";
+            case "PAYMENT" -> "订单支付";
+            case "REFUND" -> "退款到账";
+            default -> type;
+        };
+    }
+
+    public String getOrderNo() {
+        return orderNo;
+    }
+
+    public void setOrderNo(String orderNo) {
+        this.orderNo = orderNo;
+    }
+
+    public Integer getDirection() {
+        return direction;
+    }
+
+    public void setDirection(Integer direction) {
+        this.direction = direction;
+    }
+
+    public String getTypeLabel() {
+        return typeLabel;
+    }
+
+    public void setTypeLabel(String typeLabel) {
+        this.typeLabel = typeLabel;
     }
 
     public Long getId() {

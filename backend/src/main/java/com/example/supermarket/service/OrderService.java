@@ -94,7 +94,6 @@ public class OrderService {
     private final UserAddressRepository userAddressRepository;
     private final StockLogRepository stockLogRepository;
     private final WalletService walletService;
-    private final AmountRecordService amountRecordService;
     private final CouponService couponService;
     private final ActivityService activityService;
     private final SysUserRepository sysUserRepository;
@@ -125,7 +124,6 @@ public class OrderService {
             UserAddressRepository userAddressRepository,
             StockLogRepository stockLogRepository,
             WalletService walletService,
-            AmountRecordService amountRecordService,
             CouponService couponService,
             ActivityService activityService,
             SysUserRepository sysUserRepository,
@@ -146,9 +144,7 @@ public class OrderService {
         this.userAddressRepository = userAddressRepository;
         this.stockLogRepository = stockLogRepository;
         this.walletService = walletService;
-        // 金额流水（第 7 条）：与 wallet_transaction 分工不同 ——
         // 后者记余额变动，前者记订单金额构成（优惠抵扣不产生余额变动，查不到）。
-        this.amountRecordService = amountRecordService;
         this.couponService = couponService;
         this.activityService = activityService;
         this.sysUserRepository = sysUserRepository;
@@ -496,17 +492,7 @@ public class OrderService {
         LocalDate consumeDate = order.getCreatedAt() != null
                 ? order.getCreatedAt().toLocalDate() : LocalDate.now();
         memberService.awardOnPaidOrder(userId, orderId, order.getPayAmount(), consumeDate);
-        // 积分流水（第 7 条）：与 memberService 的幂等判定保持一致 ——
-        // awardOnPaidOrder 内部对已发放的订单直接 return，这里也用同样的条件，
-        // 否则重复支付时会出现「只发一次积分但记了两条积分流水」。
-        if (order.getPointsEarned() != null && order.getPointsEarned() > 0) {
-            amountRecordService.recordPointsEarned(userId, orderId, order.getOrderNo(),
-                    order.getPointsEarned(),
-                    BigDecimal.valueOf(order.getPointsEarned()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
-        }
         OrderEntity savedOrder = orderRepository.save(order);
-        // 金额流水按订单维度记一笔完整的金额构成（幂等，重复调用不会写重）
-        amountRecordService.recordOrderAmounts(savedOrder);
         if (paymentRecordRepository.findByOrderId(orderId).isEmpty()) {
             paymentRecordRepository.save(buildPaymentRecord(order, now));
         }
