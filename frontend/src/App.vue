@@ -73,8 +73,18 @@
                        改成：单击放大 → 预览层里放「更换头像」按钮，意图明确、一步可达。
                        原来的行为是「单击直接弹文件选择器」—— 没有任何预览，用户
                        连自己头像长什么样都看不到。 -->
-                  <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击查看大图" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="avatarPreviewOpen = true" />
-                  <span v-else class="avatar-img avatar-default avatar-clickable" title="点击设置头像" @click.stop="avatarPreviewOpen = true">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
+                  <img v-if="session.user.avatarUrl" :src="session.user.avatarUrl" class="avatar-img avatar-clickable" alt="头像" title="点击查看大图" @error="imgFallback($event, session.user.nickname || session.user.username)" @click.stop="previewMyAvatar()" />
+                  <span v-else class="avatar-img avatar-default avatar-clickable" title="点击设置头像" @click.stop="avatarInput?.click()">{{ (session.user.nickname || session.user.username || '?').charAt(0) }}</span>
+
+                  <!-- 换头像的独立入口：单击头像是「看大图」，不能同时承担「换」，
+                       两件事混在一次点击里必然误触（2026-10-09）。角标平时隐藏，hover 头像才出现。 -->
+                  <button v-if="session.user.avatarUrl" type="button" class="avatar-edit-badge"
+                          title="更换头像" aria-label="更换头像" @click.stop="avatarInput?.click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                  </button>
                   <!-- 导航条取消后，未读提醒收在头像上：不展开下拉也能看见 -->
                   <span v-if="!isAdmin && accountDotTitle" class="account-dot" :title="accountDotTitle"></span>
                 </span>
@@ -280,23 +290,6 @@
          是为了让任何组件都能唤起它，且 Teleport 到 body 不会被局部 overflow 裁掉。 -->
     <ImageViewer />
 
-    <!-- 头像预览层（第 8 条：单击头像放大，换头像放在这一层里做）。
-         不用「双击改头像」：双击在触屏上是浏览器缩放手势、误触高，
-         且这个意图用户看不见；单击放大 + 明确的「更换头像」按钮更直接。 -->
-    <Teleport to="body">
-      <div v-if="avatarPreviewOpen" class="avatar-preview" @click.self="avatarPreviewOpen = false">
-        <div class="ap-card">
-          <button class="ap-close" type="button" aria-label="关闭" @click="avatarPreviewOpen = false">&times;</button>
-          <div class="ap-img">
-            <img v-if="session.user?.avatarUrl" :src="session.user.avatarUrl" alt="头像大图" />
-            <span v-else class="avatar-default ap-default">{{ (session.user?.nickname || session.user?.username || '?').charAt(0) }}</span>
-          </div>
-          <div class="ap-name">{{ session.user?.nickname || session.user?.username }}</div>
-          <div class="ap-tier">{{ isAdmin ? '管理员' : tierNameFor(session.user?.memberLevel) }}</div>
-          <button class="ap-change" type="button" @click="avatarPreviewOpen = false; avatarInput?.click()">更换头像</button>
-        </div>
-      </div>
-    </Teleport>
   </main>
 </template>
 
@@ -423,7 +416,13 @@ const avatarInput = ref(null);
 // ⚠️ 宿主 .account-menu-wrap 必须 position:relative，否则 absolute 面板会挂到视口上（同 .nav-badge 的教训）。
 const accountMenuOpen = ref(false);
 // 头像预览层开关（第 8 条）。单击头像打开，里面同时提供「更换头像」。
-const avatarPreviewOpen = ref(false);
+/** 单击导航栏头像 → 用**全局图片预览器**看大图（2026-10-09）。
+ *  此前这里自制了一套 avatar-preview 弹层，和个人资料页的 Lightbox 是两套实现，
+ *  用户要求统一，直接复用 openImageViewer。 */
+function previewMyAvatar() {
+  const url = session?.user?.avatarUrl;
+  if (url) openImageViewer(url);
+}
 function toggleAccountMenu() { accountMenuOpen.value = !accountMenuOpen.value; }
 function closeAccountMenu() { accountMenuOpen.value = false; }
 function onDocumentClick(event) { if (!event.target.closest('.account-menu-wrap')) closeAccountMenu(); }

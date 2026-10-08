@@ -32,7 +32,7 @@
       </label>
 
       <label class="pf-row">
-        <span>性别<em class="opt">选填</em></span>
+        <span><i class="req"></i>性别<em class="opt">选填</em></span>
         <select v-model="form.gender">
           <option value="">未设置</option>
           <option value="MALE">男</option>
@@ -42,12 +42,12 @@
       </label>
 
       <label class="pf-row">
-        <span>生日<em class="opt">选填</em></span>
+        <span><i class="req"></i>生日<em class="opt">选填</em></span>
         <input v-model="form.birthday" type="date" :max="today" />
       </label>
 
       <label class="pf-row">
-        <span>邮箱<em class="opt">选填</em></span>
+        <span><i class="req"></i>邮箱<em class="opt">选填</em></span>
         <input v-model.trim="form.email" type="email" placeholder="用于接收通知" />
       </label>
 
@@ -88,15 +88,15 @@
       <h4>修改密码</h4>
       <form class="pf-form" @submit.prevent="savePassword">
         <label class="pf-row">
-          <span>原密码</span>
+          <span><i class="req">*</i>原密码</span>
           <input v-model="pw.oldPassword" type="password" autocomplete="current-password" />
         </label>
         <label class="pf-row">
-          <span>新密码</span>
+          <span><i class="req">*</i>新密码</span>
           <input v-model="pw.newPassword" type="password" autocomplete="new-password" />
         </label>
         <label class="pf-row">
-          <span>确认新密码</span>
+          <span><i class="req">*</i>确认新密码</span>
           <input v-model="pw.confirmPassword" type="password" autocomplete="new-password" />
         </label>
         <small v-if="pwError" class="pf-error">{{ pwError }}</small>

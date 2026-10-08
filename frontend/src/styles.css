@@ -5114,57 +5114,6 @@ select {
 .review-imgs img { cursor: zoom-in; transition: opacity 140ms ease; }
 .review-imgs img:hover { opacity: 0.85; }
 
-/* 头像预览层（第 8 条：单击放大 + 层内换头像） */
-.avatar-preview {
-  position: fixed;
-  inset: 0;
-  z-index: 3100;
-  background: rgba(20, 22, 21, 0.78);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: iv-fade 140ms ease;
-}
-.ap-card {
-  position: relative;
-  width: min(300px, 88vw);
-  background: #fff;
-  border-radius: 14px;
-  padding: 22px 20px 20px;
-  text-align: center;
-}
-.ap-close {
-  position: absolute;
-  top: 8px; right: 10px;
-  width: 30px; height: 30px;
-  border: none; border-radius: 50%;
-  background: #f1f3f1; color: #5b6660;
-  font-size: 20px; line-height: 1;
-  cursor: pointer;
-}
-.ap-close:hover { background: #e6e9e6; }
-.ap-img {
-  width: 128px; height: 128px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #eef1ee;
-}
-.ap-img img { width: 100%; height: 100%; object-fit: cover; }
-.ap-default { font-size: 46px; color: #6f7a72; }
-.ap-name { font-weight: 600; color: var(--ink); font-size: 15px; }
-.ap-tier { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-.ap-change {
-  margin-top: 16px;
-  width: 100%;
-  padding: 9px 0;
-  border: none; border-radius: 8px;
-  background: var(--brand); color: #fff;
-  font-size: 14px;
-  cursor: pointer;
-}
-.ap-change:hover { filter: brightness(1.06); }
-
 /* ===== 确认订单页：积分抵扣卡片（问题 3 布局优化）=====
    原先是「勾选行 / 输入行 / 结果行」三个独立行，纵向拉得很高。
    现在合成一张浅色卡片：开关一行，下面「用多少分 / 抵多少 / 全部抵扣」并排一行。 */
@@ -5430,15 +5379,28 @@ a.brand-link { text-decoration: none; color: inherit; }
 }
 
 /* ===== 个人资料页：必填星号 / 选填标记 / 头像可点（2026-10-09）=====
-   ⚠️ .req 标红的字段必须在 validate() 里真的校验 —— 标了却不校验等于骗用户。 */
+   ⚠️ .req 标红的字段必须在 validate() 里真的校验 —— 标了却不校验等于骗用户。
+
+   对齐做法：标签**右对齐**，星号占一个固定宽度的槽位。
+   必填项星号是红的，选填项星号槽位留空 —— 两种标签的文字右边缘仍然齐平。
+   （早期版本把星号放在文字前、不占位，结果「*昵称」比「性别」宽出一截，整列参差不齐。） */
+.pf-row > span {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  text-align: right;
+}
 .pf-row .req {
+  flex: none;
+  width: 8px;                     /* 固定槽位：空槽与红星占同样宽，文字才对得齐 */
   color: #d93025;
   font-style: normal;
-  margin-right: 3px;
   font-weight: 600;
+  text-align: center;
 }
 .pf-row .opt {
-  margin-left: 6px;
+  margin-left: 2px;
   padding: 1px 6px;
   border-radius: 4px;
   background: #f0f2f1;
@@ -5455,4 +5417,41 @@ a.brand-link { text-decoration: none; color: inherit; }
 .ar-summary.two { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 560px) {
   .ar-summary.two { grid-template-columns: 1fr; }
+}
+
+/* 头像「更换」角标（2026-10-09）
+   导航栏头像是「单击看大图」，换头像挪到这个独立按钮上 ——
+   一个点击同时承担两个意图，用户想看清时就会误上传。
+   平时透明隐藏，hover 头像时淡入；触屏设备没有 hover，改由 focus 也唤出。 */
+.account-avatar-wrap .avatar-edit-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.account-avatar-wrap .avatar-edit-badge svg { width: 9px; height: 9px; }
+.account-avatar-wrap:hover .avatar-edit-badge,
+.account-avatar-wrap:focus-within .avatar-edit-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+/* 键盘可达：Tab 到时必须看得见 */
+.account-avatar-wrap .avatar-edit-badge:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
 }
