@@ -21,6 +21,8 @@ CREATE TABLE sys_user (
     nickname VARCHAR(50) DEFAULT NULL COMMENT 'Display name',
     phone VARCHAR(20) DEFAULT NULL COMMENT 'Phone number',
     email VARCHAR(100) DEFAULT NULL COMMENT 'Email address',
+    gender VARCHAR(10) DEFAULT NULL COMMENT 'MALE / FEMALE / SECRET',
+    birthday VARCHAR(10) DEFAULT NULL COMMENT 'Birthday yyyy-MM-dd (string, avoids timezone shift)',
     avatar_url VARCHAR(500) DEFAULT NULL COMMENT '用户头像URL',
     role VARCHAR(20) NOT NULL DEFAULT 'USER' COMMENT 'USER or ADMIN',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
@@ -320,6 +322,34 @@ CREATE TABLE wallet_transaction (
     CONSTRAINT chk_wallet_transaction_amount CHECK (amount > 0),
     CONSTRAINT chk_wallet_transaction_balance CHECK (balance_before >= 0 AND balance_after >= 0)
  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Wallet transaction logs';
+
+-- 金额流水（第 7 条）：与 wallet_transaction 分工不同 ——
+--   wallet_transaction → 钱包余额怎么变的（对账用）
+--   amount_record      → 每笔订单的金额构成（展示用）。
+-- 优惠抵扣不产生余额变动，在 wallet_transaction 里查不到，必须另记。
+CREATE TABLE amount_record (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+    user_id BIGINT UNSIGNED NOT NULL COMMENT 'Owner user id',
+    order_id BIGINT UNSIGNED DEFAULT NULL COMMENT 'Related order id, null for non-order records',
+    type VARCHAR(24) NOT NULL COMMENT 'ORDER_PAY, ORDER_REFUND, COUPON_DISCOUNT, ACTIVITY_DISCOUNT, MEMBER_DISCOUNT, POINTS_DISCOUNT, FREIGHT, POINTS_EARN',
+    direction INT NOT NULL DEFAULT 1 COMMENT '1 = 支出, -1 = 收入',
+    amount DECIMAL(10, 2) NOT NULL COMMENT 'Always positive; direction tells the sign',
+    title VARCHAR(40) NOT NULL COMMENT 'Display title',
+    remark VARCHAR(255) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_amount_record_user (user_id, created_at),
+    KEY idx_amount_record_order (order_id),
+    CONSTRAINT fk_amount_record_user
+        FOREIGN KEY (user_id) REFERENCES sys_user (id),
+    CONSTRAINT fk_amount_record_order
+        FOREIGN KEY (order_id) REFERENCES orders (id),
+    CONSTRAINT chk_amount_record_type CHECK (type IN (
+        'ORDER_PAY', 'ORDER_REFUND', 'COUPON_DISCOUNT', 'ACTIVITY_DISCOUNT',
+        'MEMBER_DISCOUNT', 'POINTS_DISCOUNT', 'FREIGHT', 'POINTS_EARN')),
+    CONSTRAINT chk_amount_record_direction CHECK (direction IN (1, -1)),
+    CONSTRAINT chk_amount_record_amount CHECK (amount >= 0)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'User-facing amount records (order amount breakdown)';
 
 CREATE TABLE recharge_order (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'Primary key',

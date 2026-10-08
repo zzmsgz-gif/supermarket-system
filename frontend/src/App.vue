@@ -24,15 +24,17 @@
 
     <header class="site-header" v-if="view !== 'login'">
       <div class="header-inner">
-        <!-- 导航条已取消：Logo 承担「回到首页」 -->
-        <div class="brand brand-link" role="button" tabindex="0" title="回到首页" aria-label="回到首页"
-             @click="navigate('shop')" @keydown.enter.prevent="navigate('shop')">
+        <!-- 导航条已取消：Logo 承担「回到首页」。
+             刻意用 router-link 而不是 <div role="button" @click>（2026-10-07 第 14 条）：
+             router-link 渲染成带 href 的真链接 → 用户能右键复制链接 / 新标签打开，
+             搜索引擎也能当作站内跳转线索。div+@click 出来的东西两者都给不了。 -->
+        <router-link to="/shop" class="brand brand-link" title="回到首页" aria-label="回到首页">
           <img src="/logo.svg" class="brand-logo" alt="超市购物系统" />
           <div>
             <strong>超市购物系统</strong>
             <small>Supermarket Mall</small>
           </div>
-        </div>
+        </router-link>
 
         <div class="search-area">
           <form class="header-search" @submit.prevent="goSearch">
@@ -100,6 +102,13 @@
                   <button role="menuitem" @click="navigate('coupons')">优惠券</button>
                   <button role="menuitem" @click="navigate('addresses')">收货地址</button>
                   <button role="menuitem" @click="navigate('points')">我的积分</button>
+                  <!-- 金额明细（第 7 条）：与「钱包余额流水」不同 ——
+                       这里按订单维度记金额构成，优惠抵扣不体现在余额里。 -->
+                  <button role="menuitem" @click="navigate('amountRecords')">金额明细</button>
+                  <!-- 个人资料（第 9 条）：资料编辑与修改密码在同一页，避免"改过密码了"这种记忆负担 -->
+                  <button role="menuitem" @click="navigate('profile')">个人资料</button>
+                  <!-- 我的售后（第 13 条）：退货退款全流程跟踪 -->
+                  <button role="menuitem" @click="navigate('returns')">我的售后</button>
                   <button role="menuitem" @click="navigate('favorites')">我的收藏<span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
                   <button role="menuitem" @click="navigate('messages')">消息<span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
                   <button role="menuitem" @click="navigate('recharge')">账户充值</button>
@@ -130,6 +139,12 @@
         正在以 <strong>{{ previewTierName }}</strong> 身份预览价格（仅展示，不影响真实账号）
         <button class="tpb-exit" @click="clearPreviewTier()">退出预览</button>
       </div>
+      <!-- H1 放在 topbar 里，但**首页与商品详情页不显示 topbar**（v-if 排除了 shop/product），
+         那两页各自需要一个 H1，否则最该被收录的两个页面反而一个标题都没有
+         （2026-10-07 第 14 条：外部检测报 h1Count=0，根因就在这个 v-if）。
+         用 .sr-only 视觉隐藏：H1 是给爬虫和无障碍读屏用的，不该改变页面视觉。 -->
+      <h1 v-if="view === 'shop'" class="sr-only">{{ currentTitle.title }} · 超市购物系统</h1>
+      <h1 v-else-if="view === 'product'" class="sr-only">{{ productDetail.data?.name || '商品详情' }} · 超市购物系统</h1>
       <header class="topbar" v-if="view !== 'product' && view !== 'shop' && view !== 'login'">
         <h1>{{ currentTitle.title }}</h1>
         <button v-if="['orders', 'coupons', 'points', 'favorites', 'messages'].includes(view)" class="ghost" @click="refreshCurrentPage">刷新</button>
@@ -196,10 +211,13 @@
         <div class="footer-cols">
           <div class="footer-col">
             <h5>购物指南</h5>
-            <a @click="navigate('shop')">首页商品</a>
-            <a @click="navigate('cart')">购物车</a>
-            <a @click="navigate('orders')">我的订单</a>
-            <a @click="navigate('coupons')">优惠券</a>
+            <!-- 用 router-link 而不是 <a @click>：它会渲染成真 <a href>，
+                 用户才能右键复制链接、在新标签打开（2026-10-07 第 14 条）。
+                 <a @click> 渲染出来是没有 href 的假链接，搜索引擎也抓不到。 -->
+            <router-link to="/shop">首页商品</router-link>
+            <router-link to="/cart">购物车</router-link>
+            <router-link to="/orders">我的订单</router-link>
+            <router-link to="/coupons">优惠券</router-link>
           </div>
           <div class="footer-col">
             <h5>配送方式</h5>
@@ -637,7 +655,7 @@ const { flashSales, nowTick, runningFlashSales, FLASH_TICK_WINDOW_SECONDS, loadF
 // scrollToResultsAfterLoad 变成 composable 私有标记，goSearch 改用 markScrollToResults() 置位。
 const { hotProducts, newProducts, guessProducts, dwellRankProducts, CHANNEL_PAGE, channelPool, channelCursor, channelRefs, channelPage, loadChannel, rotateChannel, channelRotatable, loadHot, loadNew, loadGuess, loadDwellRank, loadHomeChannels } = useChannels();
 
-const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
+const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'amountRecords', 'profile', 'returns', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
 const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'stores', 'banners', 'users', 'passwordResets'];
 
 // ⚠️ 装配点必须在 ADMIN_MENU_KEYS 定义之后（要用它做 tab 白名单校验）——

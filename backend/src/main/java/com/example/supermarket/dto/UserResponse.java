@@ -10,6 +10,8 @@ public class UserResponse {
     private String nickname;
     private String phone;
     private String email;
+    private String gender;
+    private String birthday;
     private String role;
     private BigDecimal balance;
     private Long points;
@@ -29,6 +31,8 @@ public class UserResponse {
         response.setNickname(user.getNickname());
         response.setPhone(user.getPhone());
         response.setEmail(user.getEmail());
+        response.setGender(user.getGender());
+        response.setBirthday(user.getBirthday());
         response.setRole(user.getRole());
         response.setBalance(user.getBalance());
         response.setPoints(user.getPoints());
@@ -79,6 +83,22 @@ public class UserResponse {
         this.email = email;
     }
 
+
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+
+    public String getBirthday() {
+        return birthday;
+    }
+
+    public void setBirthday(String birthday) {
+        this.birthday = birthday;
+    }
     public String getRole() {
         return role;
     }

@@ -14,6 +14,10 @@ import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.service.AuthService;
 import com.example.supermarket.service.PasswordResetService;
 import jakarta.validation.Valid;
+import com.example.supermarket.dto.PhoneVerifyRequest;
+import com.example.supermarket.dto.PhoneVerifyTicketResponse;
+import com.example.supermarket.service.PhoneVerifyService;
+import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,11 +31,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final PhoneVerifyService phoneVerifyService;
     private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService, PasswordResetService passwordResetService) {
+    public AuthController(AuthService authService,
+                          PasswordResetService passwordResetService,
+                          PhoneVerifyService phoneVerifyService) {
         this.authService = authService;
         this.passwordResetService = passwordResetService;
+        this.phoneVerifyService = phoneVerifyService;
     }
 
     @PostMapping("/register")
@@ -66,6 +74,31 @@ public class AuthController {
             @Valid @RequestBody PasswordResetSubmitRequest request
     ) {
         return ApiResponse.ok(passwordResetService.submit(request));
+    }
+
+    /**
+     * 手机号换绑：申请验证码（第 9 条）。
+     *
+     * <p>项目暂无短信通道，devCode 只在 {@code app.phone-verify.code-sink=log}（默认）时返回，
+     * 接入真实通道后应返回 null —— 前端已按「有值就提示、没值就等短信」处理。
+     */
+    @PostMapping("/phone-verify/request")
+    public ApiResponse<PhoneVerifyTicketResponse> requestPhoneVerify(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody PhoneVerifyRequest request
+    ) {
+        return ApiResponse.ok(new PhoneVerifyTicketResponse(
+                phoneVerifyService.requestCode(currentUser.getId(), request.getPhone()), 600));
+    }
+
+    /** 手机号换绑：校验验证码，换取一次性 verifyToken（更新资料时带上） */
+    @PostMapping("/phone-verify/confirm")
+    public ApiResponse<Map<String, String>> confirmPhoneVerify(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody PhoneVerifyRequest request
+    ) {
+        String token = phoneVerifyService.verify(currentUser.getId(), request.getPhone(), request.getCode());
+        return ApiResponse.ok(Map.of("verifyToken", token));
     }
 
     @PostMapping("/change-password")

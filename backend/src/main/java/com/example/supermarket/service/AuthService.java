@@ -14,6 +14,7 @@ import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.security.JwtService;
 import com.example.supermarket.service.CouponService;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ public class AuthService {
     private static final String ROLE_USER = "USER";
 
     private final SysUserRepository userRepository;
+    private final PhoneVerifyService phoneVerifyService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final CouponService couponService;
@@ -42,7 +44,8 @@ public class AuthService {
             JwtService jwtService,
             CouponService couponService,
             MessageService messageService,
-            WechatService wechatService
+            WechatService wechatService,
+            PhoneVerifyService phoneVerifyService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -50,6 +53,7 @@ public class AuthService {
         this.couponService = couponService;
         this.messageService = messageService;
         this.wechatService = wechatService;
+        this.phoneVerifyService = phoneVerifyService;
     }
 
     @Transactional
@@ -136,12 +140,32 @@ public class AuthService {
         if (request.getAvatarUrl() != null) {
             user.setAvatarUrl(request.getAvatarUrl());
         }
+        if (StringUtils.hasText(request.getGender())) {
+            user.setGender(request.getGender().trim());
+        }
+        if (StringUtils.hasText(request.getBirthday())) {
+            String bday = request.getBirthday().trim();
+            if (bday.startsWith("9999") || bday.compareTo(LocalDate.now().toString()) > 0) {
+                throw new BusinessException(400, "生日不能晚于今天");
+            }
+            user.setBirthday(bday);
+        }
         if (StringUtils.hasText(request.getPhone())) {
             String phone = request.getPhone().trim();
-            if (!phone.equals(user.getPhone()) && userRepository.existsByPhoneAndDeleted(phone, NOT_DELETED)) {
-                throw new BusinessException(409, "手机号已被其他账号使用");
+            if (!phone.equals(user.getPhone())) {
+                // 换绑手机号必须验证：手机号是登录/找回凭证，
+                // 无验证改绑 = 任何拿到会话的人都能把账号据为己有。
+                // 项目暂无短信通道，先落地「必须带 verifyToken」的口子，
+                // 通道就绪后只要实现 verifyPhoneToken() 的真实校验即可，前端不用改。
+                if (!phoneVerifyService.isValidToken(user.getId(), phone, request.getVerifyToken())) {
+                    throw new BusinessException(403,
+                            "更换手机号需要先验证新手机号，请先获取验证码。");
+                }
+                if (userRepository.existsByPhoneAndDeleted(phone, NOT_DELETED)) {
+                    throw new BusinessException(409, "手机号已被其他账号使用");
+                }
+                user.setPhone(phone);
             }
-            user.setPhone(phone);
         }
         if (StringUtils.hasText(request.getEmail())) {
             String email = request.getEmail().trim();

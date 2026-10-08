@@ -18,6 +18,13 @@ export const routes = [
   { path: '/addresses', name: 'addresses', component: () => import('../pages/AddressesPage.vue') },
   { path: '/recharge', name: 'recharge', component: () => import('../pages/RechargePage.vue') },
   { path: '/points', name: 'points', component: () => import('../pages/PointsPage.vue') },
+  // 金额明细（第 7 条）：与「钱包余额流水」不同 —— 这里按订单维度记金额构成，
+  // 优惠抵扣不产生余额变动，只有在这里才看得到自己省了多少。
+  { path: '/amount-records', name: 'amountRecords', component: () => import('../pages/AmountRecordsPage.vue') },
+  // 个人资料（第 9 条）：资料编辑 + 修改密码整合在同一页
+  { path: '/profile', name: 'profile', component: () => import('../pages/ProfilePage.vue') },
+  // 我的售后（第 13 条）：退货退款全流程（含寄回环节）
+  { path: '/returns', name: 'returns', component: () => import('../pages/ReturnsPage.vue') },
   { path: '/favorites', name: 'favorites', component: () => import('../pages/FavoritesPage.vue') },
   { path: '/messages', name: 'messages', component: () => import('../pages/MessagesPage.vue') },
   // 登录 / 注册 / 改密 / 找回：独立全屏路由页（原来是 App.vue 里的 modal）。

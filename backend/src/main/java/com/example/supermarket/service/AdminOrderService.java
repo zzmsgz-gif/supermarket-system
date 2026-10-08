@@ -65,6 +65,7 @@ public class AdminOrderService {
     private final StockLogRepository stockLogRepository;
     private final PaymentRecordRepository paymentRecordRepository;
     private final WalletService walletService;
+    private final AmountRecordService amountRecordService;
     private final CouponService couponService;
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
@@ -76,6 +77,7 @@ public class AdminOrderService {
             StockLogRepository stockLogRepository,
             PaymentRecordRepository paymentRecordRepository,
             WalletService walletService,
+            AmountRecordService amountRecordService,
             CouponService couponService,
             MessageService messageService,
             FlashSaleService flashSaleService
@@ -86,6 +88,7 @@ public class AdminOrderService {
         this.stockLogRepository = stockLogRepository;
         this.paymentRecordRepository = paymentRecordRepository;
         this.walletService = walletService;
+        this.amountRecordService = amountRecordService;
         this.couponService = couponService;
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
@@ -177,6 +180,10 @@ public class AdminOrderService {
             return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
         }
         walletService.refundOrder(order.getUserId(), order.getId(), order.getPayAmount(), "Refund approved");
+        // 金额流水（第 7 条）：退款要单独记一条「退款到账」，
+        // 否则用户只看到当初的支出，看不到钱回来了。
+        amountRecordService.recordRefund(order.getUserId(), order.getId(),
+                order.getOrderNo(), order.getPayAmount());
         paymentRecordRepository.findByOrderId(order.getId()).ifPresent(this::refundPaymentRecord);
         List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
         returnStocks(order.getId(), operatorId, items);

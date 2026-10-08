@@ -32,6 +32,18 @@ public class SysUser {
     @Column(length = 100)
     private String email;
 
+    /** 性别：MALE / FEMALE / SECRET（用户不填就是 SECRET，不做性别平权推断） */
+    @Column(name = "gender", length = 10)
+    private String gender;
+
+    /**
+     * 生日 yyyy-MM-dd。
+     * <p>刻意用 String 而不是 LocalDate：生日只有「日」没有「时区」，
+     * 存 Date 会在跨时区/序列化时偏移一天（经典 bug），且不能为空（很多人不填）。
+     */
+    @Column(name = "birthday", length = 10)
+    private String birthday;
+
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
@@ -117,6 +129,21 @@ public class SysUser {
 
     public String getEmail() {
         return email;
+    }
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+
+    public String getBirthday() {
+        return birthday;
+    }
+
+    public void setBirthday(String birthday) {
+        this.birthday = birthday;
     }
 
     public void setEmail(String email) {
