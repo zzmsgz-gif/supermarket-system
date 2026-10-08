@@ -5400,3 +5400,31 @@ a.brand-link { text-decoration: none; color: inherit; }
 .rp-shipped small { color: var(--muted); }
 
 .rp-reject { margin-top: 10px; }
+
+/* ===== 金额明细页：筛选 tab 高亮（2026-10-08 用户反馈「点 tab 得高亮」）=====
+   之前的写法是 :class="['ghost sm', { on: ... }]" —— 但项目里 .ghost.sm 没有 .on 状态，
+   于是点了完全没视觉变化，用户会以为页面坏了。
+   ⚠️ 教训：加 class 不等于有效果，必须确认该 class 在全局样式里真的有规则。
+   这里独立用 .ar-tab，不继承 .ghost 避免被全局按钮样式覆盖。 */
+.ar-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.ar-tab:hover { background: #f4f6f5; }
+.ar-tab.is-on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  font-weight: 500;
+}
+/* 键盘可达：鼠标已经能用背景色区分，Tab 时再给一圈焦点环 */
+.ar-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}

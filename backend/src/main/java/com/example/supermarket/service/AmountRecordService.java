@@ -3,6 +3,7 @@ package com.example.supermarket.service;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.AmountRecordResponse;
+import com.example.supermarket.dto.AmountSummaryResponse;
 import com.example.supermarket.entity.AmountRecord;
 import com.example.supermarket.entity.OrderEntity;
 import com.example.supermarket.repository.AmountRecordRepository;
@@ -136,15 +137,76 @@ public class AmountRecordService {
      * 必须 join 出 order_no 才有「这是哪笔」的实感。
      */
     @Transactional(readOnly = true)
-    public PageResponse<AmountRecordResponse> list(Long userId, int page, int size) {
+    public PageResponse<AmountRecordResponse> list(Long userId, int page, int size, String group) {
+        List<String> types = typesOfGroup(group);
         Pageable pageable = PageRequest.of(Math.max(0, page - 1), size);
-        List<AmountRecord> rows = repository.findPageByUserId(userId, pageable);
-        long total = repository.countByUserId(userId);
+        List<AmountRecord> rows = types.isEmpty()
+                ? repository.findPageByUserId(userId, pageable)
+                : repository.findPageByUserIdAndTypes(userId, types, pageable);
+        long total = types.isEmpty()
+                ? repository.countByUserId(userId)
+                : repository.countByUserIdAndTypes(userId, types);
         Map<Long, String> orderNos = orderNosOf(rows);
         List<AmountRecordResponse> items = rows.stream()
                 .map(r -> AmountRecordResponse.from(r, orderNos.get(r.getOrderId())))
                 .toList();
         return PageResponse.of(items, page, size, total);
+    }
+
+    /**
+     * 前端筛选 tab → 后端类型集合。
+     *
+     * <p>映射放在服务端而不是前端传一串 type：前端传类型列表等于把枚举泄漏到 URL，
+     * 后端还得逐个校验合法性；传分组名则只需一次白名单 switch。
+     *
+     * <p><b>未知分组按「全部」处理而不是报错</b>：tab 是导航性质，
+     * 传错值给用户一个空列表比 500 更糟，也不该因为一个筛选参数让整页打不开。
+     */
+    private static List<String> typesOfGroup(String group) {
+        if (group == null || group.isBlank() || "ALL".equalsIgnoreCase(group)) {
+            return List.of();
+        }
+        return switch (group.toUpperCase()) {
+            case "PAY" -> List.of(TYPE_ORDER_PAY, TYPE_FREIGHT);
+            case "DISCOUNT" -> List.of(TYPE_COUPON_DISCOUNT, TYPE_ACTIVITY_DISCOUNT,
+                    TYPE_MEMBER_DISCOUNT, TYPE_POINTS_DISCOUNT);
+            case "REFUND" -> List.of(TYPE_ORDER_REFUND);
+            case "POINTS" -> List.of(TYPE_POINTS_EARN);
+            default -> List.of();
+        };
+    }
+
+    /**
+     * 三项汇总（累计支出 / 累计退回 / 优惠省下）。
+     *
+     * <p><b>刻意独立于 list 且不接筛选参数</b>：用户看的是「总账」而不是当前 tab 的小计。
+     * 如果汇总跟着 tab 变，切到「退款」标签时「累计支出」会显示成退款额，
+     * 读起来像账目错乱。
+     *
+     * <p>积分（POINTS_EARN）不计入任何金额汇总 —— 它只是折算价值，不是真金白银。
+     */
+    @Transactional(readOnly = true)
+    public AmountSummaryResponse summarize(Long userId) {
+        List<AmountRecord> all = repository.findPageByUserId(userId, Pageable.unpaged());
+        // 金额一律 BigDecimal 累加：用 double 先加再转会引入浮点误差，
+        // 对账页面上差一分钱都会被认为算错了。
+        BigDecimal out = BigDecimal.ZERO;
+        BigDecimal income = BigDecimal.ZERO;
+        BigDecimal saved = BigDecimal.ZERO;
+        for (AmountRecord r : all) {
+            if (TYPE_POINTS_EARN.equals(r.getType())) {
+                continue;
+            }
+            BigDecimal v = r.getAmount() == null ? BigDecimal.ZERO : r.getAmount();
+            if (Integer.valueOf(DIR_OUT).equals(r.getDirection())) {
+                out = out.add(v);
+            } else if (TYPE_ORDER_REFUND.equals(r.getType())) {
+                income = income.add(v);
+            } else {
+                saved = saved.add(v);
+            }
+        }
+        return new AmountSummaryResponse(out, income, saved);
     }
 
     /** 某订单的流水；**必须校验订单归属**，否则可枚举他人订单 */
