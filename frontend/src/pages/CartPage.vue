@@ -24,7 +24,7 @@
               type="button"
               class="cu-item"
               :title="'加入购物车：' + p.name"
-              @click="addToCart(p)"
+              @click="addUpsellToCart(p)"
             >
               <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)"  loading="lazy" decoding="async"/>
               <span class="cu-name">{{ p.name }}</span>
@@ -169,6 +169,7 @@
 
 <script>
 import { inject, computed, ref, watch } from 'vue';
+import { useUpsell } from '../composables/useUpsell.js';
 import { cartItemIssue, cartIssueItems, memberTagText as fmtMemberTagText } from '../utils/format';
 export default {
   name: 'CartPage',
@@ -195,38 +196,10 @@ export default {
       [...cartIssues.value].forEach((it) => appCtx.removeCartItem(it.id));
     }
 
-    // 凑单推荐：只推「现货 + 没在车里 + 单价不超过差额」的畅销品，
-    // 买一件就有机会刚好补上门槛。差额极小时一件都挑不出来，退化成最便宜的现货。
-    const upsell = ref([]);
-    const pickUpsell = (list, inCart) => (list || [])
-      .filter((p) => Number(p.stock) > 0 && !inCart.has(p.id))
-      .slice(0, 3);
-    async function loadUpsell() {
-      const prog = appCtx.cartActivityProgress.value;
-      const items = appCtx.cart.items || [];
-      if (!prog || prog.reachedTop || !items.length || Number(prog.gap || 0) <= 0) {
-        upsell.value = [];
-        return;
-      }
-      const inCart = new Set(items.map((i) => i.productId));
-      try {
-        const fit = await appCtx.api.get(
-          `/products?page=1&size=8&sort=sales_desc&maxPrice=${Number(prog.gap)}`
-        );
-        upsell.value = pickUpsell(fit.items, inCart);
-        if (!upsell.value.length) {
-          const cheap = await appCtx.api.get('/products?page=1&size=6&sort=price_asc');
-          upsell.value = pickUpsell(cheap.items, inCart);
-        }
-      } catch {
-        // 推荐只是锦上添花，拉不到就当没有，不要惊动用户
-        upsell.value = [];
-      }
-    }
-    watch(
-      () => [appCtx.cartActivityProgress.value?.gap, (appCtx.cart.items || []).length],
-      () => { loadUpsell(); }
-    );
+
+    // 凑单推荐：逻辑在 composables/useUpsell.js，**购物车与结算页共用一份**
+    // （2026-10-09 抽出；之前只写在这里，结算页要显示就得抄一遍，抄的必然漂移）
+    const { upsell, addUpsellToCart } = useUpsell(appCtx, (p) => addToCart(p));
 
     // 该购物项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）
     function isMemberItem(item) {
@@ -244,6 +217,7 @@ export default {
     }
 
     return {
+      upsell, addUpsellToCart,
       ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell, isMemberItem, memberTagText,
     };
   }

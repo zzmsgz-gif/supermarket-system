@@ -108,9 +108,53 @@
         <div class="checkout-block">
           <h3>商品清单</h3>
           <div v-if="!cart.items?.length" class="empty">购物车为空</div>
-          <div v-for="item in checkoutItems" :key="item.id" class="list-row">
+
+          <!-- 满减进度：购物车里有、结算页没有，两边不一致（2026-10-09 反馈）。
+               这里**不放「去凑单」按钮** —— 结算页是用来付钱的，
+               把人扔回购物车等于在结账流程里倒退；
+               直接点下面的推荐商品加进去更顺手。 -->
+          <div v-if="cartActivityProgress && checkoutItems.length" class="cart-progress">
+            <div class="cp-top">
+              <span class="cp-text">
+                <template v-if="cartActivityProgress.reachedTop">已满足满 {{ money(cartActivityProgress.threshold) }} 门槛，可{{ cartActivityProgress.benefit }}</template>
+                <template v-else>再买 <b class="cp-gap">{{ money(cartActivityProgress.gap) }}</b>，可{{ cartActivityProgress.benefit }}</template>
+              </span>
+            </div>
+            <div class="cp-track"><i :style="{ width: cartActivityProgress.percent + '%' }"></i></div>
+            <div v-if="!cartActivityProgress.reachedTop && upsell.length" class="cart-upsell">
+              <span class="cu-label">买这些能凑上：</span>
+              <button
+                v-for="p in upsell"
+                :key="p.id"
+                type="button"
+                class="cu-item"
+                :title="'加入购物车：' + p.name"
+                @click="addUpsellToCart(p)">
+                <img v-if="p.coverUrl" :src="p.coverUrl" alt="" @error="imgFallback($event, p.name)" />
+                <span>{{ p.name }}</span>
+                <b class="cu-price">{{ money(p.price) }}</b>
+                <i class="cu-plus">+</i>
+              </button>
+            </div>
+          </div>
+          <!-- 立即购买时也要显示商品图和「会员价」标签 ——
+               之前这里只有纯文字，和购物车的清单长得完全不一样，
+               用户看着不像同一个商品（2026-10-09 反馈）。
+               类名沿用购物车那张卡（order-item-img / cart-item-link），
+               这样两处的图片尺寸、圆角、hover 表现完全一致。
+               点击图片/标题可回到商品详情 —— 结算页里发现买错了还能改。 -->
+          <div v-for="item in checkoutItems" :key="item.id" class="list-row cart-item">
+            <img
+              v-if="item.productCoverUrl"
+              :src="item.productCoverUrl"
+              class="order-item-img cart-item-link"
+              alt="商品图片"
+              @error="imgFallback($event, item.productName)"
+              @click="openProductDetail({ id: item.productId })"
+              loading="lazy" decoding="async"/>
             <div>
-              <strong>{{ item.productName }}</strong>
+              <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
+              <span v-if="item.flashSaleId" class="flash-chip">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
               <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
               <small v-if="Number(item.flashQty || 0) > 0 && Number(item.flashQty) < Number(item.quantity)">
                 <span class="seg flash">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
@@ -239,6 +283,7 @@
 
 <script>
 import { inject, computed, ref, watch } from 'vue';
+import { useUpsell } from '../composables/useUpsell.js';
 import { cartItemIssue, cartIssueItems, memberTagText as fmtMemberTagText } from '../utils/format';
 import { regionData, citiesOf, districtsOf } from '../utils/regions';
 import { QUICKBUY_ITEM_ID } from '../composables/useGuestCart.js';
@@ -270,6 +315,9 @@ export default {
     // 结算页同样要堵住失效行：从购物车过来时可能还是好的，商品在这期间被下架/售罄
     // （或用户在别处改了下架状态）。否则用户填完配送方式＋地址才被打回，白折腾一遍。
     // 只展示「已勾选」的项：正常流程全部勾选→显示全部；「立即购买」隔离后只显示当前件
+    // 凑单推荐：与购物车共用 useUpsell —— 满减进度条两边一致（2026-10-09）
+    const { upsell, addUpsellToCart } = useUpsell(appCtx, (p) => appCtx.addToCart(p));
+
     const checkoutItems = computed(() => (appCtx.cart.items || []).filter((i) => i.selected !== false));
     const cartIssues = computed(() => cartIssueItems(checkoutItems.value));
     const blockedCount = computed(() => cartIssues.value.filter((it) => it.selected).length);
@@ -320,6 +368,7 @@ export default {
     }
 
     return {
+      upsell, addUpsellToCart,
       ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
       backToCart,
       rangeCheck, outOfRange, hasItems, isMemberItem, memberTagText,
