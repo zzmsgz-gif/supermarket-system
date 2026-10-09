@@ -143,7 +143,10 @@ export function useAuth(deps) {
     else if (registerForm.password.length < 6) e.password = '密码至少 6 位';
     if (registerForm.confirmPassword !== registerForm.password) e.confirmPassword = '两次输入的密码不一致';
     if (!registerForm.phone.trim()) e.phone = '请输入手机号';
-    else if (!/^1[3-9]\d{9}$/.test(registerForm.phone.trim())) e.phone = '手机号格式不正确';
+    else {
+      const pe = checkPhone(registerForm.phone);
+      if (pe) e.phone = pe;
+    }
     if (registerForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email.trim())) e.email = '邮箱格式不正确';
     if (!registerForm.agree) e.agree = '请先同意用户协议';
     return e;

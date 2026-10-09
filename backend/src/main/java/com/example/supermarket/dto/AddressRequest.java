@@ -1,6 +1,7 @@
 package com.example.supermarket.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public class AddressRequest {
@@ -10,7 +11,10 @@ public class AddressRequest {
     private String receiverName;
 
     @NotBlank(message = "请填写手机号码")
-    @Size(max = 20, message = "手机号码不能超过 20 个字符")
+    // ⚠️ 格式校验必须有（2026-10-09 补）：此前只有 NotBlank/Size，
+    // 手机号填「123」也能存进库 —— 快递送到才知道联系不上人。
+    // 正则与前端 utils/validate.js 的 PHONE_RE 保持一致。
+    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号码格式不正确")
     private String receiverPhone;
 
     @NotBlank(message = "请选择省份")

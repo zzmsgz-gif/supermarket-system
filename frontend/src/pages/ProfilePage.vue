@@ -112,6 +112,7 @@
 
 <script>
 import { inject, ref, reactive, computed, onMounted, watch } from 'vue';
+import { checkPhone, checkEmail } from '../utils/validate.js';
 import { api } from '../api/client';
 
 /**
@@ -287,9 +288,12 @@ export default {
      */
     function validate() {
       if (!form.nickname || !form.nickname.trim()) return '请填写昵称';
-      const phone = (form.phone || '').trim();
-      if (!phone) return '请填写手机号';
-      if (!/^1[3-9]\d{9}$/.test(phone)) return '手机号格式不正确';
+      // 手机号规则统一取 utils/validate.js（和地址页、注册、后端 @Pattern 同一条）
+      const phoneErr = checkPhone(form.phone);
+      if (phoneErr) return phoneErr;
+      // 邮箱选填，但填了就得合法
+      const emailErr = checkEmail(form.email, { required: false });
+      if (emailErr) return emailErr;
       if (phoneChanged.value && !verifyToken.value) return '更换手机号需要先验证新手机号';
       return '';
     }

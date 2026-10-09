@@ -83,7 +83,12 @@
             <summary>新增收货地址</summary>
             <div class="addr-form">
               <input v-model="addressForm.receiverName" placeholder="收货人" />
-              <input v-model="addressForm.receiverPhone" placeholder="手机号" />
+              <input
+                v-model="addressForm.receiverPhone"
+                type="tel" inputmode="numeric" maxlength="13"
+                placeholder="11 位手机号"
+                @input="onPhoneInput"
+              />
               <div class="region-selects">
                 <select v-model="addressForm.province" @change="onRegionProvince" class="region-sel">
                   <option value="">省份</option>
@@ -100,7 +105,7 @@
               </div>
               <input v-model="addressForm.detailAddress" placeholder="详细地址" />
               <label class="check-line"><input type="checkbox" v-model="addressForm.isDefault" /> 设为默认地址</label>
-              <button @click="saveAddress">保存地址</button>
+              <button @click="saveAddressChecked">保存地址</button>
             </div>
           </details>
         </div>
@@ -259,6 +264,7 @@
 
 <script>
 import { inject, computed, ref, watch } from 'vue';
+import { checkAddress, digitsOnly } from '../utils/validate.js';
 import { cartItemIssue, cartIssueItems, memberTagText as fmtMemberTagText } from '../utils/format';
 import { regionData, citiesOf, districtsOf } from '../utils/regions';
 import { QUICKBUY_ITEM_ID } from '../composables/useGuestCart.js';
@@ -290,6 +296,26 @@ export default {
     // 结算页同样要堵住失效行：从购物车过来时可能还是好的，商品在这期间被下架/售罄
     // （或用户在别处改了下架状态）。否则用户填完配送方式＋地址才被打回，白折腾一遍。
     // 只展示「已勾选」的项：正常流程全部勾选→显示全部；「立即购买」隔离后只显示当前件
+    /**
+     * 结算页补地址也要校验 —— 与地址页共用 checkAddress，
+     * 否则会出现「地址页拦得住、结算页拦不住」的怪现象（2026-10-09）。
+     */
+    function saveAddressChecked() {
+      const err = checkAddress(appCtx.addressForm?.value || appCtx.addressForm);
+      if (err) { appCtx.fail?.(err); return; }
+      return appCtx.saveAddress();
+    }
+
+    /**
+     * 手机号输入实时过滤 —— 与地址页同一套（都要写回 DOM，否则过滤看不到效果）。
+     */
+    function onPhoneInput(event) {
+      const cleaned = digitsOnly(event.target.value, 11);
+      event.target.value = cleaned;
+      const f = appCtx.addressForm;
+      (f && typeof f === 'object' && 'value' in f ? f.value : f).receiverPhone = cleaned;
+    }
+
     const checkoutItems = computed(() => (appCtx.cart.items || []).filter((i) => i.selected !== false));
     const cartIssues = computed(() => cartIssueItems(checkoutItems.value));
     const blockedCount = computed(() => cartIssues.value.filter((it) => it.selected).length);
@@ -340,6 +366,7 @@ export default {
     }
 
     return {
+      saveAddressChecked, digitsOnly, onPhoneInput,
       ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
       backToCart,
       rangeCheck, outOfRange, hasItems, isMemberItem, memberTagText,

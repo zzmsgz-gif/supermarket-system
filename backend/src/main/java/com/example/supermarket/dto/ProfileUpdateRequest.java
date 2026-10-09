@@ -40,6 +40,7 @@ public class ProfileUpdateRequest {
      * 没有它直接改绑 = 账号可被任意换绑，是安全问题而不是体验问题。
      */
     @Pattern(regexp = "^$|^1[3-9]\\d{9}$", message = "手机号格式不正确")
+    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号格式不正确")
     private String phone;
 
     /** 换绑手机号时的一次性凭证；仅在 phone 与现手机号不同时需要 */
