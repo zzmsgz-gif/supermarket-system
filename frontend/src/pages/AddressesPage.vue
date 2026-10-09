@@ -12,9 +12,6 @@
               取消编辑
             </button>
           </div>
-          <div v-if="editingAddressId" class="addr-editing-tip">
-            正在编辑已有地址，保存后覆盖原内容（不会新增一条）
-          </div>
           <div class="addr-fields">
             <input v-model="addressForm.receiverName" placeholder="收货人姓名" />
             <input v-model="addressForm.receiverPhone" placeholder="手机号码" />
@@ -96,12 +93,18 @@ export default {
     const onRegionCity = () => { appCtx.addressForm.district = ''; };
 
     /**
-     * 删除要二次确认：删了就没了，且**没有回收站**。
-     * confirm() 在这里够用 —— 这是低频操作，不值得为它做弹窗组件。
+     * 删除要二次确认 —— 但**用系统统一的确认对话框**（askConfirm），
+     * 不要 window.confirm：原生框和系统风格完全脱节（2026-10-09 用户反馈）。
+     * askConfirm 是 Promise 式，resolve(true/false)。
      */
-    function removeAddress(address) {
-      const label = `${address.receiverName} ${address.province}${address.city}${address.district}${address.detailAddress}`;
-      if (!window.confirm(`确定删除这个地址吗？\n${label}\n\n删除后无法恢复。`)) return;
+    async function removeAddress(address) {
+      const ok = await appCtx.askConfirm({
+        title: '删除地址',
+        message: '确认删除该地址吗？',
+        confirmText: '删除',
+        danger: true,
+      });
+      if (!ok) return;
       appCtx.deleteAddress(address);
     }
 
@@ -116,7 +119,7 @@ export default {
      */
     const addrList = computed(() => appCtx.addresses?.value || appCtx.addresses || []);
     const addrPageNo = computed(() => appCtx.addrPage?.value ?? 1);
-    const pageSize = computed(() => appCtx.ADDR_PAGE_SIZE || 5);
+    const pageSize = computed(() => appCtx.ADDR_PAGE_SIZE || 8);
 
     const addrTotalPages = computed(() =>
       Math.max(1, Math.ceil((addrList.value.length || 0) / pageSize.value)));

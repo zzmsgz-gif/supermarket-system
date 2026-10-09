@@ -36,7 +36,7 @@ export function useCheckout({
   const editingAddressId = ref(null);
   /** 分页：地址多于一屏就该翻页，而不是拉一长条 */
   const addrPage = ref(1);
-  const ADDR_PAGE_SIZE = 5;
+  const ADDR_PAGE_SIZE = 8;   // 每页 8 个：地址卡是 4 列网格，8 = 整两行，不留半行空白
 
   /** 地址指纹：收货人+电话+省市区+详细地址全同即视为同一地址 */
   function addressFingerprint(a) {
