@@ -84,7 +84,13 @@ export function useQuickBuy({
     // 秒杀品是纯折扣通道：不再把超出名额的部分按原价成交，fq 即本行全部件数（已在前端按名额夹量）。
     const left = getFlashLimitOfProduct(id);
     const fq = flashApplies ? Math.min(qty, left ?? qty) : 0;
-    const overflow = 0;
+    // ⚠️ 这里原来写死 0，导致**非秒杀商品立即购买时 subtotal 恒为 0**
+    // （fq=0 × 任意 + 0 = 0），页面表现为「单价 ¥58 但商品金额 ¥0.00，
+    //  应付金额只剩运费」—— 2026-10-09 用户在结算页发现。
+    //
+    // 正确逻辑：只有「命中秒杀」才按名额成交（超出名额不成交，overflow=0）；
+    // 非秒杀商品全部数量都按 regular 成交，overflow 必须是 qty。
+    const overflow = flashApplies ? 0 : qty;
     // 精确小计：整行秒杀价（与后端严格限额口径一致）
     const subtotal = round2(flashUnit * fq + regular * overflow);
     const unit = round2(subtotal / qty);

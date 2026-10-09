@@ -107,24 +107,31 @@
                   <span class="ama-balance"><small>余额</small><strong>{{ money(wallet.balance) }}</strong></span>
                   <span class="ama-tier">{{ tierNameFor(session.user.memberLevel) }} · {{ session.user.points || 0 }} 积分</span>
                 </button>
+                <!-- 下拉菜单排序原则（2026-10-09）：
+                     1. 交易相关（订单 / 售后 / 优惠券）—— 下单后最常回来看的排最前
+                     2. 资产相关（金额明细 / 积分 / 充值）—— 互相挨着，方便对账
+                     3. 资料与设置（资料 / 地址 / 收藏 / 消息）
+                     4. 危险操作（退出）单独一组、用分隔线隔开，**避免误点**
+                     「修改密码」原本在这里跳登录页，但个人资料页已整合了改密表单，
+                     属于冗余入口（用户反馈），已删除 —— 改密只留一个地方，
+                     两处并存会让人困惑「这俩有什么区别」。 -->
                 <div v-if="!isAdmin" class="account-menu-list">
                   <button role="menuitem" @click="navigate('orders')">我的订单</button>
-                  <button role="menuitem" @click="navigate('coupons')">优惠券</button>
-                  <button role="menuitem" @click="navigate('addresses')">收货地址</button>
-                  <button role="menuitem" @click="navigate('points')">我的积分</button>
-                  <!-- 金额明细（第 7 条）：与「钱包余额流水」不同 ——
-                       这里按订单维度记金额构成，优惠抵扣不体现在余额里。 -->
-                  <button role="menuitem" @click="navigate('amountRecords')">金额明细</button>
-                  <!-- 个人资料（第 9 条）：资料编辑与修改密码在同一页，避免"改过密码了"这种记忆负担 -->
-                  <button role="menuitem" @click="navigate('profile')">个人资料</button>
-                  <!-- 我的售后（第 13 条）：退货退款全流程跟踪 -->
                   <button role="menuitem" @click="navigate('returns')">我的售后</button>
-                  <button role="menuitem" @click="navigate('favorites')">我的收藏<span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
-                  <button role="menuitem" @click="navigate('messages')">消息<span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
+                  <button role="menuitem" @click="navigate('coupons')">优惠券</button>
+                </div>
+                <div v-if="!isAdmin" class="account-menu-list">
+                  <button role="menuitem" @click="navigate('amountRecords')">金额明细</button>
+                  <button role="menuitem" @click="navigate('points')">我的积分</button>
                   <button role="menuitem" @click="navigate('recharge')">账户充值</button>
                 </div>
+                <div v-if="!isAdmin" class="account-menu-list">
+                  <button role="menuitem" @click="navigate('profile')">个人资料</button>
+                  <button role="menuitem" @click="navigate('addresses')">收货地址</button>
+                  <button role="menuitem" @click="navigate('favorites')">我的收藏<span v-if="alertUnread" class="nav-badge">{{ alertUnread > 99 ? '99+' : alertUnread }}</span></button>
+                  <button role="menuitem" @click="navigate('messages')">消息<span v-if="messageUnread" class="nav-badge">{{ messageUnread > 99 ? '99+' : messageUnread }}</span></button>
+                </div>
                 <div class="account-menu-list account-menu-tail">
-                  <button role="menuitem" @click="goLogin({ tab: 'change', redirect: (route.name && route.name !== 'login') ? route.name : 'shop' })">修改密码</button>
                   <button role="menuitem" class="menu-danger" @click="logout">退出登录</button>
                 </div>
               </div>

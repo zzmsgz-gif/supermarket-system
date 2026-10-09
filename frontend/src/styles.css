@@ -2785,7 +2785,12 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .addr-chip.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-deep); }
 .addr-add { margin-top: 10px; }
 .addr-add summary { cursor: pointer; color: var(--brand-deep); font-size: 13px; }
-.addr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
+/* 结算页的地址**展示块**（紧凑两列，省纵向空间）。
+   ⚠️ 必须限定在 .checkout-block 下（2026-10-09 修）：
+   这条规则原先是全局 .addr-form，**覆盖了地址页的单列表单**，
+   导致「编辑地址」标题被挤进 150px 的列里竖排、按钮被挤到下一行。
+   同名 class 不同用途时，作用域一定要写死。 */
+.checkout-block .addr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 10px; }
 .checkout .list-row { border-color: #d7efe6; }
 .checkout .line-total { color: var(--brand-deep); }
 .checkout-summary { margin-top: 14px; padding: 14px 16px; border-radius: 10px; background: var(--brand-soft); }
@@ -5498,3 +5503,62 @@ a.brand-link { text-decoration: none; color: inherit; }
 }
 .addr-page-info { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .addr-page-hint { display: block; margin-top: 6px; text-align: center; color: var(--muted); font-size: 12px; }
+
+/* ===== 收货地址表单：头部排版与编辑态（2026-10-09 用户反馈「布局太丑」）=====
+   之前的问题：① 标题「编辑地址」被 grid 挤成竖排 ② 「取消编辑」按钮被挤到下一行
+   ③ 提示框与按钮抢同一行，文字被压成两三行。 */
+
+/* 头部：标题在左、取消按钮在右，各自不被压缩 */
+.addr-form .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+.addr-form .panel-head h2 {
+  white-space: nowrap;      /* 标题绝不换行 —— 四个字换行就成竖排了 */
+  flex: none;
+}
+.addr-form .panel-head button {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 提示独占整行，不与按钮同行 */
+.addr-editing-tip {
+  margin: -2px 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--brand);
+  border-radius: 0 8px 8px 0;
+  background: #f0f7f4;
+  color: #3d4a44;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* 「设为默认」勾选项独占一行，避免和输入框挤在一起 */
+.addr-form .check-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* 省市区三列在 360px 侧栏里太挤 —— 改为一行三列但可换行，各占满一行更清晰 */
+.addr-form .region-selects {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.addr-form .region-sel { width: 100%; min-width: 0; }
+
+/* 保存按钮给足高度，别让它因为被压缩显得「弱」 */
+.addr-form .addr-submit {
+  width: 100%;
+  min-height: 42px;
+  font-size: 15px;
+  margin-top: 2px;
+}
