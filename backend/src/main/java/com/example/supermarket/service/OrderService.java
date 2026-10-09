@@ -391,9 +391,16 @@ public class OrderService {
         }
         BigDecimal pointsValue = new BigDecimal(pointsUsed).divide(POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
         BigDecimal finalPay = payBeforePoints.subtract(pointsValue).max(ZERO);
+        // 实付（含运费）= 真正从钱包扣走的钱。运费也是消费，所以它该计积分 ——
+        // 之前这里传的是 finalPay（**不含运费**），而支付时 awardOnPaidOrder 传的是
+        // order.getPayAmount()（**含运费**），两边差一个运费，
+        // 于是订单详情写「获得 66 积分」而积分流水记 74，用户对不上账
+        // （2026-10-09 实测：实付 74.48 = 货款 69.90 + 运费 8 - 积分抵扣 3.42，
+        //   66 = 66.48 取整（不含运费），74 = 74.48 取整（含运费））。
+        BigDecimal actualPaid = finalPay.add(freight);
         // 会员日（每月指定几号）按「下单日」加倍：这里存的就是最终会发放的积分，
-        // 支付时 awardOnPaidOrder 用同一个口径（订单创建日）重算，两边不会打架
-        long pointsEarned = memberService.earnPoints(finalPay, LocalDate.now());
+        // 支付时 awardOnPaidOrder 用同一个口径（订单创建日 + 实付）重算，两边不会打架
+        long pointsEarned = memberService.earnPoints(actualPaid, LocalDate.now());
         savedOrder.setMemberDiscount(memberDiscount);
         // 落库的是"实际抵扣掉的金额"（而非按点数现算），这样订单详情里
         // 小计 - 券 - 活动 - 会员折扣 - 积分抵扣 恒等于实付，不会因任何一处兜底 max(ZERO) 而对不上账

@@ -5447,3 +5447,54 @@ a.brand-link { text-decoration: none; color: inherit; }
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
+
+/* 金额明细：右侧「余额 + 时间」两行（2026-10-09）
+   余额放显眼处是为了让用户能自己核对，不用点进订单详情自己算。 */
+.arr-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+  text-align: right;
+}
+.arr-balance {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;   /* 数字等宽，余额列不会因位数变化而跳动 */
+  white-space: nowrap;
+}
+
+/* ===== 收货地址页：编辑态 / 分页（2026-10-09）===== */
+.addr-editing-tip {
+  margin: -2px 0 10px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--brand);
+  border-radius: 0 8px 8px 0;
+  background: #f0f7f4;
+  color: #3d4a44;
+  font-size: 12.5px;
+}
+/* 正在编辑的那张卡片：描边 + 淡底，和其它卡片一眼能区分 */
+.addr-card.editing {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(0, 168, 112, 0.12);
+  background: #fbfdfc;
+}
+.addr-badge-edit { background: #fff3e0; color: #b8860b; }
+
+.addr-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.addr-card-actions .danger { color: #c0392b; }
+.addr-card-actions .danger:hover { background: #fdecea; border-color: #f0b3ac; }
+
+.addr-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f2f1;
+}
+.addr-page-info { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.addr-page-hint { display: block; margin-top: 6px; text-align: center; color: var(--muted); font-size: 12px; }

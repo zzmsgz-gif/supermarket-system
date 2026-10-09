@@ -7,6 +7,7 @@
 // · 下单会占掉秒杀名额（未付款也占），所以建单后必须重拉 loadFlashSales()。
 // · 「提交中…」的最短时长用 withMinSpinner，与支付转圈**同一常量**（用户要求两处节奏一致），
 //   别再写裸的 setTimeout —— 那会让「提交订单」与「支付」的等待感不一致。
+import { ref } from 'vue';
 import { withMinSpinner } from '../utils/format.js';
 
 export function useCheckout({
@@ -26,6 +27,87 @@ export function useCheckout({
     selectedAddressId.value = defaultAddress?.id || null;
   }
 
+  // ===== 地址编辑 / 删除 / 设默认（2026-10-09 补）=====
+  // 之前只有 saveAddress() → POST，等于**只能新增、永远改不了**，
+  // 而后端 PUT /addresses/{id}、DELETE、设默认接口一直都在，前端没接。
+  // 同一个地址也能被反复添加（没有任何重复校验），列表一长全是重复项。
+
+  /** 正在编辑的地址 id；null = 新增模式 */
+  const editingAddressId = ref(null);
+  /** 分页：地址多于一屏就该翻页，而不是拉一长条 */
+  const addrPage = ref(1);
+  const ADDR_PAGE_SIZE = 5;
+
+  /** 地址指纹：收货人+电话+省市区+详细地址全同即视为同一地址 */
+  function addressFingerprint(a) {
+    return [a.receiverName, a.receiverPhone, a.province, a.city, a.district, a.detailAddress]
+      .map((v) => String(v || '').trim().replace(/\s+/g, ''))
+      .join('|');
+  }
+
+  /**
+   * 查重：返回**已存在**的地址对象（编辑时排除自己）。
+   *
+   * <p>为什么不放后端：同一地址只对**同一用户**判重，
+   * 前端手上就有全量列表，省一次请求；后端也仍应做校验（多端并发可能绕过）。
+   */
+  function findDuplicate(candidate) {
+    const fp = addressFingerprint(candidate);
+    return addresses.value.find(
+      (a) => a.id !== editingAddressId.value && addressFingerprint(a) === fp,
+    );
+  }
+
+  /** 进入编辑模式：把地址填进表单。编辑态与新增态共用同一个表单，但走不同接口。 */
+  function startEditAddress(address) {
+    editingAddressId.value = address.id;
+    Object.assign(addressForm, {
+      receiverName: address.receiverName || '',
+      receiverPhone: address.receiverPhone || '',
+      province: address.province || '',
+      city: address.city || '',
+      district: address.district || '',
+      detailAddress: address.detailAddress || '',
+      isDefault: !!address.isDefault,
+    });
+    notice.value = '正在编辑该地址，保存后生效';
+  }
+
+  function cancelEditAddress() {
+    editingAddressId.value = null;
+    Object.assign(addressForm, {
+      receiverName: '', receiverPhone: '', province: '', city: '',
+      district: '', detailAddress: '', isDefault: addresses.value.length === 0,
+    });
+  }
+
+  async function deleteAddress(address) {
+    await run(async () => {
+      await api.delete(`/addresses/${address.id}`);
+      if (selectedAddressId.value === address.id) selectedAddressId.value = null;
+      if (editingAddressId.value === address.id) cancelEditAddress();
+      await loadAddresses();
+      // 删掉当前页最后一条后要回退一页，否则停在空白页
+      const maxPage = Math.max(1, Math.ceil((addresses.value.length || 0) / ADDR_PAGE_SIZE));
+      if (addrPage.value > maxPage) addrPage.value = maxPage;
+    }, '地址已删除');
+  }
+
+  async function setDefaultAddress(address) {
+    if (address.isDefault) return;
+    await run(async () => {
+      await api.patch(`/addresses/${address.id}/default`, {});
+      await loadAddresses();
+    }, '已设为默认地址');
+  }
+
+  function changeAddrPage(delta) {
+    const maxPage = Math.max(1, Math.ceil((addresses.value.length || 0) / ADDR_PAGE_SIZE));
+    const next = addrPage.value + delta;
+    if (next < 1 || next > maxPage) return;
+    addrPage.value = next;
+  }
+
   function useAddress(address) {
     selectedAddressId.value = address.id;
     Object.assign(addressForm, address);
@@ -35,11 +117,25 @@ export function useCheckout({
   }
 
   async function saveAddress() {
+    // 重复地址拦截：不拦的话用户会不小心存出一堆一模一样的条目
+    const dup = findDuplicate(addressForm);
+    if (dup) {
+      fail('这个地址已经存在了（编辑列表里那条就是），无需重复添加');
+      return;
+    }
+    const editing = editingAddressId.value;
     await run(async () => {
-      const saved = await api.post('/addresses', addressForm);
+      const payload = { ...addressForm };
+      const saved = editing
+        ? await api.put(`/addresses/${editing}`, payload)
+        : await api.post('/addresses', payload);
       selectedAddressId.value = saved.id;
+      editingAddressId.value = null;
       await loadAddresses();
-    }, '地址已保存');
+    }, editing ? '地址已更新' : '地址已保存');
+    // 成功后复位表单；失败时**保留用户输入**让他改，别把刚填的清掉。
+    // 注意 run() 失败会 rethrow，所以只有走到这里才是成功。
+    cancelEditAddress();
     // 从结算页补地址过来的：保存后自动返回结算页继续下单（watch(view='checkout') 会重拉钱包/优惠券/门店等）
     if (route.query.redirect === 'checkout') router.push({ name: 'checkout' });
   }
@@ -147,5 +243,7 @@ export function useCheckout({
     }
   }
 
-  return { loadAddresses, useAddress, saveAddress, goCheckout, createOrder };
+  return { loadAddresses, useAddress, saveAddress, goCheckout, createOrder,
+           editingAddressId, addrPage, ADDR_PAGE_SIZE,
+           startEditAddress, cancelEditAddress, deleteAddress, setDefaultAddress, changeAddrPage };
 }

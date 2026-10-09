@@ -2,7 +2,7 @@
   <section class="data-panel amount-page">
     <div class="panel-head">
       <h3>金额明细</h3>
-      <small>只统计真正的资金进出 —— 运费、优惠已包含在订单实付里，不重复计</small>
+      <small>只统计真正的资金进出（含运费、已扣优惠）；右侧是这笔之后的余额</small>
     </div>
 
     <!-- 汇总：累计支出（红）/ 累计收入（绿） -->
@@ -42,7 +42,13 @@
                  用户能看懂的部分（是支付还是退款）已经由上方 typeLabel 说明了。 -->
           </div>
         </div>
-        <small class="arr-time">{{ formatDate(r.createdAt) }}</small>
+        <div class="arr-side">
+          <!-- 变动后余额：让用户能自己核对「这笔之后还剩多少」，
+               不用自己拿计算器加减（2026-10-09 用户要求）。
+               balance_after 是钱包余额变动后的值，不是订单金额，别混用。 -->
+          <small class="arr-balance">余额 {{ money(r.balanceAfter) }}</small>
+          <small class="arr-time">{{ formatDate(r.createdAt) }}</small>
+        </div>
       </div>
 
       <!-- AdminPager 的 @change 传的是增量（-1/+1），跳页走 v-model:jump-page + @jump -->

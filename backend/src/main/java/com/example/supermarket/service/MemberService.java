@@ -180,6 +180,9 @@ public class MemberService {
 
     /** 支付成功后发放积分 + 累计消费升级（幂等：同一订单仅发放一次） */
     @Transactional
+    /** @param payAmount 必须是**含运费的实付**（order.payAmount）。
+     *  下单时（OrderService）用同一个口径算并存进 orders.points_earned，
+     *  两处若一个含运费一个不含，订单详情与积分明细就会显示不同的积分。 */
     public void awardOnPaidOrder(Long userId, Long orderId, BigDecimal payAmount, LocalDate consumeDate) {
         if (ledgerRepository.existsByRefOrderIdAndType(orderId, PointLedger.TYPE_EARN)) {
             return;
