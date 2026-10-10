@@ -67,7 +67,8 @@ const isClaim = computed(() => props.mode === 'claim');
       <small class="coupon-meta">{{ endTimeLabel }} 前有效</small>
       <div v-if="coupon.totalCount" class="coupon-progress" :title="`已领 ${coupon.receivedCount} / ${coupon.totalCount} 张`">
         <i :style="{ width: claimPercent + '%' }"></i>
-        <span>已抢 {{ coupon.receivedCount }}/{{ totalCountLabel }}</span>
+        <!-- 2026-10-10：显示百分比（用户要求）；具体张数保留在 title 里 -->
+        <span>已抢 {{ claimPercent }}%</span>
       </div>
       <small v-else class="coupon-meta">已抢 {{ coupon.receivedCount }} / 不限量</small>
     </div>

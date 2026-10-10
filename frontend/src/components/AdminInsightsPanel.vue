@@ -118,8 +118,34 @@ const trendChart = computed(() => {
     labels: raw
       .map((p, i) => (showTrendLabel(i) ? p.date.slice(5) : null))
       .filter(Boolean),
+    /**
+     * Y 轴刻度（2026-10-10 补）：三档 —— 顶(最大值) / 中(一半) / 底(0)。
+     *
+     * <p>⚠️ 刻度**文字不能用 SVG 的 <text>**：本图是 preserveAspectRatio=none，
+     * SVG 内所有东西都会被横向拉伸，文字会变成扁的。
+     * 所以这里只返回数值，由 HTML 绝对定位叠在图上（不受缩放影响），
+     * 网格线则画在 SVG 里（水平线只受垂直缩放，粗细用 non-scaling-stroke 即可）。
+     */
+    yAxis: [1, 0.5, 0].map((ratio) => ({
+      y: PAD + (1 - ratio) * (H - PAD * 2),   // ratio=1 → 顶部
+      value: max * ratio,
+      label: shortAmount(max * ratio),
+    })),
   };
 });
+
+/**
+ * 金额短标（Y 轴 / 进度条用）：1.2万 / 3.4千 / 58。
+ * 「¥12345」在窄刻度栏里太长，缩写后一眼能读出量级。
+ */
+function shortAmount(v) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return '0';
+  if (n >= 100000000) return `${(n / 100000000).toFixed(1)}亿`;
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}千`;
+  return String(Math.max(0, Math.round(n)));
+}
 
 function showTrendLabel(idx) {
   const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
@@ -292,7 +318,13 @@ defineExpose({ load: loadInsights });   // 供父级 adminMenuLoaders 调度（�
                   <!-- 点数多时（30/90 天）稀疏显示日期标签：30 个 MM-DD 挤在一起全是糊的。
                        每 step 个显示一个，且首尾必显示（知道起止日期）。
                        具体值仍可悬停 title 查看 —— 标签只是辅助，不承载信息。 -->
-<div class="trend-line-wrap">
+<div class="trend-chart">
+                    <!-- Y 轴刻度：用 HTML 而不是 SVG <text> —— 本图 preserveAspectRatio=none，
+                         SVG 内文字会被横向拉伸压扁。绝对定位叠在图上，高度与绘图区（8~142）对齐。 -->
+                    <div class="trend-yaxis">
+                      <span v-for="g in trendChart.yAxis" :key="g.y">¥{{ g.label }}</span>
+                    </div>
+                    <div class="trend-plot">
                     <!-- 2026-10-10 柱状图改折线（用户要求）：30/90 天里大部分日销售额很小，
                          柱状图只会呈现「几根高的 + 一排趴底的胶囊」，观感凌乱；
                          折线 + 面积填充能平滑呈现趋势起伏，且天然适配任意点数（不再需要横向滚动）。
@@ -306,6 +338,9 @@ defineExpose({ load: loadInsights });   // 供父级 adminMenuLoaders 调度（�
                           <stop offset="100%" stop-color="rgba(53,192,138,0)" />
                         </linearGradient>
                       </defs>
+                      <!-- Y 轴网格线（水平线只受垂直缩放，粗细用 non-scaling-stroke 即可） -->
+                      <line v-for="g in trendChart.yAxis" :key="g.y" x1="0" :x2="1000" :y1="g.y" :y2="g.y"
+                        stroke="#e8eeea" stroke-width="1" vector-effect="non-scaling-stroke" />
                       <polygon v-if="trendChart.areaPoints" :points="trendChart.areaPoints" fill="url(#trendFill)" />
                       <polyline v-if="trendChart.linePoints" :points="trendChart.linePoints" fill="none"
                         stroke="#0f9a68" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
@@ -320,6 +355,7 @@ defineExpose({ load: loadInsights });   // 供父级 adminMenuLoaders 调度（�
                     </svg>
                     <div class="trend-labels">
                       <small v-for="lb in trendChart.labels" :key="lb">{{ lb }}</small>
+                    </div>
                     </div>
                   </div>
                 </div>

@@ -3509,7 +3509,26 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
    观感凌乱（用户两次反馈）；折线 + 面积填充平滑呈现起伏。
    viewBox 1000x150 + preserveAspectRatio=none 拉伸，线条 vector-effect 防变形，
    因此不再需要横向滚动和 compact 分档 —— 任意天数一屏放下。 */
-.trend-line-wrap { width: 100%; }
+.trend-chart {
+  display: grid;
+  grid-template-columns: 46px 1fr;   /* Y 轴刻度栏 + 绘图区 */
+  gap: 6px;
+  align-items: start;
+}
+/* Y 轴刻度：HTML 叠层（SVG 内文字会被 preserveAspectRatio=none 压扁）。
+   高度 134px = SVG 绘图区 8~142，与网格线一一对应。 */
+.trend-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 134px;
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--muted, #5a6673);
+  text-align: right;
+  white-space: nowrap;
+}
+.trend-plot { min-width: 0; }
 .trend-svg { display: block; width: 100%; height: 150px; }
 .trend-labels {
   display: flex;
