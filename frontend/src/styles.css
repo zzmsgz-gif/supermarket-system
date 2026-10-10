@@ -259,15 +259,17 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   height: 42px;
   padding: 0 4px 0 16px;
   background: #f3f8f6;
-  border: 1.5px solid #cfe3db;
+  /* 2026-10-10：去掉边框（用户反馈「搜索框的边框去掉」）。
+     靠背景色区分区域即可；聚焦态的描边/光晕一并去掉 ——
+     「平时无边框、聚焦突然发光」比原来更突兀。
+     键盘可达性由内层 input 的 :focus-visible 焦点环兜底（见下方）。 */
+  border: 0;
   border-radius: 999px;
-  transition: border-color .2s, box-shadow .2s, background .2s;
+  transition: background .2s;
 }
 
 .header-search:focus-within {
-  background: #fff;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 4px rgba(0, 168, 112, 0.12);
+  background: #eef6f2;
 }
 
 .header-search .i-search { color: var(--brand-deep); }
@@ -3497,6 +3499,18 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   --trend-gap: 2px;
   --trend-col-min: 9px;
 }
+/* 2026-10-10 二次修「成交趋势还是乱的」：
+   1) 首尾日期标签被滚动容器裁掉一半（截图里 09-11 只剩 -11）
+      → 容器加左右 padding，给溢出到列外的标签留出空间
+   2) 默认滚动条又粗又灰，压在图表下面像一条疤 → 细化
+   3) compact 下柱子仍被 flex 拉到 34px 上限，矮柱子看着像一排胶囊
+      → compact 时限制柱子最宽 12px，细柱才有「柱状图」的样子 */
+.trend-bars { padding-left: 14px; padding-right: 14px; }
+.trend-bars::-webkit-scrollbar { height: 6px; }
+.trend-bars::-webkit-scrollbar-track { background: transparent; }
+.trend-bars::-webkit-scrollbar-thumb { background: #d7ded9; border-radius: 999px; }
+.trend-bars::-webkit-scrollbar-thumb:hover { background: #c2ccc6; }
+.trend-bars.compact .trend-col i { max-width: 12px; }
 .trend-col {
   flex: 1 1 0;
   min-width: var(--trend-col-min);
@@ -5695,3 +5709,33 @@ a.brand-link { text-decoration: none; color: inherit; }
   color: #b8700f;
   font-weight: 600;
 }
+
+/* ===== 券卡「已抢 N/M」进度条（2026-10-10）===== */
+.coupon-progress {
+  position: relative;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: #e8efe9;
+  overflow: hidden;
+}
+.coupon-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #35c08a, #0f9a68);
+  transition: width .3s ease;
+}
+.coupon-progress span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  color: #14563f;
+  font-weight: 600;
+}
+
+/* ProductPicker：框里显示已选商品名（非输入态）时加深字色，与占位符区分 */
+.pk-input.filled { color: var(--ink); font-weight: 600; }

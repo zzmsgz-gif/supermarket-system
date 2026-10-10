@@ -211,13 +211,21 @@ export function useCart({
       return;
     }
     cartSyncTimers[item.id] = setTimeout(async () => {
-      const max = Number(item.stock || 0);
-      const qty = Number(item.quantity) || 1;
+      let max = Number(item.stock || 0);
+      let qty = Number(item.quantity) || 1;
+      // 2026-10-10：**提交前先夹到库存上限**（之前只在 change 事件里夹）。
+      // 用户直接在输入框敲 180 时，input 事件先于 change 到来，debounce 400ms 期间
+      // quantity=180 就发 PUT → 后端 409 → loadCart 回滚 —— 这 1 秒里
+      // 「N 件商品现在买不了」红框和行内「库存仅剩 160 件」灰标闪现又消失，
+      // 观感很差（用户截图反馈）。现在这里直接夹到 max 提交：后端必成功，
+      // 没有回滚闪烁；红框只会在真正买不了（秒杀限购等）时出现。
       if (max > 0 && qty > max) {
-        // 前端已经夹过一次并提示过了 → 不再弹「库存不足」（避免同一件事说两遍）
-        if (!opt.silentWhenClamped) fail(`库存不足：仅剩 ${max} 件`, '库存不足');
-        await loadCart(); // 回滚到后端真实数量
-        return;
+        qty = max;
+        item.quantity = max;
+        if (!opt.silentWhenClamped) {
+          // 走到这里说明是纯 input 路径（没经过 onQtyChange 的提示），补一句
+          hint(`超过可买数量，已帮你调成 ${max} 件`);
+        }
       }
       try {
         // PUT 返回的就是更新后的完整购物车（含 activityDiscount），必须接住，

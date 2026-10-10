@@ -44,6 +44,36 @@ const activeId = ref(0);   // 键盘上下键选中项
 // 兜底：请求异常时不要把已有选中项弄丢
 const pick = computed(() => props.selectedItems || []);
 
+/**
+ * 选中瞬间记住的完整 item（2026-10-10 修「选中后框里没显示」）。
+ *
+ * <p>原先框里/标签的显示完全依赖父组件反查：父组件拿 id 去 activityProducts
+ * 里 find 名字，反查链路上任何一环没跟上（列表懒加载、数据还没回来），
+ * 显示就是空白 —— 用户点选了却什么都没发生。
+ *
+ * <p>点击的那一刻手上就有完整 item，直接记下来。父组件反查得到就用
+ * 父组件的（编辑回显场景），反查不到就用这里存的 —— 两条路互为兜底。
+ */
+const lastPicked = ref(null);
+
+/** 实际用于显示的已选列表：父组件给的优先，否则用本组件记住的 */
+const shown = computed(() => (pick.value.length ? pick.value : (lastPicked.value ? [lastPicked.value] : [])));
+
+/**
+ * 输入框显示值（2026-10-10）：
+ * 正在输入 → 关键词；没在输入且已选（单选）→ **「商品名（SKU）」**。
+ * 之前选中后框里是空的、只有外面一个小 chip，用户反馈「框里没显示数据」。
+ * 框里直接显示商品名+编号，一眼确认选的是哪个；重新输入即覆盖。
+ */
+const displayValue = computed(() => {
+  if (keyword.value) return keyword.value;
+  if (!props.multiple && shown.value.length) {
+    const it = shown.value[0];
+    return it.sku ? `${it.name}（${it.sku}）` : (it.name || '');
+  }
+  return keyword.value;
+});
+
 async function search() {
   const kw = keyword.value.trim();
   loading.value = true;
@@ -85,6 +115,7 @@ function toggle(item) {
     else cur.push(item.id);
     emit('update:modelValue', cur);
   } else {
+    lastPicked.value = item;
     emit('update:modelValue', item.id);
     open.value = false;
   }
@@ -94,6 +125,7 @@ function remove(item) {
   if (props.multiple) {
     emit('update:modelValue', (props.modelValue || []).filter((x) => Number(x) !== Number(item.id)));
   } else {
+    lastPicked.value = null;
     emit('update:modelValue', null);
   }
 }
@@ -120,6 +152,7 @@ watch(root, (el) => {
 
 function clear() {
   keyword.value = '';
+  lastPicked.value = null;
   if (props.multiple) emit('update:modelValue', []);
   else emit('update:modelValue', null);
 }
@@ -130,8 +163,8 @@ defineExpose({ clear, search });
 <template>
   <div ref="root" class="pk">
     <!-- 已选标签 -->
-    <div v-if="pick.length" class="pk-chips">
-      <span v-for="it in pick" :key="it.id" class="pk-chip">
+    <div v-if="shown.length" class="pk-chips">
+      <span v-for="it in shown" :key="it.id" class="pk-chip">
         {{ it.name }}
         <i class="pk-x" title="移除" @click="remove(it)">×</i>
       </span>
@@ -140,14 +173,15 @@ defineExpose({ clear, search });
     <div class="pk-input-wrap">
       <input
         class="pk-input"
-        :value="keyword"
-        :placeholder="pick.length ? '继续搜索添加…' : placeholder"
+        :class="{ filled: displayValue && !keyword }"
+        :value="displayValue"
+        :placeholder="shown.length ? '继续搜索添加…' : placeholder"
         @input="keyword = $event.target.value"
         @focus="open = true"
         @click="open = true"
         @keydown="onKeydown"
       />
-      <button v-if="keyword || pick.length" type="button" class="pk-clear" title="清空" @click="clear">×</button>
+      <button v-if="keyword || shown.length" type="button" class="pk-clear" title="清空" @click="clear">×</button>
       <span v-if="loading" class="pk-loading">搜…</span>
     </div>
 

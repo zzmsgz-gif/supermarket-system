@@ -77,8 +77,14 @@ const insightsRangeLabel = computed(() => ({
  */
 const trendLabelStep = computed(() => {
   const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
+  // compact 下列宽只有 9px + gap 2px = 11px，而日期标签「09-11」要 ~30px 宽。
+  // step 必须保证相邻标签间隔 ≥ 标签宽，否则会重叠成一团（截图反馈）。
+  //   ≤14 天：全显示（非 compact，列宽足够）
+  //   30 天：step 4 → 间隔 44px，约 9 个标签
+  //   90 天：step 7 → 间隔 88px，约 13 个
   if (n <= 14) return 1;
-  return Math.ceil(n / 12);
+  if (n <= 31) return 4;
+  return 7;
 });
 function showTrendLabel(idx) {
   const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
