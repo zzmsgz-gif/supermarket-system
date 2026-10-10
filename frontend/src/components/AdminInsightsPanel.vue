@@ -86,6 +86,41 @@ const trendLabelStep = computed(() => {
   if (n <= 31) return 4;
   return 7;
 });
+/**
+ * 折线图几何（2026-10-10 柱状图改折线）。
+ *
+ * <p>x 均分到 viewBox 1000，y 按销售额比例映射到 8~142（上下各留 8px，
+ * 不让最高点顶到边、零值点贴到线外）。全部为 0 时画一条底部平线。
+ *
+ * <p>标签行与数据点一一对应 —— 标签只显示 showTrendLabel 挑中的那些，
+ * 但 flex space-between 的均匀分布和 x 均分的点位天然一致，视觉对得上。
+ */
+const trendChart = computed(() => {
+  const raw = (insights.value && insights.value.trend) || [];
+  const n = raw.length;
+  const W = 1000, H = 150, PAD = 8;
+  if (!n) return { linePoints: '', areaPoints: '', dots: [], labels: [] };
+  const max = Math.max(...raw.map((p) => Number(p.salesAmount || 0)));
+  const xOf = (i) => (n === 1 ? W / 2 : (i * W) / (n - 1));
+  const yOf = (v) => (max > 0 ? H - PAD - (Number(v || 0) * (H - PAD * 2)) / max : H - PAD);
+  const pts = raw.map((p, i) => ({
+    x: xOf(i),
+    y: yOf(p.salesAmount),
+    date: p.date,
+    label: `${p.date}：${p.orderCount} 单 / ${money(p.salesAmount)}`,
+  }));
+  return {
+    linePoints: pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '),
+    areaPoints: n > 1
+      ? `0,${H} ` + pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ') + ` ${W},${H}`
+      : '',
+    dots: pts,
+    labels: raw
+      .map((p, i) => (showTrendLabel(i) ? p.date.slice(5) : null))
+      .filter(Boolean),
+  };
+});
+
 function showTrendLabel(idx) {
   const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
   const step = trendLabelStep.value;
@@ -257,13 +292,34 @@ defineExpose({ load: loadInsights });   // 供父级 adminMenuLoaders 调度（�
                   <!-- 点数多时（30/90 天）稀疏显示日期标签：30 个 MM-DD 挤在一起全是糊的。
                        每 step 个显示一个，且首尾必显示（知道起止日期）。
                        具体值仍可悬停 title 查看 —— 标签只是辅助，不承载信息。 -->
-                  <div class="trend-bars" :class="{ compact: trendLabelStep > 1 }">
-                    <div v-for="(point, idx) in insights.trend" :key="point.date" class="trend-col"
-                         :title="`${point.date}：${point.orderCount} 单 / ${money(point.salesAmount)}`">
-                      <i :style="{ height: (insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0) > 0
-                        ? Math.max(4, Math.round(Number(point.salesAmount || 0) * 100 / insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0)))
-                        : 4) + '%' }"></i>
-                      <small v-if="showTrendLabel(idx)">{{ point.date.slice(5) }}</small>
+<div class="trend-line-wrap">
+                    <!-- 2026-10-10 柱状图改折线（用户要求）：30/90 天里大部分日销售额很小，
+                         柱状图只会呈现「几根高的 + 一排趴底的胶囊」，观感凌乱；
+                         折线 + 面积填充能平滑呈现趋势起伏，且天然适配任意点数（不再需要横向滚动）。
+                         viewBox 固定 1000x150 + preserveAspectRatio=none 拉伸到容器宽，
+                         线条用 vector-effect=non-scaling-stroke 防止线宽被拉伸变形。 -->
+                    <svg class="trend-svg" viewBox="0 0 1000 150" preserveAspectRatio="none" role="img"
+                         :aria-label="`成交趋势折线图，共 ${insights.trend.length} 天`">
+                      <defs>
+                        <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stop-color="rgba(53,192,138,0.32)" />
+                          <stop offset="100%" stop-color="rgba(53,192,138,0)" />
+                        </linearGradient>
+                      </defs>
+                      <polygon v-if="trendChart.areaPoints" :points="trendChart.areaPoints" fill="url(#trendFill)" />
+                      <polyline v-if="trendChart.linePoints" :points="trendChart.linePoints" fill="none"
+                        stroke="#0f9a68" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+                        vector-effect="non-scaling-stroke" />
+                      <!-- 数据点：点数 ≤31 才画（90 天太密）；非缩放半径在 none 拉伸下会略扁，r 取 4 视觉可接受 -->
+                      <template v-if="insights.trend.length <= 31">
+                        <circle v-for="pt in trendChart.dots" :key="pt.date" :cx="pt.x" :cy="pt.y" r="4"
+                          fill="#fff" stroke="#0f9a68" stroke-width="2" vector-effect="non-scaling-stroke">
+                          <title>{{ pt.label }}</title>
+                        </circle>
+                      </template>
+                    </svg>
+                    <div class="trend-labels">
+                      <small v-for="lb in trendChart.labels" :key="lb">{{ lb }}</small>
                     </div>
                   </div>
                 </div>

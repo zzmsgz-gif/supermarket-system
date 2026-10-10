@@ -923,9 +923,11 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
 /* ===== 优惠券页：票券卡片 ===== */
 .coupon-page { display: grid; gap: 17px; }
 .coupon-section { display: grid; gap: 14px; }
+/* 2026-10-10：最小宽 290→340。三张 290px 的卡会把 body 挤到 30px 宽
+   （按钮「今日已领，明天再来」太宽），名字竖排、进度条溢出 —— 宁可每行少放一张。 */
 .coupon-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 16px;
 }
 .coupon-ticket {
@@ -966,12 +968,38 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   gap: 5px;
   min-width: 0;
 }
-.coupon-name { font-size: 15px; color: var(--ink); }
+/* 名字单行省略：窄卡片下原先竖排成一字一行（截图反馈） */
+.coupon-name {
+  font-size: 15px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 「每日可领」从独立一行改为名字行内的 inline 小标（不再单独占行撑高卡片） */
+.coupon-name .coupon-daily-tag {
+  display: inline-block;
+  vertical-align: 1px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #b8700f;
+  font-weight: 600;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
 .coupon-meta { display: block; font-size: 12px; color: var(--muted); }
+/* white-space:pre-line —— 「今日已领\n明天再来」两行显示，宽度可控 */
 .coupon-action {
   align-self: center;
   justify-self: end;
-  min-height: 30px; padding: 6px 16px; font-size: 13px;
+  min-height: 30px; padding: 6px 12px; font-size: 13px;
+  white-space: pre-line;
+  line-height: 1.35;
+  text-align: center;
+  min-width: 76px;
+  max-width: 96px;
 }
 .coupon-ticket.claimed .coupon-left { filter: grayscale(.45) brightness(.96); }
 .coupon-ticket.claimed .coupon-action { background: #ececec; color: #9a9a9a; box-shadow: none; }
@@ -3476,60 +3504,21 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .insights-block + .insights-block { margin-top: 14px; }
 .insights-cols .insights-block + .insights-block { margin-top: 0; }
 .insights-block h4 { margin: 0 0 12px; font-size: 14px; font-weight: 500; }
-.trend-bars {
-  --trend-gap: 8px;
-  --trend-col-min: 18px;
+/* ===== 成交趋势：折线图（2026-10-10 由柱状图改来）=====
+   柱状图在「少数天很高 + 多数天接近 0」的数据下会呈现一排趴底的胶囊，
+   观感凌乱（用户两次反馈）；折线 + 面积填充平滑呈现起伏。
+   viewBox 1000x150 + preserveAspectRatio=none 拉伸，线条 vector-effect 防变形，
+   因此不再需要横向滚动和 compact 分档 —— 任意天数一屏放下。 */
+.trend-line-wrap { width: 100%; }
+.trend-svg { display: block; width: 100%; height: 150px; }
+.trend-labels {
   display: flex;
-  align-items: flex-end;
-  gap: var(--trend-gap);
-  height: 132px;
-  /* 2026-10-10 修「近 30 天往右延伸被覆盖」：
-     柱子是 `flex: 1 1 0` + 固定 gap 8px。7 根时每根约占 1/7 没问题；
-     30 根时 29 个 gap 就吃掉 232px 固定宽度，柱子被压到近乎不可见、
-     内容溢出容器被裁掉 —— 表现就是「往右延长然后被覆盖」。
-     两档处理：
-       · 默认（≤14 根，如 today/7d）：铺满，视觉不变
-       · .compact（>14 根，如 30d/90d）：收窄 gap 与柱子下限，尽量一屏看全；
-         真放不下（90d）才横向滚动 —— **始终可滚动，不会再被裁掉**。 */
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 2px;
+  justify-content: space-between;
+  padding: 4px 2px 0;
+  font-size: 11px;
+  color: var(--muted, #5a6673);
 }
-.trend-bars.compact {
-  --trend-gap: 2px;
-  --trend-col-min: 9px;
-}
-/* 2026-10-10 二次修「成交趋势还是乱的」：
-   1) 首尾日期标签被滚动容器裁掉一半（截图里 09-11 只剩 -11）
-      → 容器加左右 padding，给溢出到列外的标签留出空间
-   2) 默认滚动条又粗又灰，压在图表下面像一条疤 → 细化
-   3) compact 下柱子仍被 flex 拉到 34px 上限，矮柱子看着像一排胶囊
-      → compact 时限制柱子最宽 12px，细柱才有「柱状图」的样子 */
-.trend-bars { padding-left: 14px; padding-right: 14px; }
-.trend-bars::-webkit-scrollbar { height: 6px; }
-.trend-bars::-webkit-scrollbar-track { background: transparent; }
-.trend-bars::-webkit-scrollbar-thumb { background: #d7ded9; border-radius: 999px; }
-.trend-bars::-webkit-scrollbar-thumb:hover { background: #c2ccc6; }
-.trend-bars.compact .trend-col i { max-width: 12px; }
-.trend-col {
-  flex: 1 1 0;
-  min-width: var(--trend-col-min);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-  gap: 6px;
-}
-.trend-col i {
-  display: block;
-  width: 100%;
-  max-width: 34px;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, #35c08a, #0f9a68);
-  transition: height .3s ease;
-}
-.trend-col small { font-size: 11px; color: var(--muted, #5a6673); white-space: nowrap; }
+.trend-labels small { white-space: nowrap; }
 .dist-list { display: flex; flex-direction: column; gap: 9px; }
 .dist-row {
   display: grid;
@@ -5735,6 +5724,8 @@ a.brand-link { text-decoration: none; color: inherit; }
   font-size: 10.5px;
   color: #14563f;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 /* ProductPicker：框里显示已选商品名（非输入态）时加深字色，与占位符区分 */

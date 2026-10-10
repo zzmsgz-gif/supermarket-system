@@ -25,7 +25,9 @@ const isDaily = computed(() => Number(props.coupon.claimType || 0) === 1);
  */
 const claimLabel = computed(() => {
   if (!props.coupon.receivedByCurrentUser) return '立即领取';
-  return isDaily.value ? '今日已领，明天再来' : '已领取';
+  // 「今日已领，明天再来」一行 7 个字太宽，会把卡片 body 挤到竖排（截图反馈）。
+  // 改两行：按钮 white-space:pre-line，换行符生效。
+  return isDaily.value ? '今日已领\n明天再来' : '已领取';
 });
 
 /** 领取进度百分比（0~100，封顶 100 防御脏数据） */
@@ -33,6 +35,15 @@ const claimPercent = computed(() => {
   const total = Number(props.coupon.totalCount || 0);
   if (total <= 0) return 0;
   return Math.min(100, Math.round((Number(props.coupon.receivedCount || 0) * 100) / total));
+});
+
+/**
+ * 进度条里的分母文案：超 1 万缩写成「x.x万」。
+ * 「已抢 0/99999」七个字符在小卡片里会把进度条文字挤爆。
+ */
+const totalCountLabel = computed(() => {
+  const total = Number(props.coupon.totalCount || 0);
+  return total >= 10000 ? `${(total / 10000).toFixed(1)}万` : String(total);
 });
 const isClaim = computed(() => props.mode === 'claim');
 </script>
@@ -48,17 +59,15 @@ const isClaim = computed(() => props.mode === 'claim');
       <div class="coupon-threshold">满 {{ coupon.thresholdAmount }} 可用</div>
     </div>
     <div class="coupon-body">
-      <strong class="coupon-name">{{ name }}</strong>
+      <!-- 2026-10-10 布局重排：「每日可领」从独立一行挪进名字行（原先单独占行
+           把卡片撑高、和进度条挤在一起）；名字单行省略 —— 卡片窄时会竖排成一字一行。 -->
+      <strong class="coupon-name">
+        {{ name }}<small v-if="isDaily" class="coupon-daily-tag">每日可领</small>
+      </strong>
       <small class="coupon-meta">{{ endTimeLabel }} 前有效</small>
-      <!-- 每日可领券的标识与状态（2026-10-10）。
-           后端对 claimType=1 的券把 receivedByCurrentUser 取成「今天领没领过」，
-           所以这里能直接复用同一个禁用态，只是文案要说清楚「明天还能来」。 -->
-      <small v-if="isDaily" class="coupon-meta coupon-daily-tag">每日可领</small>
-      <!-- 2026-10-10：「已领 N / M」纯文字看不出库存紧张程度，改进度条。
-           不限量（totalCount=0）没有分母，进度条无意义，仍显示文字。 -->
       <div v-if="coupon.totalCount" class="coupon-progress" :title="`已领 ${coupon.receivedCount} / ${coupon.totalCount} 张`">
         <i :style="{ width: claimPercent + '%' }"></i>
-        <span>已抢 {{ coupon.receivedCount }}/{{ coupon.totalCount }}</span>
+        <span>已抢 {{ coupon.receivedCount }}/{{ totalCountLabel }}</span>
       </div>
       <small v-else class="coupon-meta">已抢 {{ coupon.receivedCount }} / 不限量</small>
     </div>
