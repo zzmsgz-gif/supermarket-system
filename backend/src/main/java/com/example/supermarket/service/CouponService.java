@@ -165,6 +165,68 @@ public class CouponService {
         return CouponResponse.from(couponRepository.save(coupon), false);
     }
 
+    // ==================== 编辑 / 删除（2026-10-11）====================
+
+    /**
+     * 修改优惠券。
+     *
+     * <p>⚠️ 关键约束：**已有人领取时不允许下调面额 / 抬高门槛 / 收紧总量**。
+     * 已经领到手的券如果后台悄悄改小，用户下单时会发现金额对不上 ——
+     * 这是会引发投诉的问题。有效期和领取方式可以改（对已持券者只有好处或中性）。
+     *
+     * <p>⚠️ totalCount 不允许小于已领数量：否则 received_count > total_count，
+     * 进度条会算出 >100% 的进度、列表显示成负数余量。
+     *
+     * @return 更新后的券；{@code affectedHolders} 由前端用来提示「已影响 N 位已领用户」
+     */
+    @Transactional
+    public CouponResponse updateCoupon(Long id, CouponCreateRequest request) {
+        Coupon coupon = getActiveCoupon(id);
+        if (request.getStartTime() == null || request.getEndTime() == null
+                || !request.getStartTime().isBefore(request.getEndTime())) {
+            throw new BusinessException(400, "优惠券的过期时间必须晚于生效时间");
+        }
+        if (request.getDiscountAmount().compareTo(request.getThresholdAmount()) > 0) {
+            throw new BusinessException(400, "优惠金额不能超过使用门槛");
+        }
+        final long holders = coupon.getReceivedCount() == null ? 0L : coupon.getReceivedCount().longValue();
+        if (holders > 0) {
+            if (request.getDiscountAmount().compareTo(coupon.getDiscountAmount()) < 0) {
+                throw new BusinessException(409, "已有 " + holders + " 人领取，不能下调优惠金额");
+            }
+            if (request.getThresholdAmount().compareTo(coupon.getThresholdAmount()) > 0) {
+                throw new BusinessException(409, "已有 " + holders + " 人领取，不能抬高使用门槛");
+            }
+        }
+        final int newTotal = request.getTotalCount() == null ? 0 : Math.max(0, request.getTotalCount());
+        if (newTotal > 0 && newTotal < coupon.getReceivedCount()) {
+            throw new BusinessException(400, "发放总量不能小于已领取数量（" + coupon.getReceivedCount() + "）");
+        }
+
+        coupon.setName(request.getName().trim());
+        coupon.setThresholdAmount(request.getThresholdAmount());
+        coupon.setDiscountAmount(request.getDiscountAmount());
+        coupon.setTotalCount(newTotal);
+        coupon.setStartTime(request.getStartTime());
+        coupon.setEndTime(request.getEndTime());
+        coupon.setClaimType(request.getClaimType() == null ? CLAIM_ONCE : request.getClaimType().byteValue());
+        return CouponResponse.from(couponRepository.save(coupon), false);
+    }
+
+    /**
+     * 删除优惠券（**软删**，与项目其余模块一致）。
+     *
+     * <p>已领到手的券**不受影响**：user_coupon 是独立记录，用户仍可正常使用，
+     * 只是这张券不再出现在后台列表和用户端的可领列表里。
+     * 不做物理删除 —— 订单里的优惠金额要能追溯到券。
+     */
+    @Transactional
+    public void deleteCoupon(Long id) {
+        Coupon coupon = getActiveCoupon(id);
+        coupon.setDeleted((byte) 1);
+        couponRepository.save(coupon);
+    }
+
     @Transactional(readOnly = true)
     public List<CouponResponse> listAvailableCoupons(Long userId) {
         LocalDateTime now = LocalDateTime.now();

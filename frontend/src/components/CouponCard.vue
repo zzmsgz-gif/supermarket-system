@@ -70,7 +70,9 @@ const isClaim = computed(() => props.mode === 'claim');
         <!-- 2026-10-10：显示百分比（用户要求）；具体张数保留在 title 里 -->
         <span>已抢 {{ claimPercent }}%</span>
       </div>
-      <small v-else class="coupon-meta">已抢 {{ coupon.receivedCount }} / 不限量</small>
+      <!-- 不限量券（totalCount=0）不显示进度（2026-10-11 用户要求）：
+           永远领得到，「已抢 N / 不限量」既没有分母也看不出紧张程度，
+           占一行反而把卡片挤得更满。 -->
     </div>
     <button
       class="coupon-action"

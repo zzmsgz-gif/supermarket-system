@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -50,5 +52,28 @@ public class AdminCouponController {
             @Valid @RequestBody CouponStatusRequest request
     ) {
         return ApiResponse.ok(couponService.updateCouponStatus(id, request.getStatus()));
+    }
+
+    // ===== 编辑 / 删除（2026-10-11）=====
+
+    /**
+     * 修改优惠券。校验规则与新建一致（见 CouponService.updateCoupon），
+     * 额外约束：已有人领取时不允许下调面额 / 抬高门槛 / 收紧总量。
+     */
+    @PutMapping("/{id}")
+    public ApiResponse<CouponResponse> updateCoupon(
+            @PathVariable Long id,
+            @Valid @RequestBody CouponCreateRequest request
+    ) {
+        return ApiResponse.ok(couponService.updateCoupon(id, request));
+    }
+
+    /**
+     * 删除优惠券（软删）。已领到手的券不受影响，仍可正常使用。
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteCoupon(@PathVariable Long id) {
+        couponService.deleteCoupon(id);
+        return ApiResponse.ok(null);
     }
 }

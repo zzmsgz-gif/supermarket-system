@@ -22,6 +22,12 @@ const props = defineProps({
   changeAdminCouponPageSize: { type: Function, required: true },
   resetAdminCouponSearch: { type: Function, required: true },
   toggleCoupon: { type: Function, required: true },
+  /** 2026-10-11 编辑：把券回填到表单，表单切到「保存修改」态 */
+  editCoupon: { type: Function, required: true },
+  /** 2026-10-11 删除（软删），带二次确认 */
+  removeCoupon: { type: Function, required: true },
+  /** 取消编辑，表单回到新建态 */
+  resetCouponForm: { type: Function, required: true },
   changeAdminCouponPage: { type: Function, required: true },
   goAdminCouponPage: { type: Function, required: true },
   adminCouponTotalPages: { type: Number, required: true },
@@ -34,14 +40,14 @@ const props = defineProps({
 const adminCouponJumpPage = defineModel('adminCouponJumpPage', { type: Number, required: true });
 const adminCouponKeyword = defineModel('adminCouponKeyword', { type: String, required: true });
 const { adminCoupons, loadAdminCoupons } = props.adminCtx;
-const { fillCouponPeriod, saveCoupon, searchAdminCoupons, changeAdminCouponPageSize, resetAdminCouponSearch, toggleCoupon, changeAdminCouponPage, goAdminCouponPage, adminCouponTotalPages, couponForm } = toRefs(props);
+const { fillCouponPeriod, saveCoupon, searchAdminCoupons, changeAdminCouponPageSize, resetAdminCouponSearch, toggleCoupon, changeAdminCouponPage, goAdminCouponPage, adminCouponTotalPages, couponForm , editCoupon, removeCoupon, resetCouponForm } = toRefs(props);
 </script>
 
 <template>
   <div class="data-panel">
     <div class="form-block">
       <div class="form-title">
-        <span>新增优惠券</span>
+        <span>{{ couponForm.id ? '编辑优惠券' : '新增优惠券' }}</span>
         <small>满减券：订单达到「使用门槛」后立减「优惠金额」，优惠金额不能大于门槛；发放总量填 0 表示不限量</small>
         <button type="button" class="field-link title-link" @click="fillCouponPeriod(30)">一键填充：今天起 30 天</button>
       </div>
@@ -80,7 +86,8 @@ const { fillCouponPeriod, saveCoupon, searchAdminCoupons, changeAdminCouponPageS
           <input v-model="couponForm.endTime" type="datetime-local" />
         </label>
         <div class="field field-action">
-          <button type="submit">新增优惠券</button>
+          <button type="submit">{{ couponForm.id ? '保存修改' : '新增优惠券' }}</button>
+          <button v-if="couponForm.id" type="button" class="ghost" @click="resetCouponForm">取消编辑</button>
         </div>
       </form>
     </div>
@@ -114,6 +121,9 @@ const { fillCouponPeriod, saveCoupon, searchAdminCoupons, changeAdminCouponPageS
               <td><span :class="['tag', coupon.status === 1 ? 'ok' : 'muted']">{{ coupon.status === 1 ? '启用中' : '已停用' }}</span></td>
               <td class="col-action">
                 <div class="row-actions">
+                  <!-- 2026-10-11：编辑（回填表单）/ 删除（软删，带二次确认） -->
+                  <button class="ghost" @click="editCoupon(coupon)">编辑</button>
+                  <button class="ghost danger" @click="removeCoupon(coupon)">删除</button>
                   <button class="ghost" @click="toggleCoupon(coupon)">{{ coupon.status === 1 ? '停用' : '启用' }}</button>
                 </div>
               </td>
