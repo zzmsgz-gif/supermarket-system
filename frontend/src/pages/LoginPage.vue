@@ -145,29 +145,93 @@ function back() {
 // 让原页面回到已登录态；返回 false 表示不是新标签打开，走原同标签逻辑。
 function closeAndRefreshOpener() {
   if (!window.opener) return false;
-  try { window.opener.location.reload(); } catch (e) { /* 跨域或被拦截时忽略，交给下面同标签兜底 */ }
+  try {
+    syncCredentialsToOpener();
+    window.opener.location.reload();
+  } catch (e) { /* 跨域或被拦截时忽略，交给下面同标签兜底 */ }
   window.close();
   // 兜底：若浏览器拦截了 window.close()（极少数情况），本标签原地跳回首页，避免卡在登录表单
   appCtx.navigate('shop');
   return true;
 }
 
+/**
+ * 把本标签的登录凭据写进 opener 的 sessionStorage。
+ *
+ * <p>不勾「记住我」时 token 存在 sessionStorage，而 **sessionStorage 按「标签页 + 源」隔离** ——
+ * 新标签页里存的，opener 读不到。结果就是：游客点「立即购买」→ 新标签页登录 →
+ * 回到原页面**仍是未登录**（勾「记住我」时存 localStorage 跨标签页共享，所以看不出问题）。
+ *
+ * <p>同源标签页之间允许直接写对方的 storage，所以直接搬过去即可。
+ * 保持 sessionStorage 语义（关浏览器即失效），而不是改成 localStorage
+ * —— 那是「记住我」才该有的行为。
+ */
+function syncCredentialsToOpener() {
+  if (!window.opener) return;
+  try {
+    const token = sessionStorage.getItem('supermarket_token');
+    const user = sessionStorage.getItem('supermarket_user');
+    if (token) window.opener.sessionStorage.setItem('supermarket_token', token);
+    if (user) window.opener.sessionStorage.setItem('supermarket_user', user);
+  } catch (e) { /* 跨域时忽略 */ }
+}
+
+/**
+ * 从 opener 那里取「待续做动作」—— 它存在 **opener 的 sessionStorage** 里，
+ * 本标签读不到（同上，按标签页隔离）。取出即从 opener 侧删除，避免刷新后重复触发。
+ */
+function takeOpenerPendingAction() {
+  if (!window.opener) return null;
+  try {
+    const raw = window.opener.sessionStorage.getItem('supermarket_pending_action');
+    if (!raw) return null;
+    window.opener.sessionStorage.removeItem('supermarket_pending_action');
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+/** 关掉本登录标签（被浏览器拦截时兜底回首页，避免卡在登录表单） */
+function closeSelfTab() {
+  window.close();
+  setTimeout(() => {
+    // window.close() 被拦截说明不是脚本开的标签，只能原地跳走
+    if (window.closed) return;
+    appCtx.navigate('shop');
+  }, 300);
+}
+
 // 登录/注册成功后的去向：优先消费「拦截时存下的动作」（去结算 / 立即购买 / 收藏），否则回 redirect 或首页
 function resumeAfterAuth() {
-  // 新标签页入口（页头登录/注册）优先：刷新来源页并关掉登录标签，原页面回到已登录态
+  // 1) 新标签页 + 原页面有「待续做动作」（去结算/立即购买/收藏）
+  //    pendingAction 也存在 sessionStorage，同样按标签页隔离 —— 动作留在 opener 那边，
+  //    必须从 opener 读出来。读到就**在本标签完成回跳**，同时把登录态搬给 opener 并刷新它。
+  const openerAction = takeOpenerPendingAction();
+  if (openerAction) {
+    if (applyPendingAction(openerAction)) { syncCredentialsToOpener(); closeSelfTab(); return; }
+  }
+  // 2) 常规新标签页入口（页头登录/注册）：刷新来源页并关掉登录标签，原页面回到已登录态
   if (closeAndRefreshOpener()) return;
+  // 3) 同标签登录：动作就在本页 sessionStorage
   const action = takePendingAction();
-  const redirect = route.query.redirect ? String(route.query.redirect) : '';
-  if (action && action.type === 'checkout') { appCtx.navigate(action.redirect || 'checkout'); return; }
-  if (action && action.type === 'quickBuy') { appCtx.consumePendingQuickBuy(action); return; }
-  if (action && action.type === 'favorite') {
+  if (action && applyPendingAction(action)) return;
+  appCtx.navigate(route.query.redirect ? String(route.query.redirect) : 'shop');
+}
+
+/** 按 action 类型执行回跳；返回 false 表示类型不认识，交给调用方走兜底 */
+function applyPendingAction(action) {
+  if (!action) return false;
+  if (action.type === 'checkout') { appCtx.navigate(action.redirect || 'checkout'); return true; }
+  if (action.type === 'quickBuy') { appCtx.consumePendingQuickBuy(action); return true; }
+  if (action.type === 'favorite') {
     appCtx.toggleFavorite(action.product);
     // 收藏拦截来自商品详情等页：redirect 只记了路由名（缺 :id），用 history back 回到来前那一页最稳
     if (window.history.length > 1) router.back();
-    else appCtx.navigate(redirect || 'shop');
-    return;
+    else appCtx.navigate(route.query.redirect ? String(route.query.redirect) : 'shop');
+    return true;
   }
-  appCtx.navigate(redirect || 'shop');
+  return false;
 }
 
 async function handleLogin() {
