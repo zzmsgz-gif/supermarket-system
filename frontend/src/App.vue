@@ -1024,6 +1024,7 @@ appCtx.showAlert = showAlert;
 appCtx.error = error;
 appCtx.fail = fail;
 appCtx.hint = hint;   // 轻量顶栏提示（不弹窗），见函数注释
+adminCtx.hint = hint; // 同上，后台 AdminPanel 收到的是 adminCtx（独立对象）
 appCtx.rememberUser = rememberUser;
 appCtx.refreshForSession = refreshForSession;
 appCtx.loadMe = loadMe;

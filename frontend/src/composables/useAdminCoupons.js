@@ -17,7 +17,7 @@ export function useAdminCoupons({ api, run, fail, hint, askConfirm, money,
 
   // 顶层 helper：fillCouponPeriod 与 editCoupon 都要用，必须提出来（否则 editCoupon 调不到）
   const pad = (num) => String(num).padStart(2, '0');
-  const toLocalInput = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const toLocalInput = (date) => { const d = date instanceof Date ? date : new Date(date); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
   const adminCouponTotalPages = computed(() => Math.max(1, Math.ceil((adminCoupons.total || 0) / (adminCoupons.size || 10))));
 
