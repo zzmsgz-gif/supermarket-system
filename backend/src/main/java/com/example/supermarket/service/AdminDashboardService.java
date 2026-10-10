@@ -143,11 +143,21 @@ public class AdminDashboardService {
         for (Object[] row : sysUserRepository.countGroupByMemberLevel(NOT_DELETED)) {
             counts.put(((Number) row[0]).intValue(), ((Number) row[1]).longValue());
         }
-        // 固定输出 4 个等级（即使为 0），图表列数才稳定
-        List<AdminDashboardStats.MemberLevelSlice> slices = new ArrayList<>(4);
-        for (int level = 0; level <= 3; level++) {
+        // ⚠️ 档位数量**不能写死**（2026-10-10 修）：
+        // 这里原先硬编码 `level <= 3`（4 档），而会员体系早就扩到 **7 档**
+        // （普通/银卡/金卡/钻石/紫钻/黑卡/至尊）——
+        // 结果看板「会员等级分布」里**紫钻、黑卡、至尊的用户完全不出现**，
+    // 用户数加起来对不上总用户数（用户报告「会员等级要更新过来」）。
+        //
+        // 修法：档位一律以 MemberService.allTiers() 为**唯一来源**，
+        // 以后再加档位这里自动跟随，不会再漏（加档本来就要同步 4 处，
+        // 这处是最容易被忘掉的一处）。
+        // 即使某档 0 人也输出，图表列数才稳定。
+        List<MemberService.TierInfo> tiers = memberService.allTiers();
+        List<AdminDashboardStats.MemberLevelSlice> slices = new ArrayList<>(tiers.size());
+        for (MemberService.TierInfo tier : tiers) {
             slices.add(new AdminDashboardStats.MemberLevelSlice(
-                    level, memberService.tierName(level), counts.getOrDefault(level, 0L)));
+                    tier.level(), tier.name(), counts.getOrDefault(tier.level(), 0L)));
         }
         return slices;
     }

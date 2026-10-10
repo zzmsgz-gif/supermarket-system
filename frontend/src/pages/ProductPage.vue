@@ -275,12 +275,19 @@ export default {
       return (r === null || r === undefined) ? null : Number(r);
     });
     // 当前选购件数已超出还能买的件数（还没到 0，但比如只剩 1 件却选了 3 件）
+    //
+    // ⚠️ `left <= 0`（已售罄）**必须排除**（2026-10-10 修）：
+    // 售罄时 1 > 0 成立 → 进「超出配额」分支 → 页面显示
+    // 「本场只剩 0 件，请先把数量调到 0 件」—— 荒谬（商品早卖完，调到 0 也买不了）。
+    // 售罄由 flashCapped 分支单独展示（带「查看原商品」入口），这里不该再插一脚。
     const qtyOverQuota = computed(() => {
       if (flashCapped.value) return false;
       const caps = [flashMyLeft.value, flashAllLeft.value, Number(appCtx.productDetail.data?.stock || 0)]
         .filter((v) => v !== null && !Number.isNaN(v));
       if (!caps.length) return false;
-      return Number(appCtx.detailQuantity?.value || 1) > Math.min(...caps);
+      const left = Math.min(...caps);
+      if (left <= 0) return false;   // 已售罄：不提示「调数量」，改数量无意义
+      return Number(appCtx.detailQuantity?.value || 1) > left;
     });
     const flashQuotaShortMsg = computed(() => {
       const caps = [flashMyLeft.value, flashAllLeft.value, Number(appCtx.productDetail.data?.stock || 0)]

@@ -4,6 +4,7 @@ import { reactive, ref, computed } from 'vue';
 
 export function useCart({
   api, run, fail, askConfirm, session, isAdmin, cart, cartStore,
+  hint, // 轻量顶栏提示（不弹窗）—— 用于「已达上限」这类系统已替用户处理好的情况
   setNotice, // (v) => { notice.value = v } —— notice 是 ref，只写不读，传写入器更明确
   onAddedFeedback, // (src, coverUrl) => void —— 由 App.vue 组装成 takeAddSource()+flyToCart()
   guestAdd, guestRemoveItem, guestClear, persistGuestFromItems, recomputeCartTotals, refreshGuestCartView,
@@ -162,7 +163,14 @@ export function useCart({
     const max = getCartQtyMax(item);
     const current = Math.max(1, Number(item.quantity) || 1);
     const next = Math.min(Math.max(current + delta, 1), Math.max(max, 1));
-    if (next === current) return;   // 已到顶，不发这次必然被拒的请求
+    if (next === current) {
+      // 2026-10-10：原先**静默 return** —— 用户按「+」没反应，以为按钮坏了
+      //（实测：库存 160、已加到 160，再按 + 毫无动静）。
+      // 现在给一句顶栏提示。用 `hint` 而不是 `fail`：
+      // 用户没做错任何事、库存也确实还剩 160，弹「操作失败」属于误报。
+      if (delta > 0) hint(`已达可买上限（${Math.max(max, 1)} 件）`);
+      return;
+    }
     item.quantity = next;
     onQtyInput(item);
   }
@@ -171,12 +179,30 @@ export function useCart({
     const max = getCartQtyMax(item);
     let q = Number(item.quantity) || 1;
     if (q < 1) q = 1;
-    if (q > max) q = max;   // 仅按库存夹，秒杀超出部分按原价，不再夹限购
+    if (q > max) {
+      // 2026-10-10：用户手动填了超上限的数量。
+      // 先夹回上限，再提示「已帮你调成 N」——
+      // 原先这里**不提示**（静默夹），紧接着 onQtyInput 又 fail「库存不足」，
+      // 用户看到的是「红色导航一闪 → 消失 → 弹出库存不足」，
+      // 而他其实什么都没做错（系统已经替他改好了），属于**误报 + 三重反馈**。
+      // 现在只说一句「已帮你调成 N」，不再报失败。
+      q = max;
+      hint(`超过可买数量，已帮你调成 ${Math.max(max, 1)} 件`);
+    }
     item.quantity = q;
-    onQtyInput(item);
+    onQtyInput(item, { silentWhenClamped: true });
   }
 
-  async function onQtyInput(item) {
+  /**
+   * 把数量同步到后端（防抖 400ms）。
+   * @param {*} item 购物项
+   * @param {object} [opt]
+   * @param {boolean} [opt.silentWhenClamped] 数量已被前端夹到上限时，
+   *   不再弹「库存不足」—— 系统已经替用户处理好了，再报失败是误报。
+   *   （2026-10-10：原先会在 onQtyChange 里 fail「库存不足」，
+   *   而那时数量已被 clamp 回合法值，用户并无操作失误。）
+   */
+  async function onQtyInput(item, opt = {}) {
     clearTimeout(cartSyncTimers[item.id]);
     if (!session.user) {
       // 游客：本地车直接改本地存储并即时重算合计（无需网络防抖）
@@ -188,7 +214,8 @@ export function useCart({
       const max = Number(item.stock || 0);
       const qty = Number(item.quantity) || 1;
       if (max > 0 && qty > max) {
-        fail(`库存不足：仅剩 ${max} 件`, '库存不足');
+        // 前端已经夹过一次并提示过了 → 不再弹「库存不足」（避免同一件事说两遍）
+        if (!opt.silentWhenClamped) fail(`库存不足：仅剩 ${max} 件`, '库存不足');
         await loadCart(); // 回滚到后端真实数量
         return;
       }

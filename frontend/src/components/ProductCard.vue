@@ -13,6 +13,12 @@
       </div>
       <span v-if="flashPrice" class="corner-badge flash">秒杀</span>
       <span v-if="activityTag" class="activity-chip">{{ activityTag }}</span>
+      <!-- 售罄遮罩（2026-10-10）：图片盖一层半透明 +「已售罄」角标。
+           光靠底部那行小字「已售 N」不够醒目 —— 用户扫列表时最容易漏掉的
+           恰恰是「这个根本买不了」。遮罩让不可买的商品在一眼扫过时就被排除。 -->
+      <div v-if="soldOut" class="soldout-mask">
+        <span class="soldout-tag">已售罄</span>
+      </div>
       <button
         v-if="!isAdmin"
         type="button"
@@ -149,6 +155,24 @@ const soldCountText = computed(() => {
     return n > 0 ? `已抢 ${n} 件` : '';
   }
   return salesText.value ? `已售 ${salesText.value}` : '';
+});
+
+/**
+ * 是否售罄 —— 用于在图片上盖「售罄」遮罩（2026-10-10 用户提的）。
+ *
+ * <p>判定口径与「加购/下单能不能买」保持一致：**都买不了才算售罄**。
+ * 秒杀品看名额（`soldQuota >= totalQuota`），普通品看库存 `stock <= 0`。
+ * 不能只看 `stock`：秒杀品的 product.stock 初值常等于总名额（历史数据见
+ * ProductCard 顶部注释），拿它判会把还有名额的秒杀品误标成售罄。
+ */
+const soldOut = computed(() => {
+  const f = flashSale.value;
+  if (f) {
+    const total = Number(f.totalQuota ?? 0);
+    const sold = Number(f.soldQuota ?? 0);
+    if (total > 0 && sold >= total) return true;
+  }
+  return Number(props.product.stock ?? 0) <= 0;
 });
 
 // 限时秒杀：从 appCtx 已加载的秒杀列表里按 productId 匹配，因此不必在商品接口上透出秒杀价，

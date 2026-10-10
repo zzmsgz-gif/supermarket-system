@@ -717,7 +717,7 @@ const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedPro
 // 购物车：金额合计、增删改、可用券。⚠️ 装配点必须在 useGuestCart 之后（要用 guestAdd / guestRemoveItem 等）。
 // takeAddSource / flyToCart 来自下面的 useCartUi，不能直接注入（会形成循环：useCartUi 又要
 //    cartBadgeCount，而它是本 composable 的产物）→ 改成 onAddedFeedback 回调，由这里组装。
-const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cartSyncTimers, addToCart, loadCart, loadMyCoupons, loadMoreMyCoupons, loadMyCouponsPage, loadUsableCoupons, couponEligible, couponShortfall, autoSelectCoupon, selectCoupon, chooseNoCoupon, stepQty, onQtyChange, onQtyInput, removeCartItem, clearCart } = useCart({ api, run, fail, askConfirm, session, isAdmin, cart, cartStore, setNotice: (v) => { notice.value = v; }, onAddedFeedback: (src, url) => flyToCart(takeAddSource(), url), guestAdd, guestRemoveItem, guestClear, persistGuestFromItems, recomputeCartTotals, refreshGuestCartView, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getCartQtyMax: cartQtyMax });
+const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cartSyncTimers, addToCart, loadCart, loadMyCoupons, loadMoreMyCoupons, loadMyCouponsPage, loadUsableCoupons, couponEligible, couponShortfall, autoSelectCoupon, selectCoupon, chooseNoCoupon, stepQty, onQtyChange, onQtyInput, removeCartItem, clearCart } = useCart({ api, run, fail, askConfirm, session, isAdmin, cart, cartStore, hint, setNotice: (v) => { notice.value = v; }, onAddedFeedback: (src, url) => flyToCart(takeAddSource(), url), guestAdd, guestRemoveItem, guestClear, persistGuestFromItems, recomputeCartTotals, refreshGuestCartView, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getCartQtyMax: cartQtyMax });
 
 // 购物车的纯金额计算层：只读状态，无副作用。⚠️ 必须在 useCart 之后（读它的 usableCoupons /
 //    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview）。
@@ -814,6 +814,28 @@ function closeAlert() {
 function fail(message, title) {
   error.value = message;
   showAlert({ title: title || '操作失败', message, type: 'error' });
+}
+
+/**
+ * 轻量提示：只在顶部状态栏显示一行字，**不弹窗**（2026-10-10 加）。
+ *
+ * <p>什么时候用它、不用 `fail`：
+ * `fail` 会弹一个「操作失败」的模态框，它适合**用户操作确实没生效**（下单失败、
+ * 库存被抢光）。但「已经把数量按库存上限夹好了」这类**系统已经替用户处理好的**情况，
+ * 再弹「操作失败」就是误报 —— 用户什么都没做错。
+ *
+ * <p>典型场景：购物车点「+」加到库存上限。原先是静默无反应（更糟，
+ * 用户以为按钮坏了）；如果改成 `fail` 又会误报。正确做法就是 `hint`。
+ *
+ * @param {string} message 顶栏文案
+ * @param {number} [ms=2600] 停留时长（比 toast 默认短，避免挡住购物车操作）
+ */
+function hint(message, ms) {
+  notice.value = message;
+  if (hint._timer) clearTimeout(hint._timer);
+  hint._timer = setTimeout(() => {
+    if (notice.value === message) notice.value = '';
+  }, ms || 2600);
 }
 
 
@@ -1001,6 +1023,7 @@ appCtx.session = session;
 appCtx.showAlert = showAlert;
 appCtx.error = error;
 appCtx.fail = fail;
+appCtx.hint = hint;   // 轻量顶栏提示（不弹窗），见函数注释
 appCtx.rememberUser = rememberUser;
 appCtx.refreshForSession = refreshForSession;
 appCtx.loadMe = loadMe;

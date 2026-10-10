@@ -281,6 +281,20 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   height: 100%;
   font-size: 14px;
   color: var(--ink);
+  /* 2026-10-10 去掉聚焦时那圈绿光晕（用户反馈「首页搜索框轮廓去掉」）。
+     根因：全局 `input:focus { box-shadow: 0 0 0 3px rgba(0,168,112,.15) }`
+     会作用到这里 —— 本规则没写 box-shadow，等于没覆盖。
+     ⚠️ 但**不能顺手把键盘焦点也干掉**：键盘 Tab 进来若毫无指示，
+     纯键盘用户完全看不出焦点在哪（无障碍倒退）。
+     所以下面用 :focus-visible 单独给键盘路径补焦点环。 */
+  box-shadow: none;
+}
+
+/* 键盘可达性保留：:focus-visible 只在键盘操作时匹配，鼠标点击不匹配 */
+.header-search input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -3px;
+  border-radius: 999px;
 }
 
 .header-search input::placeholder { color: #9aa6a1; }
@@ -3461,13 +3475,31 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .insights-cols .insights-block + .insights-block { margin-top: 0; }
 .insights-block h4 { margin: 0 0 12px; font-size: 14px; font-weight: 500; }
 .trend-bars {
+  --trend-gap: 8px;
+  --trend-col-min: 18px;
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--trend-gap);
   height: 132px;
+  /* 2026-10-10 修「近 30 天往右延伸被覆盖」：
+     柱子是 `flex: 1 1 0` + 固定 gap 8px。7 根时每根约占 1/7 没问题；
+     30 根时 29 个 gap 就吃掉 232px 固定宽度，柱子被压到近乎不可见、
+     内容溢出容器被裁掉 —— 表现就是「往右延长然后被覆盖」。
+     两档处理：
+       · 默认（≤14 根，如 today/7d）：铺满，视觉不变
+       · .compact（>14 根，如 30d/90d）：收窄 gap 与柱子下限，尽量一屏看全；
+         真放不下（90d）才横向滚动 —— **始终可滚动，不会再被裁掉**。 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+}
+.trend-bars.compact {
+  --trend-gap: 2px;
+  --trend-col-min: 9px;
 }
 .trend-col {
   flex: 1 1 0;
+  min-width: var(--trend-col-min);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5571,3 +5603,30 @@ a.brand-link { text-decoration: none; color: inherit; }
   font-size: 15px;
   margin-top: 2px;
 }
+
+/* ===== 商品卡「已售罄」遮罩（2026-10-10 用户提）=====
+   扫列表时最容易漏掉的恰恰是「这个根本买不了」，所以给图片盖一层。 */
+.product-image { position: relative; }   /* 宿主必须是 relative，否则 absolute 会飞到整页 */
+.soldout-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.62);
+  backdrop-filter: grayscale(0.7);
+  z-index: 2;
+  pointer-events: none;   /* 别挡住收藏按钮等交互 */
+}
+.soldout-tag {
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(58, 62, 65, 0.86);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+/* 售罄卡整体压暗一点，弱化它（别抢在售商品的注意力） */
+.product-card:has(.soldout-mask) .product-image img { filter: saturate(0.5); }

@@ -143,6 +143,14 @@ const adminIcons = {
   flashSales: adminIcon('<path d="M13.5 2.5 5 13.5h5.5l-1 8 9-11h-5.5l.5-8z"/>'),
   passwordResets: adminIcon('<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 19.5 3.5"/><path d="M16.5 3.5H20V7"/>'),
   memberDays: adminIcon('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M12 12.6l1.1 2.2 2.4.35-1.75 1.7.42 2.4-2.17-1.14-2.17 1.14.42-2.4-1.75-1.7 2.4-.35z"/>'),
+  // ↓ 以下四个 2026-10-10 补：菜单里有这几项，但 adminIcons 漏了 key，
+  //   模板 `v-html="adminIcons[item.key]"` 取到 undefined → 图标位置空白
+  //   （用户反馈「公告管理、热搜词、轮播管理前面的图标没加」）。
+  //   reviews 是顺带发现的，同样缺 —— 一起补齐，避免图标时有时无。
+  notices: adminIcon('<path d="M4 5.5h16v10.5H8.5L4 19.5V5.5z"/><path d="M8 9.5h8M8 12.5h5"/>'),
+  hotSearches: adminIcon('<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.2 15.2 20.5 20.5"/>'),
+  banners: adminIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M3 9.5h18M7.5 13.5h4"/><path d="M8 20.5 12 17l4 3.5"/>'),
+  reviews: adminIcon('<path d="M12 3.6 14.5 9l6 .9-4.3 4.1 1 6-5.2-2.8L6.8 20l1-6-4.3-4.1 6-.9L12 3.6z"/>'),
 };
 
 const adminMenuItems = computed(() => [

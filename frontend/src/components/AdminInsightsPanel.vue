@@ -66,6 +66,27 @@ const insightsRangeLabel = computed(() => ({
   today: '今日', '7d': '近 7 天', '30d': '近 30 天', '90d': '近 90 天',
 }[insightsRange.value] || '近 7 天'));
 
+/**
+ * 成交趋势的日期标签是否显示（2026-10-10）。
+ *
+ * <p>点数 ≤ 14 时全显示；超过后每 step 个显示一个，**首尾必显示**
+ *（不然不知道这段是从哪天到哪天）。30 天 → step 3（约 10 个标签），
+ * 90 天 → step 7（约 13 个），不至于挤成一团。
+ *
+ * <p>柱子本身仍逐根渲染、hover 仍有精确数值 —— 标签只是辅助。
+ */
+const trendLabelStep = computed(() => {
+  const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
+  if (n <= 14) return 1;
+  return Math.ceil(n / 12);
+});
+function showTrendLabel(idx) {
+  const n = (insights.value && insights.value.trend) ? insights.value.trend.length : 0;
+  const step = trendLabelStep.value;
+  if (step <= 1) return true;
+  return idx === 0 || idx === n - 1 || idx % step === 0;
+}
+
 const dashboardStats = computed(() => {
   const o = adminStatsOverview.value || {};
   return {
@@ -227,13 +248,16 @@ defineExpose({ load: loadInsights });   // 供父级 adminMenuLoaders 调度（�
                 <!-- 成交趋势 -->
                 <div class="insights-block">
                   <h4>成交趋势</h4>
-                  <div class="trend-bars">
-                    <div v-for="point in insights.trend" :key="point.date" class="trend-col"
+                  <!-- 点数多时（30/90 天）稀疏显示日期标签：30 个 MM-DD 挤在一起全是糊的。
+                       每 step 个显示一个，且首尾必显示（知道起止日期）。
+                       具体值仍可悬停 title 查看 —— 标签只是辅助，不承载信息。 -->
+                  <div class="trend-bars" :class="{ compact: trendLabelStep > 1 }">
+                    <div v-for="(point, idx) in insights.trend" :key="point.date" class="trend-col"
                          :title="`${point.date}：${point.orderCount} 单 / ${money(point.salesAmount)}`">
                       <i :style="{ height: (insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0) > 0
                         ? Math.max(4, Math.round(Number(point.salesAmount || 0) * 100 / insights.trend.reduce((m, p) => Math.max(m, Number(p.salesAmount || 0)), 0)))
                         : 4) + '%' }"></i>
-                      <small>{{ point.date.slice(5) }}</small>
+                      <small v-if="showTrendLabel(idx)">{{ point.date.slice(5) }}</small>
                     </div>
                   </div>
                 </div>
