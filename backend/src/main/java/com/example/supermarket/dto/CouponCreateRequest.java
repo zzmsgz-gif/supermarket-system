@@ -27,6 +27,9 @@ public class CouponCreateRequest {
     private Integer totalCount;
 
     @NotNull(message = "Start time is required")
+    /** 领取方式：0=每人限领一次（默认）1=每天可领一次；null 按 0 处理 */
+    private Integer claimType;
+
     private LocalDateTime startTime;
 
     @NotNull(message = "End time is required")
@@ -70,6 +73,14 @@ public class CouponCreateRequest {
 
     public void setStartTime(LocalDateTime startTime) {
         this.startTime = startTime;
+    }
+
+    public Integer getClaimType() {
+        return claimType;
+    }
+
+    public void setClaimType(Integer claimType) {
+        this.claimType = claimType;
     }
 
     public LocalDateTime getEndTime() {

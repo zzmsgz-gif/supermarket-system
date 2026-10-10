@@ -14,6 +14,19 @@ const emit = defineEmits(['receive']);
 
 const name = computed(() => props.coupon.name || props.coupon.couponName || '优惠券');
 const endTimeLabel = computed(() => formatDate(props.coupon.endTime));
+
+/** 是否「每日可领」券（2026-10-10） */
+const isDaily = computed(() => Number(props.coupon.claimType || 0) === 1);
+
+/**
+ * 领取按钮文案。
+ * 每日券今天领过了要明确说「明天还能来」——
+ * 只写「已领取」的话，用户会以为这辈子都领不到了。
+ */
+const claimLabel = computed(() => {
+  if (!props.coupon.receivedByCurrentUser) return '立即领取';
+  return isDaily.value ? '今日已领，明天再来' : '已领取';
+});
 const isClaim = computed(() => props.mode === 'claim');
 </script>
 
@@ -30,6 +43,10 @@ const isClaim = computed(() => props.mode === 'claim');
     <div class="coupon-body">
       <strong class="coupon-name">{{ name }}</strong>
       <small class="coupon-meta">{{ endTimeLabel }} 前有效</small>
+      <!-- 每日可领券的标识与状态（2026-10-10）。
+           后端对 claimType=1 的券把 receivedByCurrentUser 取成「今天领没领过」，
+           所以这里能直接复用同一个禁用态，只是文案要说清楚「明天还能来」。 -->
+      <small v-if="isDaily" class="coupon-meta coupon-daily-tag">每日可领</small>
       <small class="coupon-meta">已领 {{ coupon.receivedCount }}{{ coupon.totalCount ? ` / ${coupon.totalCount}` : ' / 不限量' }}</small>
     </div>
     <button
@@ -37,7 +54,7 @@ const isClaim = computed(() => props.mode === 'claim');
       :disabled="coupon.receivedByCurrentUser"
       @click="emit('receive', coupon.id)"
     >
-      {{ coupon.receivedByCurrentUser ? '已领取' : '立即领取' }}
+      {{ claimLabel }}
     </button>
   </div>
 

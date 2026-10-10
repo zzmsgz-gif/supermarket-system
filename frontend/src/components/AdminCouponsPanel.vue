@@ -58,6 +58,15 @@ const { fillCouponPeriod, saveCoupon, searchAdminCoupons, changeAdminCouponPageS
           <span class="field-label">优惠金额（元）<i class="req">*</i></span>
           <input v-model.number="couponForm.discountAmount" type="number" step="0.01" min="0" placeholder="立减多少，如 10.00" />
         </label>
+        <!-- 领取方式（2026-10-10 新增）：默认「每人限领一次」= 改动前的行为，
+             存量券不会因为加了这个字段就变成可重复领。 -->
+        <label class="field">
+          <span class="field-label">领取方式</span>
+          <select v-model.number="couponForm.claimType">
+            <option :value="0">每人限领一次</option>
+            <option :value="1">每天可领一次</option>
+          </select>
+        </label>
         <label class="field">
           <span class="field-label">发放总量（张）</span>
           <input v-model.number="couponForm.totalCount" type="number" min="0" placeholder="0 表示不限量，如 100" />

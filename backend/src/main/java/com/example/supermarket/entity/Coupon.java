@@ -41,6 +41,16 @@ public class Coupon {
     @Column(nullable = false)
     private Byte status;
 
+    /**
+     * 领取方式（2026-10-10 新增）：
+     * <ul><li>0 = 每人限领一次（历史数据默认值，行为与加此列之前完全一致）</li>
+     * <li>1 = 每天可领一次（当天 0 点重置，昨天领过今天还能领）</li></ul>
+     *
+     * <p>⚠️ 默认必须是 0：存量券全部按「限领一次」处理。
+     * 若加列时默认值是 1，等于一次性放开所有老券的领取限制。
+     */
+    private Byte claimType;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false, columnDefinition = "datetime NOT NULL DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -118,6 +128,12 @@ public class Coupon {
         return status;
     }
 
+    public Byte getClaimType() {
+        return claimType;
+    }
+    public void setClaimType(Byte claimType) {
+        this.claimType = claimType;
+    }
     public void setStatus(Byte status) {
         this.status = status;
     }

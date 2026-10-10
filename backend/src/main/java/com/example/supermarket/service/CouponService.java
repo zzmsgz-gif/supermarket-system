@@ -12,6 +12,7 @@ import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.CouponRepository;
 import com.example.supermarket.repository.UserCouponRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,28 @@ public class CouponService {
 
     private static final byte NOT_DELETED = 0;
     private static final byte ENABLED = 1;
+
+    // ===== 领取方式（2026-10-10）=====
+    /** 每人限领一次（历史默认值） */
+    private static final byte CLAIM_ONCE = 0;
+    /** 每天可领一次（当天 0 点重置） */
+    private static final byte CLAIM_DAILY = 1;
+
+    /**
+     * 服务器本地时区的「今天 00:00」。
+     *
+     * <p>刻意用服务器本地时区而不是 UTC：用户判断「今天领过没有」用的也是本地日期。
+     * 若按 UTC 算，东八区凌晨 0~8 点会被算成「昨天」，导致早上想领却提示已领过。
+     */
+    private LocalDateTime todayStart() {
+        return LocalDate.now().atStartOfDay();
+    }
+
+    /** 该券今天是否已领过（仅 claim_type=1 时有意义） */
+    private boolean claimedToday(Long userId, Coupon coupon) {
+        if (coupon.getClaimType() == null || coupon.getClaimType() != CLAIM_DAILY) return false;
+        return userCouponRepository.existsReceivedSince(userId, coupon.getId(), todayStart());
+    }
     private static final String UNUSED = "UNUSED";
     private static final String USED = "USED";
     private static final int MAX_PAGE_SIZE = 100;
@@ -125,6 +148,9 @@ public class CouponService {
         coupon.setStartTime(request.getStartTime());
         coupon.setEndTime(request.getEndTime());
         coupon.setStatus(ENABLED);
+        // 领取方式（2026-10-10）：null 按 0（每人限领一次）处理，
+        // 保证不传这个字段的老调用方行为不变。
+        coupon.setClaimType(request.getClaimType() == null ? CLAIM_ONCE : request.getClaimType().byteValue());
         coupon.setDeleted(NOT_DELETED);
         return CouponResponse.from(couponRepository.save(coupon), false);
     }
@@ -152,8 +178,21 @@ public class CouponService {
         Set<Long> receivedCouponIds = userCouponRepository.findByUserIdOrderByIdDesc(userId).stream()
                 .map(UserCoupon::getCouponId)
                 .collect(Collectors.toSet());
+        // ⚠️ 两类券的「已领」含义不同（2026-10-10）：
+        //   限领一次券：历史上领过 = 已领（receivedCouponIds 够用）
+        //   每日可领券：只有「今天」领过才算已领 —— 否则用户昨天领过，
+        //   今天打开看到「已领取」按钮灰了，实际却能领，前端与后端打架。
+        // 所以 receivedByCurrentUser 按 claimType 分别取值，
+        // claimedToday 只对每日券为 true（前端据此显示「今日已领，明天再来」）。
         return coupons.stream()
-                .map(coupon -> CouponResponse.from(coupon, receivedCouponIds.contains(coupon.getId())))
+                .map(coupon -> {
+                    boolean daily = coupon.getClaimType() != null && coupon.getClaimType() == CLAIM_DAILY;
+                    if (!daily) {
+                        return CouponResponse.from(coupon, receivedCouponIds.contains(coupon.getId()), false);
+                    }
+                    boolean today = claimedToday(userId, coupon);
+                    return CouponResponse.from(coupon, today, today);
+                })
                 .toList();
     }
 
@@ -167,7 +206,16 @@ public class CouponService {
         if (coupon.getStartTime().isAfter(now) || coupon.getEndTime().isBefore(now)) {
             throw new BusinessException(409, "Coupon is not in its valid period");
         }
-        if (userCouponRepository.findByUserIdAndCouponId(userId, couponId).isPresent()) {
+        // 领取限制按 claim_type 分支（2026-10-10）：
+        //   0 = 每人限领一次（**改动前的行为**，保持不变）
+        //   1 = 每天可领一次（当天 0 点重置）
+        boolean dailyClaim = coupon.getClaimType() != null && coupon.getClaimType() == CLAIM_DAILY;
+        if (dailyClaim) {
+            // 每日可领：只看「今天」领没领过。昨天领过今天照样能领。
+            if (userCouponRepository.existsReceivedSince(userId, couponId, todayStart())) {
+                throw new BusinessException(409, "今日已领取，明天再来");
+            }
+        } else if (userCouponRepository.findByUserIdAndCouponId(userId, couponId).isPresent()) {
             throw new BusinessException(409, "Coupon already received");
         }
         int updated = couponRepository.increaseReceivedCount(couponId);

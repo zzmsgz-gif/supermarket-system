@@ -12,7 +12,8 @@ import { computed, reactive } from 'vue';
 
 export function useAdminCoupons({ api, run, fail, askConfirm, money,
   adminCoupons, adminCouponKeyword, adminCouponJumpPage, loadAdminCoupons }) {
-  const couponForm = reactive({ name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
+  // claimType：0=每人限领一次（**默认值 = 改动前行为**）1=每天可领一次（2026-10-10）
+  const couponForm = reactive({ name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '', claimType: 0 });
 
   const adminCouponTotalPages = computed(() => Math.max(1, Math.ceil((adminCoupons.total || 0) / (adminCoupons.size || 10))));
 
@@ -70,10 +71,11 @@ export function useAdminCoupons({ api, run, fail, askConfirm, money,
         thresholdAmount: Number(couponForm.thresholdAmount),
         discountAmount: Number(couponForm.discountAmount),
         totalCount: Number(couponForm.totalCount || 0),
+        claimType: Number(couponForm.claimType || 0),
         startTime: couponForm.startTime,
         endTime: couponForm.endTime,
       });
-      Object.assign(couponForm, { name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '' });
+      Object.assign(couponForm, { name: '', thresholdAmount: 0, discountAmount: 0, totalCount: 0, startTime: '', endTime: '', claimType: 0 });
       await loadAdminCoupons();
     }, '优惠券已创建');
 
