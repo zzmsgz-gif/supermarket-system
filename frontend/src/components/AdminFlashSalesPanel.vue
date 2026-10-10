@@ -1,10 +1,11 @@
 <script setup>
-import { toRefs } from 'vue';
+import { toRefs, computed } from 'vue';
 // 后台「限时秒杀」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
 // 一眼就能看出「它为什么需要这些」。接 adminCtx 会让依赖变成隐式的。
 import { money } from '../utils/format';
+import ProductPicker from './ProductPicker.vue';
 import ImageUpload from './ImageUpload.vue';
 
 const props = defineProps({
@@ -21,7 +22,16 @@ const props = defineProps({
   openFlashForm: { type: Function, required: true },
   saveFlashSale: { type: Function, required: true },
   toggleFlashStatus: { type: Function, required: true },
+  /** ProductPicker 自己调接口做模糊搜索（2026-10-10） */
+  api: { type: Object, required: true },
 });
+/** 当前选中的秒杀商品（给 ProductPicker 显示已选标签） */
+const selectedFlashProduct = computed(() => {
+  const id = Number(flashForm.value?.productId || 0);
+  if (!id) return null;
+  return (flashProductOptions.value || []).find((x) => Number(x.id) === id) || null;
+});
+
 const { adminFlashSales, categories, closeFlashForm, deleteFlashSale, flashEditingId, flashForm, flashFormOpen, flashProductOptions, flashStateClass, flashStateLabel, openFlashForm, saveFlashSale, toggleFlashStatus } = toRefs(props);
 </script>
 
@@ -44,11 +54,13 @@ const { adminFlashSales, categories, closeFlashForm, deleteFlashSale, flashEditi
         </label>
         <label v-if="flashForm.sourceMode === 'existing'" class="field">
           <span class="field-label">秒杀商品<i class="req">*</i></span>
-          <select v-model.number="flashForm.productId">
-            <option v-for="p in flashProductOptions" :key="p.id" :value="p.id">
-              {{ p.name }}（售价 {{ money(p.price) }}）
-            </option>
-          </select>
+          <!-- 2026-10-10 同营销活动：原生 select 装全量商品 → 可搜索选择器 -->
+          <ProductPicker
+            v-model="flashForm.productId"
+            :api="api"
+            :selected-items="[selectedFlashProduct].filter(Boolean)"
+            placeholder="输入商品名 / SKU 搜索"
+          />
         </label>
         <template v-if="flashForm.sourceMode === 'new'">
           <label class="field">

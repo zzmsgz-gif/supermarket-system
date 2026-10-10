@@ -1,8 +1,9 @@
 <script setup>
-import { toRefs } from 'vue';
+import { toRefs, computed } from 'vue';
 // 后台「轮播管理」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // ⚠️ adminCtx 解构列表照抄父级：漏解构一个就是运行时 undefined，模板编译不报错、要跑起来才炸。
+import ProductPicker from './ProductPicker.vue';
 import ImageUpload from './ImageUpload.vue';
 import { imgFallback } from '../utils/format';
 
@@ -12,6 +13,24 @@ const props = defineProps({
 });
 const { adminBanners, bannerForm, bannerFormOpen, bannerUploading, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, adminProducts } = props.adminCtx;
 const { adminProductName } = toRefs(props);
+
+/**
+ * 跳转商品的可搜索选择器（2026-10-10）—— 替换原先装全量商品的原生 select。
+ * api 直接从 adminCtx 取，面板已经有这个 prop，不用再加一个。
+ */
+const api = computed(() => props.adminCtx.api);
+
+/** 已选商品名：bannerForm 里只有 id，要显示名字得反查 */
+const selectedBannerProduct = computed(() => {
+  const id = Number(props.adminCtx.bannerForm?.linkProductId || 0);
+  if (!id) return null;
+  const items = (props.adminCtx.adminProducts?.items || []);
+  return items.find((p) => Number(p.id) === id) || null;
+});
+
+function onLinkProductChange(id) {
+  props.adminCtx.bannerForm.linkProductId = id || null;
+}
 </script>
 
 <template>
@@ -33,10 +52,15 @@ const { adminProductName } = toRefs(props);
       <div class="admin-form-grid">
         <label class="field">
           <span class="field-label">跳转商品（可选）</span>
-          <select v-model="bannerForm.linkProductId">
-            <option :value="null">不跳转，仅展示</option>
-            <option v-for="p in (adminProducts.items || [])" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
+          <!-- 2026-10-10 同营销活动：原生 select 装全量商品 → 可搜索选择器。
+               「不跳转」用一个显式按钮表达，比塞一个空 option 更好点。 -->
+          <ProductPicker
+            :model-value="bannerForm.linkProductId"
+            @update:model-value="onLinkProductChange"
+            :api="api"
+            :selected-items="[selectedBannerProduct].filter(Boolean)"
+            placeholder="不跳转，或输入商品名搜索"
+          />
         </label>
         <label class="field">
           <span class="field-label">排序值</span>

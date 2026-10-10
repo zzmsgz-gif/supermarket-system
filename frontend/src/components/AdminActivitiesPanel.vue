@@ -1,10 +1,11 @@
 <script setup>
-import { toRefs } from 'vue';
+import { toRefs, computed } from 'vue';
 // 后台「营销活动」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖刻意走显式 props 而不是 adminCtx：这个面板只服务一个 tab，把真正用到的东西列全，
 // 一眼就能看出「它为什么需要这些」。接 adminCtx 会让依赖变成隐式的。
 import { formatDate } from '../utils/format';
+import ProductPicker from './ProductPicker.vue';
 
 const props = defineProps({
   activityDiscountLabel: { type: Function, required: true },
@@ -26,6 +27,8 @@ const props = defineProps({
   saveActivity: { type: Function, required: true },
   searchAdminActivities: { type: Function, required: true },
   toggleActivity: { type: Function, required: true },
+  /** ProductPicker 需要它自己调接口做模糊搜索（2026-10-10） */
+  api: { type: Object, required: true },
 });
 
 // ⚠️ 下面这几个用 defineModel 而不是 props —— 它们被 v-model 双向绑定，
@@ -35,6 +38,21 @@ const props = defineProps({
 const adminActivityJumpPage = defineModel('adminActivityJumpPage', { type: Number, required: true });
 const adminActivityKeyword = defineModel('adminActivityKeyword', { type: String, required: true });
 const { activityDiscountLabel, activityForm, activityProducts, activityScopeLabel, activityTypeLabel, adminActivities, adminActivityTotalPages, categories, changeAdminActivityPage, changeAdminActivityPageSize, deleteActivity, editActivity, fillActivityPeriod, onActivityScopeChange, resetActivityForm, resetAdminActivitySearch, saveActivity, searchAdminActivities, toggleActivity } = toRefs(props);
+
+/**
+ * 当前选中的商品对象（给 ProductPicker 显示已选项标签用）。
+ *
+ * <p>为什么要从 activityProducts 里反查：`activityProducts` 是**旧方案**留下的
+ * 全量列表（size=500），现在选择器改成自己调接口搜了，这份列表不再用于选择，
+ * 但仍然留着给别处用；这里只取「当前选中那一个」来显示名字。
+ * 找不到时（选了又搜不到）返回 null，此时选择器不显示已选标签 ——
+ * 宁可少显示一个标签，也不要显示错商品。
+ */
+const selectedActivityProduct = computed(() => {
+  const id = Number(activityForm.value?.productId || 0);
+  if (!id) return null;
+  return (activityProducts.value || []).find((p) => Number(p.id) === id) || null;
+});
 </script>
 
 <template>
@@ -75,10 +93,17 @@ const { activityDiscountLabel, activityForm, activityProducts, activityScopeLabe
         </label>
         <label v-if="activityForm.scope === 'PRODUCT'" class="field">
           <span class="field-label">适用商品 <i class="req">*</i></span>
-          <select v-model.number="activityForm.productId">
-            <option :value="0" disabled>请选择商品</option>
-            <option v-for="p in activityProducts" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
+          <!-- 2026-10-10：原先是原生 select 装 500 个 option（size=500），
+               商品一多就变超长滚动列表，且同名商品只显示名字分不清。
+               改成可搜索选择器：输入关键词 → 接口模糊搜索 → 下拉选，
+               每条带「分类 · 价格」帮助区分。结果里带分类名，是为了让
+               「红富士苹果」这类同名商品能被区分开。 -->
+          <ProductPicker
+            v-model="activityForm.productId"
+            :api="api"
+            :selected-items="[selectedActivityProduct].filter(Boolean)"
+            placeholder="输入商品名 / 分类 / 编号搜索"
+          />
         </label>
         <label v-if="activityForm.type !== 'PROMOTION'" class="field">
           <span class="field-label">{{ activityForm.type === 'DISCOUNT' ? '最低消费（元）' : '满减门槛（元）' }} <i class="req">*</i></span>

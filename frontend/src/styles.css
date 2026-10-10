@@ -5630,3 +5630,58 @@ a.brand-link { text-decoration: none; color: inherit; }
 }
 /* 售罄卡整体压暗一点，弱化它（别抢在售商品的注意力） */
 .product-card:has(.soldout-mask) .product-image img { filter: saturate(0.5); }
+
+/* ===== 可搜索商品选择器 ProductPicker（2026-10-10）=====
+   替代「500 个 option 塞进原生 select」——商品一多就只能滚动，
+   同名商品还分不清。改成输入关键词 → 接口模糊搜索 → 下拉选。 */
+.pk { position: relative; }
+.pk-input-wrap { position: relative; display: flex; align-items: center; }
+.pk-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 30px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.pk-clear {
+  position: absolute; right: 6px;
+  width: 20px; height: 20px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: #eef1f0; color: #5a6560;
+  font-size: 14px; line-height: 1; cursor: pointer;
+}
+.pk-clear:hover { background: #dde3e1; }
+.pk-loading { position: absolute; right: 30px; font-size: 12px; color: var(--muted); }
+
+.pk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.pk-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 999px;
+  background: #eaf6f1; border: 1px solid #bfe3d3;
+  color: #17694f; font-size: 12.5px; max-width: 100%;
+}
+.pk-x { cursor: pointer; font-style: normal; opacity: .6; }
+.pk-x:hover { opacity: 1; }
+
+/* 下拉：限高 + 可滚动 —— 不再是「顶满屏的长列表」 */
+.pk-drop {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 264px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 10px 28px rgba(20, 40, 32, 0.16);
+}
+.pk-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border: 0; background: transparent;
+  text-align: left; cursor: pointer; font-size: 13px;
+  border-bottom: 1px solid #f3f5f4;
+}
+.pk-item:hover, .pk-item.active { background: #f2f9f6; }
+.pk-item.on { color: var(--brand-deep); }
+.pk-item:disabled { cursor: default; opacity: .55; }
+.pk-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-meta { flex: none; font-size: 12px; color: var(--muted); }
+.pk-tick { flex: none; font-size: 11px; color: var(--brand); }
+.pk-empty, .pk-more { padding: 10px 12px; font-size: 12px; color: var(--muted); text-align: center; }
+.pk-more { border-top: 1px solid #f3f5f4; background: #fafbfb; }
