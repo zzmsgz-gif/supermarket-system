@@ -16,7 +16,9 @@ import { api } from '../api/client';
 
 export function useAdminPasswordResets({ run, fail, askConfirm, notice }) {
   const passwordResets = reactive({ items: [], page: 1, size: 10, total: 0, pending: 0 });
-  const passwordResetStatus = ref('PENDING');
+  // 默认「全部状态」而不是「待处理」：重置/驳回后记录置为已处理并保留（软状态，不删），
+  // 若默认只看待处理，处理完记录立刻从列表消失，管理员会误以为记录被删了（2026-10-11 用户反馈）。
+  const passwordResetStatus = ref('');
   const passwordResetJumpPage = ref(1);
   // 重置成功后拿到的临时密码：只存在于这一次响应里，关闭即销毁（库里只有 BCrypt 哈希）
   const passwordResetResult = ref(null);

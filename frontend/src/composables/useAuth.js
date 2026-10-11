@@ -118,13 +118,19 @@ export function useAuth(deps) {
       });
       setToken(data.token, !!loginForm.remember);
       rememberUser(data.user);
-      await refreshForSession();
-      resetAuthErrors();
-      // 登录逻辑集中在这里（单一真相源），但「登录后去哪 / 是否强制改密」交给 LoginPage 决定（modal 已拆成独立路由页）。
+      // 待强制改密的账号必须**跳过** refreshForSession：购物车/收藏/钱包等请求会被
+      // MustChangePasswordFilter 全部 40302 拦下并抛错，Promise.all 一炸 submitLogin 就走
+      // catch 返回 {ok:false}，登录页停在原表单还报一句 40302 文案——改密表单反而要等
+      // 用户手动关闭登录框、后续请求再被拦时才被事件拉起来（2026-10-11 用户实测）。
+      // 改密成功后 submitChangePassword 里会 loadMe，购物车等数据届时自然重拉。
       if (data.user.mustChangePassword) {
+        resetAuthErrors();
+        // 登录逻辑集中在这里（单一真相源），但「登录后去哪 / 是否强制改密」交给 LoginPage 决定（modal 已拆成独立路由页）。
         // 管理员重置过密码：由 LoginPage 切到「修改密码」态（不可跳过），这里只返回标记
         return { ok: true, mustChange: true, user: data.user };
       }
+      await refreshForSession();
+      resetAuthErrors();
       showAlert({ type: 'success', title: '登录成功', message: `欢迎回来，${data.user.nickname || data.user.username}` });
       return { ok: true, mustChange: false, user: data.user };
     } catch (err) {
@@ -233,10 +239,26 @@ export function useAuth(deps) {
     return e;
   }
 
-  async function submitChangePassword() {
+  /**
+   * 修改密码。两个入口共用：
+   * - 登录页改密态 / 强制改密：不传参，读内部 changeForm（表单 v-model 直接绑在上面）；
+   * - 个人资料页：传 { oldPassword, newPassword, confirmPassword } —— 此前不收参数，
+   *   资料页传了也被忽略、拿空 changeForm 去校验后静默返回 {ok:false}，
+   *   资料页又没检查返回值就提示「密码已修改」，实际请求根本没发出（2026-10-11 用户实测）。
+   * 返回 { ok, message? }：失败时带 message，调用方（资料页）据此展示。
+   */
+  async function submitChangePassword(payload) {
     resetAuthErrors();
+    if (payload && typeof payload === 'object') {
+      changeForm.currentPassword = payload.currentPassword || payload.oldPassword || '';
+      changeForm.newPassword = payload.newPassword || '';
+      changeForm.confirmPassword = payload.confirmPassword || '';
+    }
     Object.assign(changeErrors, validateChangeForm());
-    if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) return { ok: false };
+    if (changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword) {
+      const first = changeErrors.currentPassword || changeErrors.newPassword || changeErrors.confirmPassword;
+      return { ok: false, message: first };
+    }
     changeSubmitting.value = true;
     try {
       await api.post('/auth/change-password', {
@@ -256,7 +278,7 @@ export function useAuth(deps) {
       else if (msg.includes('相同')) changeErrors.newPassword = msg;
       else error.value = msg;
       fail(msg);
-      return { ok: false };
+      return { ok: false, message: msg };
     } finally {
       changeSubmitting.value = false;
     }

@@ -160,13 +160,25 @@ public class PasswordResetService {
         request.setRemark("已重置为临时密码");
         resetRequestRepository.save(request);
 
+        // 横幅里的联系号码：优先账号预留手机号；没预留（很多老账号注册时没填）就回退到
+        // 申请人本次留下的联系方式 —— 否则管理员看到「未填写」却明明表格里有号码可打（2026-10-11 用户反馈）。
+        String contactPhone = user.getPhone();
+        String resultMessage;
+        if (contactPhone == null || contactPhone.isBlank()) {
+            contactPhone = request.getContact();
+            resultMessage = "该账号未预留手机号，请拨打申请人留下的联系方式告知临时密码"
+                    + "；临时密码仅显示这一次，用户首次登录后必须修改密码。";
+        } else {
+            resultMessage = "临时密码仅显示这一次，请立即通过电话告知用户；用户首次登录后必须修改密码。";
+        }
+
         return new PasswordResetResultResponse(
                 user.getId(),
                 user.getUsername(),
                 user.getNickname(),
-                user.getPhone(),
+                contactPhone,
                 tempPassword,
-                "临时密码仅显示这一次，请立即通过电话告知用户；用户首次登录后必须修改密码。");
+                resultMessage);
     }
 
     /** 驳回申请（身份核对不通过 / 重复提交）。 */

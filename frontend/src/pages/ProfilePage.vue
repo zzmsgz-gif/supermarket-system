@@ -239,11 +239,17 @@ export default {
       if (pw.newPassword !== pw.confirmPassword) { pwError.value = '两次输入的新密码不一致'; return; }
       pwSaving.value = true;
       try {
-        await appCtx.submitChangePassword({
+        // ⚠️ submitChangePassword 不抛错，失败以 {ok:false, message} 返回 ——
+        // 必须检查 ok，否则原密码错了也会清空表单、提示「密码已修改」（2026-10-11 用户实测）。
+        const res = await appCtx.submitChangePassword({
           oldPassword: pw.oldPassword,
           newPassword: pw.newPassword,
           confirmPassword: pw.confirmPassword,
         });
+        if (!res || !res.ok) {
+          pwError.value = (res && res.message) || '修改失败，请稍后重试';
+          return;
+        }
         pw.oldPassword = pw.newPassword = pw.confirmPassword = '';
         notify('密码已修改');
       } catch (e) {
