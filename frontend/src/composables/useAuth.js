@@ -18,6 +18,7 @@
 import { reactive, ref } from 'vue';
 import { api, setToken } from '../api/client';
 import { useUserStore } from '../stores/user';
+import { checkPhone } from '../utils/validate';
 
 export function useAuth(deps) {
   const {
@@ -209,8 +210,10 @@ export function useAuth(deps) {
   async function submitPasswordReset() {
     resetAuthErrors();
     if (!resetForm.username.trim()) resetErrors.username = '请输入账号';
+    // 联系电话与注册手机号同一条规则（utils/validate.js 集中管理）：
+    // 之前只查「非空 + 至少 5 字符」，用户填 123456 也能提交，客服拿到根本打不通。
     if (!resetForm.contact.trim()) resetErrors.contact = '请留下联系电话，否则客服无法联系你';
-    else if (resetForm.contact.trim().length < 5) resetErrors.contact = '联系电话至少 5 个字符';
+    else resetErrors.contact = checkPhone(resetForm.contact, { label: '联系电话' });
     if (resetErrors.username || resetErrors.contact) return { ok: false };
     resetSubmitting.value = true;
     try {

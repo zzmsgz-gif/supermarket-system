@@ -108,7 +108,8 @@
         </label>
         <label class="auth-field">
           <span>联系电话 <i class="req">*</i></span>
-          <input v-model="appCtx.resetForm.contact" placeholder="便于客服核对身份后联系你" autocomplete="tel" />
+          <input v-model="appCtx.resetForm.contact" placeholder="请输入 11 位手机号" maxlength="11" inputmode="numeric" autocomplete="tel"
+                 @input="appCtx.resetForm.contact = appCtx.resetForm.contact.replace(/\D/g, '').slice(0, 11)" />
           <small v-if="appCtx.resetErrors.contact" class="field-hint warn">{{ appCtx.resetErrors.contact }}</small>
         </label>
         <button class="auth-submit" type="submit" :disabled="appCtx.resetSubmitting.value">{{ appCtx.resetSubmitting.value ? '提交中…' : '提交找回申请' }}</button>

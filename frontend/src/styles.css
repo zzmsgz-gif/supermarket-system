@@ -2663,11 +2663,20 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .modal-close {
   position: absolute; top: 12px; right: 14px;
   width: 28px; height: 28px;
-  border: none; background: transparent;
+  /* 全局 button 会漏进来三样：min-height:38px（按钮被拉成 30x38，× 偏上）。
+     绿色渐变底、hover 绿光晕 —— 必须逐项覆盖，否则关闭键变成「绿色小方块骑在卡片角上」。 */
+  min-height: 0; padding: 0;
+  display: grid; place-items: center;
+  border: none; border-radius: 8px; background: transparent;
+  box-shadow: none;
   font-size: 22px; line-height: 1; color: var(--muted);
   cursor: pointer;
 }
-.modal-close:hover { color: var(--ink); }
+.modal-close:hover {
+  color: var(--ink);
+  background: var(--brand-soft);
+  box-shadow: none;
+}
 
 .pay-head { display: grid; gap: 6px; }
 .pay-method {
