@@ -60,7 +60,7 @@
               @click="openRefundForm(order.id)"
             >申请售后</button>
             <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
-            <button v-if="order.status === 'COMPLETED' && !reviewedMap[order.id]" class="ghost" @click="openReviewForm(order.id)">评价</button>
+            <button v-if="order.status === 'COMPLETED' && canReview(order)" class="ghost" @click="openReviewForm(order)">评价</button>
             <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->
             <button v-if="order.status !== 'PENDING_PAYMENT'" class="ghost" @click="reorder(order)">再来一单</button>
           </div>
@@ -69,18 +69,27 @@
             <button @click="submitRefund(order.id)">提交申请</button>
             <button class="ghost" @click="refundForm.orderId = null">取消</button>
           </div>
-          <div v-if="reviewForm.orderId === order.id" class="row-extra">
-            <select v-model.number="reviewForm.rating" class="rating-select">
-              <option :value="5">★★★★★ 非常满意</option>
-              <option :value="4">★★★★ 满意</option>
-              <option :value="3">★★★ 一般</option>
-              <option :value="2">★★ 不满意</option>
-              <option :value="1">★ 很差</option>
-            </select>
-            <input v-model="reviewForm.content" placeholder="写下你的评价（选填）" />
-            <image-upload v-model="reviewForm.images" type="review" multiple :max="9" />
-            <button @click="submitReview(order.id)">提交评价</button>
-            <button class="ghost" @click="reviewForm.orderId = null">取消</button>
+          <div v-if="reviewForm.orderId === order.id" class="row-extra review-grid">
+            <!-- 一笔订单含多个商品：每个未评价的商品各一个独立评价表单（评分/内容/图片互不影响） -->
+            <div v-for="it in (order.items || []).filter(i => !reviewedItemMap[i.id])" :key="it.id" class="review-item">
+              <div class="review-item-head">
+                <img v-if="it.productCoverUrl" :src="it.productCoverUrl" :alt="it.productName" class="review-thumb" loading="lazy" />
+                <strong>{{ it.productName }}</strong><i>×{{ it.quantity }}</i>
+              </div>
+              <select v-model.number="reviewForm.items[it.id].rating" class="rating-select">
+                <option :value="5">★★★★★ 非常满意</option>
+                <option :value="4">★★★★ 满意</option>
+                <option :value="3">★★★ 一般</option>
+                <option :value="2">★★ 不满意</option>
+                <option :value="1">★ 很差</option>
+              </select>
+              <input v-model="reviewForm.items[it.id].content" placeholder="写下你的评价（选填）" />
+              <image-upload v-model="reviewForm.items[it.id].images" type="review" multiple :max="9" />
+            </div>
+            <div class="review-actions">
+              <button @click="submitReview(order.id)">提交评价</button>
+              <button class="ghost" @click="reviewForm.orderId = null">取消</button>
+            </div>
           </div>
         </div>
       </section>
@@ -104,7 +113,9 @@ export default {
       appCtx.loadOrdersPage(page);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
-    return { ...appCtx, orderSavedTotal, onOrderPage };
+    // 订单里还有「未评价」的商品时才显示「评价」按钮（已全评完的订单不再显示）
+    const canReview = (order) => (order.items || []).some((it) => !appCtx.reviewedItemMap[it.id]);
+    return { ...appCtx, orderSavedTotal, onOrderPage, canReview };
   }
 };
 </script>

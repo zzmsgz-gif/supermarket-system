@@ -15,6 +15,7 @@ import com.example.supermarket.repository.OrderRepository;
 import com.example.supermarket.repository.ProductRepository;
 import com.example.supermarket.repository.ProductReviewRepository;
 import com.example.supermarket.repository.SysUserRepository;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -61,18 +62,30 @@ public class ReviewService {
         if (!COMPLETED.equals(order.getStatus())) {
             throw new BusinessException(409, "Only completed orders can be reviewed");
         }
-        if (reviewRepository.existsByOrderId(orderId)) {
-            throw new BusinessException(409, "Order already reviewed");
-        }
         List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(orderId);
         if (items.isEmpty()) {
             throw new BusinessException(409, "Order has no items to review");
         }
-        String content = StringUtils.hasText(request.getContent()) ? request.getContent().trim() : null;
-        List<ProductReview> reviews = items.stream()
-                .filter(item -> !reviewRepository.existsByOrderItemId(item.getId()))
-                .map(item -> buildReview(order, item, userId, request.getRating(), content, request.getImageUrls()))
-                .toList();
+        // 一笔订单含多个商品：按订单项独立评价，逐项匹配并落库
+        Map<Long, OrderItem> itemMap = items.stream()
+                .collect(Collectors.toMap(OrderItem::getId, Function.identity(), (left, right) -> left));
+        List<ProductReview> reviews = new ArrayList<>();
+        for (ReviewCreateRequest.ReviewItemDTO item : request.getReviewItems()) {
+            OrderItem orderItem = itemMap.get(item.getOrderItemId());
+            if (orderItem == null) {
+                throw new BusinessException(400, "Order item does not belong to this order");
+            }
+            if (reviewRepository.existsByOrderItemId(orderItem.getId())) {
+                // 该项已评价：支持分次评价（用户先评部分商品，再回来补评其余），跳过已评项
+                continue;
+            }
+            String content = StringUtils.hasText(item.getContent()) ? item.getContent().trim() : null;
+            reviews.add(buildReview(order, orderItem, userId, item.getRating(), content, item.getImageUrls()));
+        }
+        if (reviews.isEmpty()) {
+            // 请求项全部已评价：幂等返回空列表，不报错
+            return List.of();
+        }
         List<ProductReview> saved = reviewRepository.saveAll(reviews);
         SysUser user = userRepository.findById(userId).orElse(null);
         // 一笔订单可能含多个商品：按去重 productId 批量取名称，避免逐条查（N+1）

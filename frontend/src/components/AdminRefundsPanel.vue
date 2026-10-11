@@ -71,7 +71,11 @@ onMounted(() => {
       <!-- 「全部」放第一位且默认为空：原先只有三个具体状态、默认锁死「申请中」，
            一进来就显示「暂无待处理的退款申请」，像是页面坏了（线上 53 单 refund_status 全是 NONE）。
            加了「全部」至少能看到全量分布，再自己筛。 -->
+      <!-- 默认 =「退款中/成功」（与 App.vue 的 refundStatusFilter 初值一致，2026-10-11 用户要求）：
+           售后管理默认只看真正有售后的单（退款中 + 退款成功），无售后（NONE）的不掺进来；
+           「全部」仍在下拉里可手动选，重置按钮也回到默认项。 -->
       <select v-model="refundStatusFilter" class="filter-select" @change="searchRefunds">
+        <option value="APPLYING,APPROVED">退款中/成功</option>
         <option value="">全部</option>
         <option value="APPLYING">申请中</option>
         <option value="APPROVED">已通过</option>

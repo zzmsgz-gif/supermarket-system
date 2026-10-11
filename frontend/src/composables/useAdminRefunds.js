@@ -13,7 +13,7 @@
 import { computed, reactive } from 'vue';
 
 export function useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal,
-  refundOrders, refundJumpPage, refundStatusFilter, loadRefundOrders, loadAdminOrders }) {
+  refundOrders, refundJumpPage, refundStatusFilter, loadRefundOrders, loadRefundApplyingCount, loadAdminOrders }) {
   const refundReviewForm = reactive({ orderId: null, approved: true, remark: '' });
 
   const refundTotalPages = computed(() => Math.max(1, Math.ceil((refundOrders.total || 0) / (refundOrders.size || 10))));
@@ -46,10 +46,9 @@ export function useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal,
   }
 
   function resetRefundSearch() {
-    // 与 App.vue 的 refundStatusFilter 初值保持一致（空 = 全部）。
-    // 保持一致很重要：这两处不同步的话，「重置」会把筛选从「全部」弹回「申请中」，
-    // 用户立刻又看不到已通过的记录，以为记录又被删了。
-    refundStatusFilter.value = '';
+    // 与 App.vue 的 refundStatusFilter 初值保持一致（默认 = 退款中/成功，2026-10-11 用户要求）。
+    // 保持一致很重要：这两处不同步的话，「重置」会把筛选弹回一个用户没预期的视图。
+    refundStatusFilter.value = 'APPLYING,APPROVED';
     refundOrders.page = 1;
     loadRefundOrders();
   }
@@ -88,7 +87,8 @@ export function useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal,
         remark: refundReviewForm.remark.trim() || null,
       });
       refundReviewForm.orderId = null;
-      await Promise.all([loadRefundOrders(), loadAdminOrders()]);
+      // 审核会改变退款中数量（同意后 APPLYING→APPROVED），侧栏角标同步刷新
+      await Promise.all([loadRefundOrders(), loadRefundApplyingCount(), loadAdminOrders()]);
     }, refundReviewForm.approved ? '已同意退款，款项已退回用户钱包' : '已拒绝该退款申请');
 
   }

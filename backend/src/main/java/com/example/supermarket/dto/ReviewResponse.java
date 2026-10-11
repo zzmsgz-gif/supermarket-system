@@ -10,6 +10,7 @@ public class ReviewResponse {
 
     private Long id;
     private Long orderId;
+    private Long orderItemId;
     private Long productId;
     private String productName;
     private String nickname;
@@ -34,6 +35,7 @@ public class ReviewResponse {
         ReviewResponse response = new ReviewResponse();
         response.setId(review.getId());
         response.setOrderId(review.getOrderId());
+        response.setOrderItemId(review.getOrderItemId());
         response.setProductId(review.getProductId());
         response.setProductName(productName);
         response.setNickname(maskNickname(user));
@@ -85,6 +87,14 @@ public class ReviewResponse {
 
     public void setOrderId(Long orderId) {
         this.orderId = orderId;
+    }
+
+    public Long getOrderItemId() {
+        return orderItemId;
+    }
+
+    public void setOrderItemId(Long orderItemId) {
+        this.orderItemId = orderItemId;
     }
 
     public Long getProductId() {

@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
@@ -32,6 +33,14 @@ public class DataSeeder {
 
     private static final String SEED_RESOURCE = "db/seed-data.sql";
 
+    /**
+     * 总开关：是否运行种子导入/自愈。默认开启（保留新装机自举）。
+     * 设为 {@code false} 可彻底关闭 —— 用于「活人感数据重建」后冻结存量数据，
+     * 避免任何重启把生成器算出的库存/销量/价格等交易结果静默重置（2026-10-10 加）。
+     */
+    @Value("${SUPERMARKET_SEED_ENABLED:true}")
+    private boolean seedEnabled;
+
     private final DataSource dataSource;
 
     public DataSeeder(DataSource dataSource) {
@@ -42,6 +51,10 @@ public class DataSeeder {
      * 自愈式导入基础主数据。幂等：重复运行安全，已存在的行会被种子值更新。
      */
     public void seed() {
+        if (!seedEnabled) {
+            log.info("[seed] SUPERMARKET_SEED_ENABLED=false，跳过基础主数据导入/自愈（冻结存量数据）");
+            return;
+        }
         log.info("[seed] 开始导入/自愈基础主数据（分类/商品/活动/优惠券）…");
         try {
             ResourceDatabasePopulator populator =

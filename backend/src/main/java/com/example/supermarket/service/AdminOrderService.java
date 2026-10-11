@@ -19,6 +19,7 @@ import com.example.supermarket.repository.StockLogRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -282,11 +283,20 @@ public class AdminOrderService {
                 predicates.add(cb.like(root.get("orderNo"), "%" + orderNo.trim() + "%"));
             }
             if (StringUtils.hasText(refundStatus)) {
-                String normalizedRefundStatus = refundStatus.trim();
-                if (!ALLOWED_REFUND_STATUSES.contains(normalizedRefundStatus)) {
-                    throw new BusinessException(400, "Invalid refund status");
+                // 支持逗号分隔多值（如 "APPLYING,APPROVED"）→ IN 查询：
+                // 售后管理默认要同时展示「退款中 + 退款成功」，单值 equal 表达不了。
+                List<String> refundStatuses = Arrays.stream(refundStatus.split(","))
+                        .map(String::trim)
+                        .filter(StringUtils::hasText)
+                        .toList();
+                for (String rs : refundStatuses) {
+                    if (!ALLOWED_REFUND_STATUSES.contains(rs)) {
+                        throw new BusinessException(400, "Invalid refund status");
+                    }
                 }
-                predicates.add(cb.equal(root.get("refundStatus"), normalizedRefundStatus));
+                if (!refundStatuses.isEmpty()) {
+                    predicates.add(root.get("refundStatus").in(refundStatuses));
+                }
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

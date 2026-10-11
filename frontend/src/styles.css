@@ -1572,6 +1572,14 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 .row-extra input { flex: 1 1 140px; }
 .row-extra .rating-select { flex: 0 0 auto; }
 
+/* 订单评价：一笔订单多个商品，逐商品独立评价表单（评分/内容/图片互不影响） */
+.review-grid { flex-basis: 100%; flex-direction: column; align-items: stretch; gap: 12px; }
+.review-grid .review-item { display: flex; flex-direction: column; gap: 8px; }
+.review-item-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.review-item-head .review-thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.review-item-head i { color: var(--muted); font-style: normal; }
+.review-actions { display: flex; gap: 8px; }
+
 .tag-warn { color: #d9534f; }
 
 .coupon-select, .rating-select {

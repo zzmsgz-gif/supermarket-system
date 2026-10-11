@@ -8,7 +8,7 @@ export function useAdminLoaders({
   adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage,
   adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage,
   adminStatsOverview,
-  refundOrders, refundStatusFilter, refundJumpPage,
+  refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage,
   stockAlerts,
   adminCoupons, adminCouponKeyword, adminCouponJumpPage,
   adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage,
@@ -102,6 +102,18 @@ export function useAdminLoaders({
     refundJumpPage.value = safePage;
   }
 
+  // 侧栏「售后管理」角标数据源：退款中（APPLYING）的订单数量。
+  // 复用 /admin/orders 列表接口，size=1 只为拿 total，不为它单开后端接口。
+  async function loadRefundApplyingCount() {
+    if (!isAdmin.value) return;
+    try {
+      const data = await api.get('/admin/orders?page=1&size=1&refundStatus=APPLYING');
+      refundApplyingCount.value = Number(data?.total) || 0;
+    } catch (e) {
+      // 拉不到就保留旧值：角标是提醒性质，不该因为一次抖动归零误导管理员
+    }
+  }
+
   async function loadStockAlerts() {
     if (!isAdmin.value) return;
     stockAlerts.value = await api.get('/admin/stock-alerts');
@@ -145,6 +157,6 @@ export function useAdminLoaders({
 
   return {
     loadAdminProducts, loadAdminOrders, loadAdminStatsOverview,
-    loadRefundOrders, loadStockAlerts, loadAdminCoupons, loadAdminUsers,
+    loadRefundOrders, loadRefundApplyingCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers,
   };
 }

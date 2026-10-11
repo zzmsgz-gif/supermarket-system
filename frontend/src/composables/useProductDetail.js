@@ -4,7 +4,7 @@ import { reactive, ref, computed, watch } from 'vue';
 
 export function useProductDetail({
   api, run, fail, isAdmin, router, navigate,
-  activeActivities, reviewedMap, loadProducts, ratingSummaryMap,
+  activeActivities, reviewedMap, reviewedItemMap, loadProducts, ratingSummaryMap,
   // productNavLock 是 App.vue 里的 let 变量，syncRoute 也要用 → 留在原地，这里用读写器操作
   isProductNavLocked, setProductNavLock,
   getFlashLimitOfProduct, getFlashSaleOfProduct, getView,
@@ -12,7 +12,9 @@ export function useProductDetail({
   const productDetail = reactive({ data: null, reviews: [], loading: false });
   const detailQuantity = ref(1);
   const currentImageIndex = ref(0);
-  const reviewForm = reactive({ orderId: null, rating: 5, content: '', images: [] });
+  // 评价表单：一笔订单含多个商品，每个商品（订单项）独立评价。
+  // items 以 orderItemId 为键，各自持有 rating/content/images 草稿。
+  const reviewForm = reactive({ orderId: null, items: {} });
   const relatedProducts = ref([]);
   const dwellEnterTs = ref(0);
   const dwellProductId = ref(null);
@@ -110,23 +112,39 @@ export function useProductDetail({
     }
   }
 
-  function openReviewForm(orderId) {
-    reviewForm.orderId = orderId;
-    reviewForm.rating = 5;
-    reviewForm.content = '';
+  // 打开某订单的评价表单：为订单里「尚未评价」的每个商品（订单项）各建一份草稿。
+  // 已评价的订单项不出现在表单里（避免重复评价）。
+  function openReviewForm(order) {
+    reviewForm.orderId = order.id;
+    const drafts = {};
+    for (const it of (order.items || [])) {
+      if (reviewedItemMap[it.id]) continue;
+      drafts[it.id] = { rating: 5, content: '', images: [] };
+    }
+    reviewForm.items = drafts;
   }
 
   async function submitReview(id) {
+    const drafts = reviewForm.items || {};
+    // 把逐商品草稿装配成后端要求的 reviewItems（按订单项各自评分/内容/图片）
+    const reviewItems = Object.keys(drafts)
+      .map((oid) => ({
+        orderItemId: Number(oid),
+        rating: drafts[oid].rating,
+        content: (drafts[oid].content || '').trim(),
+        imageUrls: drafts[oid].images || [],
+      }))
+      .filter((it) => it.rating >= 1 && it.rating <= 5);
+    if (!reviewItems.length) { fail('请先选择评分'); return; }
     await run(async () => {
-      await api.post(`/reviews/orders/${id}`, {
-        rating: reviewForm.rating,
-        content: reviewForm.content.trim(),
-        imageUrls: reviewForm.images,
-      });
-      reviewedMap[id] = true;
+      const saved = await api.post(`/reviews/orders/${id}`, { reviewItems });
+      // 后端返回新建的评价列表，逐条标记对应订单项已评价（分次评价/幂等都靠它）
+      for (const r of (saved || [])) {
+        if (r.orderItemId) reviewedItemMap[r.orderItemId] = true;
+      }
       await loadRatingSummary(); // 新评价改变平均分，刷新商品卡/详情的星级聚合
       reviewForm.orderId = null;
-      reviewForm.images = [];
+      reviewForm.items = {};
       await loadProducts();
       // 若用户正在查看该订单对应商品的详情页，立即刷新评价列表
       try {

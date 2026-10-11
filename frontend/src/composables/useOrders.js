@@ -5,7 +5,7 @@ import { withMinSpinner } from '../utils/format.js';
 
 export function useOrders({
   api, run, fail, askConfirm, showAlert, money, session, isAdmin, router, navigate,
-  orders, reviewedMap, refundForm, orderDetail, paying,
+  orders, reviewedMap, reviewedItemMap, refundForm, orderDetail, paying,
   // orderNavLock 是 App.vue 的 let 变量，syncRoute 也要读 → 留在原地，这里用读写器
   isOrderNavLocked, setOrderNavLock,
   loadWallet, loadMe, loadCart, loadFlashSales, loadProducts, refreshProductDetail,
@@ -51,7 +51,12 @@ export function useOrders({
       if (reviewedMap[order.id] !== undefined) return;
       try {
         const reviews = await api.get(`/reviews/orders/${order.id}`);
-        reviewedMap[order.id] = (reviews || []).length > 0;
+        const list = reviews || [];
+        reviewedMap[order.id] = list.length > 0;
+        // 按订单项粒度标记已评价：前端据此逐商品显示「已评价」、并驱动「评价」按钮显隐
+        for (const r of list) {
+          if (r.orderItemId) reviewedItemMap[r.orderItemId] = true;
+        }
       } catch {
         reviewedMap[order.id] = false;
       }
