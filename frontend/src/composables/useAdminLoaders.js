@@ -9,6 +9,7 @@ export function useAdminLoaders({
   adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage,
   adminStatsOverview,
   refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage,
+  pendingShipCount,
   stockAlerts,
   adminCoupons, adminCouponKeyword, adminCouponJumpPage,
   adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage,
@@ -114,6 +115,18 @@ export function useAdminLoaders({
     }
   }
 
+  // 侧栏「订单管理」角标数据源：待发货（PAID，已付款等发货）的订单数量。
+  // 语义与售后角标一致 = 需要管理员动手处理的量，0 时隐藏；同样复用列表接口拿 total。
+  async function loadPendingShipCount() {
+    if (!isAdmin.value) return;
+    try {
+      const data = await api.get('/admin/orders?page=1&size=1&status=PAID');
+      pendingShipCount.value = Number(data?.total) || 0;
+    } catch (e) {
+      // 同上：提醒性质，失败保留旧值
+    }
+  }
+
   async function loadStockAlerts() {
     if (!isAdmin.value) return;
     stockAlerts.value = await api.get('/admin/stock-alerts');
@@ -157,6 +170,6 @@ export function useAdminLoaders({
 
   return {
     loadAdminProducts, loadAdminOrders, loadAdminStatsOverview,
-    loadRefundOrders, loadRefundApplyingCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers,
+    loadRefundOrders, loadRefundApplyingCount, loadPendingShipCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers,
   };
 }

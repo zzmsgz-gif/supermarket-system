@@ -81,7 +81,8 @@ const { adminOrders, adminOrderStatus, adminOrderTotalPages, shipForm, searchAdm
               <td><span class="cell-strong">{{ money(order.payAmount) }}</span><span v-if="orderSavedTotal(order) > 0" class="cell-sub">已优惠 {{ money(orderSavedTotal(order)) }}</span></td>
               <td>
                 <template v-if="order.shipNo">{{ order.shipCompany }}<span class="cell-sub">{{ order.shipNo }}</span></template>
-                <span v-else class="cell-muted">未发货</span>
+                <!-- 已取消/已关闭的订单根本没有物流，显示 "-" 而不是误导性的「未发货」 -->
+                <span v-else class="cell-muted">{{ ['CANCELED', 'CLOSED'].includes(order.status) ? '-' : '未发货' }}</span>
               </td>
               <td>{{ formatDate(order.createdAt) }}</td>
               <td class="col-action">
