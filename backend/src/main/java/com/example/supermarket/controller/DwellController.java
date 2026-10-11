@@ -61,7 +61,13 @@ public class DwellController {
             Long viewCount = row[2] != null ? ((Number) row[2]).longValue() : 0L;
             BigDecimal avgSeconds = row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO;
             String coverUrl = row[4] != null ? row[4].toString() : null;
-            result.add(new DwellRankResponse(productId, productName, avgSeconds, viewCount, coverUrl));
+            BigDecimal price = row[5] != null ? new BigDecimal(row[5].toString()) : null;
+            BigDecimal originalPrice = row[6] != null ? new BigDecimal(row[6].toString()) : null;
+            BigDecimal memberPrice = row[7] != null ? new BigDecimal(row[7].toString()) : null;
+            Integer stock = row[8] != null ? ((Number) row[8]).intValue() : null;
+            String unit = row[9] != null ? row[9].toString() : null;
+            result.add(new DwellRankResponse(productId, productName, avgSeconds, viewCount, coverUrl,
+                    price, originalPrice, memberPrice, stock, unit));
         }
         return ApiResponse.ok(result);
     }

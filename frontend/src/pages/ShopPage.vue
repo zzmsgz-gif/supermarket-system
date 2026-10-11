@@ -668,7 +668,16 @@ export default {
       if (activeChannelKey.value === 'dwell') {
         return (dwellRankProducts.value || []).map((d) => ({
           key: 'd' + d.productId,
-          product: { id: d.productId, name: d.productName, coverUrl: d.coverUrl },
+          product: {
+            id: d.productId,
+            name: d.productName,
+            coverUrl: d.coverUrl,
+            price: d.price,
+            originalPrice: d.originalPrice,
+            memberPrice: d.memberPrice,
+            stock: d.stock,
+            unit: d.unit,
+          },
           badges: false,
           extra: `浏览 ${d.viewCount} 次 · 均 ${d.avgSeconds}s`,
         }));

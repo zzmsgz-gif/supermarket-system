@@ -172,7 +172,11 @@ const soldOut = computed(() => {
     const sold = Number(f.soldQuota ?? 0);
     if (total > 0 && sold >= total) return true;
   }
-  return Number(props.product.stock ?? 0) <= 0;
+  // 普通品：库存 <= 0 才算售罄。拿不到库存（字段缺失/未透传）时不能误标售罄，
+  // 否则会像 dwell 频道那样把正常商品全盖「已售罄」遮罩（2026-10-10 修复）。
+  const s = props.product.stock;
+  if (s == null) return false;
+  return Number(s) <= 0;
 });
 
 // 限时秒杀：从 appCtx 已加载的秒杀列表里按 productId 匹配，因此不必在商品接口上透出秒杀价，
