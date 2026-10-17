@@ -231,6 +231,10 @@ public class ReturnRequestService {
      *   <li>同意且<b>需寄回</b> → WAITING_SHIP，等用户填单号（此时**不放款**）</li>
      * </ol>
      *
+     * <p>是否寄回由<b>管理员在审核弹窗里手动选择</b>为准（前端透传 {@code needReturn}）；
+     * 若管理员未显式选择，则按订单状态自动兜底（PAID 免寄回，其余需寄回）。
+     * 退货运费责任方（SELLER / BUYER）同样可由管理员在弹窗里指定，缺省为 BUYER。
+     *
      * <p>⚠️ 分支 3 是本条需求的核心：原先审核通过就直接退钱，等于「同意 = 白给」，
      * 商家毫无风控手段。
      */
@@ -262,10 +266,15 @@ public class ReturnRequestService {
             return ReturnRequestResponse.from(r, order.getOrderNo());
         }
 
-        // 自动判定是否需寄回（商家只点「同意/驳回」，无需手动选下拉框）：
+        // 是否需要用户寄回：优先采用管理员在审核弹窗里的手动选择；
+        // 若管理员未显式选择（needReturn 为 null），再按订单状态自动兜底：
         // · 未收到货（已付款未发货 PAID）—— 退款即可，无需寄回；
         // · 已发货 / 已收货（SHIPPED / COMPLETED）—— 退货退款，需用户先寄回。
-        boolean needReturn = !"PAID".equals(order.getStatus());
+        // 这样商家既能「一键按状态处理」，也能对单个订单临机改判（如已发货的质量问题判不退件）。
+        Boolean manualNeedReturn = req.getNeedReturn();
+        boolean needReturn = (manualNeedReturn != null)
+                ? manualNeedReturn
+                : !"PAID".equals(order.getStatus());
         r.setAdminRemark(req.getRemark());
         r.setApprovedAt(LocalDateTime.now());
 
