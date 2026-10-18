@@ -86,9 +86,51 @@ const { adminFlashSales, categories, closeFlashForm, deleteFlashSale, flashEditi
             <input v-model="flashForm.unit" placeholder="默认「件」" />
           </label>
           <label class="field">
+            <span class="field-label">副标题</span>
+            <input v-model="flashForm.subtitle" placeholder="可选，如「限时直降」" />
+          </label>
+          <label class="field">
+            <span class="field-label">品牌</span>
+            <input v-model="flashForm.brand" placeholder="可选" />
+          </label>
+          <label class="field">
+            <span class="field-label">标签</span>
+            <input v-model="flashForm.tags" placeholder="可选，逗号分隔，如：生鲜,热销" />
+          </label>
+          <label class="field field-wide">
+            <span class="field-label">商品描述</span>
+            <textarea v-model="flashForm.description" rows="3" placeholder="可选，商品卖点、规格、产地等"></textarea>
+          </label>
+          <label class="field">
             <span class="field-label">商品主图</span>
             <ImageUpload v-model="flashForm.coverUrl" :multiple="false" :max="1" type="product" />
           </label>
+          <div class="field field-wide">
+            <span class="field-label">多规格 SKU（选填，与商品管理新增商品一致）</span>
+            <div class="sku-list">
+              <div v-for="(sku, si) in flashForm.skus" :key="si" class="sku-card">
+                <div class="sku-specs">
+                  <div v-for="(item, ii) in sku.specItems" :key="ii" class="spec-row">
+                    <input v-model="item.name" placeholder="规格名，如 颜色" />
+                    <input v-model="item.value" placeholder="规格值，如 红" />
+                    <button type="button" class="ghost mini danger" @click="sku.specItems.splice(ii, 1)">删</button>
+                  </div>
+                  <button type="button" class="ghost mini" @click="sku.specItems.push({ name: '', value: '' })">+ 规格项</button>
+                  <span class="sku-price-tag" v-if="sku.price !== '' && sku.price != null">规格价 ¥{{ sku.price }}</span>
+                </div>
+                <div class="sku-meta">
+                  <input v-model="sku.skuCode" placeholder="SKU 编码（选填）" />
+                  <input v-model="sku.price" placeholder="规格价（选填，留空=跟随商品价）" inputmode="decimal" />
+                  <input v-model="sku.originalPrice" placeholder="规格原价（选填，留空=跟随商品原价）" inputmode="decimal" />
+                </div>
+                <div class="sku-image">
+                  <ImageUpload v-model="sku.image" type="product" :multiple="false" :max="1" />
+                </div>
+                <button type="button" class="ghost mini danger" @click="flashForm.skus.splice(si, 1)">删除该 SKU</button>
+              </div>
+              <button type="button" class="ghost mini" @click="flashForm.skus.push({ specItems: [{ name: '', value: '' }], skuCode: '', image: '', originalPrice: '' })">+ 新增 SKU</button>
+            </div>
+          </div>
         </template>
         <label class="field">
           <span class="field-label">场次名</span>

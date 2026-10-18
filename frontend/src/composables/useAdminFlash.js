@@ -21,10 +21,13 @@ export function useAdminFlash({ isAdmin, fail, run, askConfirm }) {
   const flashForm = reactive({
     // sourceMode：existing＝克隆现有商品（有原商品）；new＝从零新建一件独立秒杀商品（无原商品）
     sourceMode: 'existing',
-    productId: 0, name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
+    productId: 0, name: '', flashPrice: 0, totalQuota:30, perUserLimit: 0,
     startTime: '', endTime: '', status: 1, sortNo: 0,
-    // 仅 sourceMode==='new' 时使用的商品字段
+    // 仅 sourceMode==='new' 时使用的商品字段（与商品管理新增商品对齐，补全描述/SKU 等）
     productName: '', categoryId: 0, price: 0, originalPrice: 0, coverUrl: '', unit: '',
+    subtitle: '', brand: '', description: '', tags: '',
+    // 多规格 SKU（仅独立新建生效）：specItems=[{name,value}]，与商品管理新增商品对齐
+    skus: [],
   });
 
   async function loadAdminFlashSales() {
@@ -90,6 +93,11 @@ export function useAdminFlash({ isAdmin, fail, run, askConfirm }) {
           originalPrice: 0,
           coverUrl: sale.productCoverUrl || '',
           unit: sale.productUnit || '',
+          subtitle: sale.productSubtitle || '',
+          brand: sale.productBrand || '',
+          description: sale.productDescription || '',
+          tags: sale.productTags || '',
+          skus: [],
         }
       : {
           sourceMode: 'existing',
@@ -97,6 +105,8 @@ export function useAdminFlash({ isAdmin, fail, run, askConfirm }) {
           name: '', flashPrice: 0, totalQuota: 30, perUserLimit: 0,
           startTime: '', endTime: '', status: 1, sortNo: 0,
           productName: '', categoryId: 0, price: 0, originalPrice: 0, coverUrl: '', unit: '',
+          subtitle: '', brand: '', description: '', tags: '',
+          skus: [],
         });
     flashFormOpen.value = true;
   }
@@ -140,6 +150,19 @@ export function useAdminFlash({ isAdmin, fail, run, askConfirm }) {
       payload.originalPrice = Number(flashForm.originalPrice) > 0 ? Number(flashForm.originalPrice) : null;
       payload.coverUrl = flashForm.coverUrl || null;
       payload.unit = String(flashForm.unit || '').trim() || '件';
+      // 与商品管理对齐：补全副标题 / 品牌 / 描述 / 标签，让独立秒杀商品信息完整（SKU 改走下方多规格编辑器）
+      payload.subtitle = String(flashForm.subtitle || '').trim() || null;
+      payload.brand = String(flashForm.brand || '').trim() || null;
+      payload.description = String(flashForm.description || '').trim() || null;
+      payload.tags = String(flashForm.tags || '').trim() || null;
+      // 多规格 SKU：把 specItems[{name,value}] 压成 specJson，与商品管理新增商品一致
+      payload.skus = (flashForm.skus || []).map((s) => ({
+        specJson: JSON.stringify(Object.fromEntries((s.specItems || []).map((x) => [x.name, x.value]).filter(([n]) => n))),
+        skuCode: String(s.skuCode || '').trim() || '',
+        price: s.price ? Number(s.price) : null,
+        originalPrice: s.originalPrice ? Number(s.originalPrice) : null,
+        image: s.image || '',
+      }));
     }
     try {
       await run(async () => {
