@@ -22,13 +22,14 @@ const props = defineProps({
   reviewSubmitDisabled: { type: Function, required: true },
   refundTotalPages: { type: Number, required: true },
   refundReviewForm: { type: Object, required: true },
+  openOrderDetail: { type: Function, required: true },
 });
 
 // ⚠️ 这两个用 defineModel 而不是 props —— v-model 双向绑定，写 prop 会静默失败。
 const refundStatusFilter = defineModel('refundStatusFilter', { type: String, required: true });
 const refundJumpPage = defineModel('refundJumpPage', { type: Number, required: true });
 const { refundOrders, loadRefundOrders } = props.adminCtx;
-const { searchRefunds, changeRefundPage, changeRefundPageSize, goRefundPage, resetRefundSearch, reviewAdminRefund, submitRefundReview, confirmReturnReceived, reviewSubmitDisabled, refundTotalPages, refundReviewForm } = toRefs(props);
+const { searchRefunds, changeRefundPage, changeRefundPageSize, goRefundPage, resetRefundSearch, reviewAdminRefund, submitRefundReview, confirmReturnReceived, reviewSubmitDisabled, refundTotalPages, refundReviewForm, openOrderDetail } = toRefs(props);
 
 // return 五态 → 徽标配色（与用户端 ReturnsPage 同源）
 const RETURN_STATUS_TAG = { APPLYING: 'warn', WAITING_SHIP: 'warn', SHIPPED_BACK: 'info', APPROVED: 'ok', REJECTED: 'muted', PARTIAL: 'warn' };
@@ -90,7 +91,7 @@ onMounted(() => {
           <template v-for="r in refundOrders.items" :key="r.id">
             <tr>
               <td><span class="cell-strong">#{{ r.id }}</span></td>
-              <td>{{ r.orderNo || '-' }}</td>
+              <td><span class="cell-strong order-no-link" @click="openOrderDetail({ id: r.orderId })">{{ r.orderNo || '-' }}</span></td>
               <td>
                 <template v-if="r.itemProductName">
                   <div class="rp-item-cell">

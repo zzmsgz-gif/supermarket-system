@@ -42,22 +42,9 @@
 <!-- 履约操作区已移到页面最底部（order-summary 之后）——
      2026-10-07 用户要求「确认收货按钮改到右下角」。原先夹在顶部状态旁很突兀，
      且和「申请售后」并排容易误点（收货是常规履约，售后是异常处理）。 -->
-          <!-- 售后申请表单：与列表页同一套 submitRefund/openRefundForm -->
-          <form v-if="localRefund.open" class="refund-form-inline" @submit.prevent="sendRefund">
-            <h4>申请售后</h4>
-            <label>
-              售后原因
-              <select v-model="localRefund.reason">
-                <option value="">请选择原因</option>
-                <option v-for="r in REFUND_REASONS" :key="r" :value="r">{{ r }}</option>
-              </select>
-            </label>
-            <p class="refund-hint">提交后由商家审核；审核通过将原路退回余额，库存同步回补。</p>
-            <div class="refund-actions">
-              <button type="submit" class="primary" :disabled="acting">{{ acting ? '提交中…' : '提交申请' }}</button>
-              <button type="button" class="ghost" :disabled="acting" @click="closeRefund">取消</button>
-            </div>
-          </form>
+          <!-- 售后申请表单已移至页面底部操作按钮下方（见本文件 detail-actions 之后）——
+             2026-10-16 用户反馈：表单放在顶部「购买商品」上方时，点底部「申请退款」后
+             表单却出现在订单最顶上，位置和触发点割裂；挪到按钮旁才符合「点哪开哪」。 -->
 
           <!-- ===== 区块顺序 =====
                用户看订单详情是「买了什么 → 花了多少 → 订单信息」这条线。
@@ -65,6 +52,10 @@
                视线要来回跳（2026-10-07 用户要求把购买商品放到金额明细上面）。 -->
 
           <h3 class="items-title">购买商品（{{ (orderDetail.data.items || []).length }} 件）</h3>
+          <!-- 整单在途售后（orderItemId 为 null）：全单统一处理，提示用户无需逐件申请 -->
+          <p v-if="hasOpenWholeOrderReturn" class="order-return-banner">
+            整单售后处理中（{{ wholeOrderReturnStatusLabel }}），请到「我的售后」查看进度，无需逐件申请。
+          </p>
           <div class="order-items">
             <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
               <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)"  loading="lazy" decoding="async"/>
@@ -79,6 +70,21 @@
                   <span class="order-item-qty">× {{ it.quantity }}</span>
                   <span class="subtotal">{{ money(it.subtotalAmount) }}</span>
                 </div>
+              </div>
+              <!-- 2026-10-16 按订单状态统一文案：未收到货(PAID/SHIPPED)=退款，收到货(COMPLETED)=售后。
+                   行内入口仅限已完成(COMPLETED)订单；未收货退款走底部整单按钮，行内不重复出按钮。 -->
+              <div class="order-item-actions">
+                <button
+                  v-if="itemCanRefund(it)"
+                  class="ghost sm"
+                  :disabled="acting"
+                  @click="startRefundItem(it)"
+                >{{ applyRefundLabel }}</button>
+                <span v-if="it.refunded === true" class="tag ok order-item-done">已{{ applyRefundLabel.slice(2) }}</span>
+                <span
+                  v-else-if="itemOpenReturn(it)"
+                  :class="['tag', returnStatusCls(itemOpenReturn(it).status)]"
+                >{{ itemOpenReturn(it).statusLabel }} · 处理中</span>
               </div>
             </div>
           </div>
@@ -96,11 +102,19 @@
               <b>{{ amount.freight > 0 ? '+ ' + money(amount.freight) : '免运费' }}</b>
             </div>
 
-            <div class="amount-row save" v-if="amount.originalSave > 0">
-              <span>会员优惠（已省）<small>售价与你的成交价之差，已含在商品小计中，不重复扣减</small></span>
-              <b>- {{ money(amount.originalSave) }}</b>
+            <!-- ⚠️ 会员让利后端恒置 memberDiscount=0（会员价/等级折扣已下沉到单品成交价），
+                 真实省下的钱按下单时的来源快照（order_item.member_source）拆成两行（2026-10-13）：
+                 「会员优惠」=商品会员价更低那部分；「会员折扣」=等级折扣更低那部分。两种都有则各占一行。
+                 仅作信息展示、不进优惠合计；历史订单无快照时仍合并进「会员折扣」一行。 -->
+            <div class="amount-row minus" v-if="amount.memberPriceSave > 0">
+              <span>会员优惠<small>商品会员价与售价之差，已含在商品小计中，不重复扣减</small></span>
+              <b>- {{ money(amount.memberPriceSave) }}</b>
             </div>
-
+            <div class="amount-row minus" v-if="amount.memberLevel > 0 || amount.tierSave > 0">
+              <span>会员折扣（{{ tierNameFor(amount.memberLevel) }}）<small v-if="amount.tierSave <= 0">本单未产生等级折扣</small><small v-else>售价×等级折扣与售价之差，已含在商品小计中，不重复扣减</small></span>
+              <b v-if="amount.tierSave > 0">- {{ money(amount.tierSave) }}</b>
+              <b v-else class="none">无</b>
+            </div>
             <div class="amount-row minus">
               <span>优惠券<template v-if="amount.couponName">（{{ amount.couponName }}）</template></span>
               <b v-if="amount.coupon > 0">- {{ money(amount.coupon) }}</b>
@@ -110,11 +124,6 @@
               <span>活动优惠<template v-if="amount.activityName">（{{ amount.activityName }}）</template></span>
               <b v-if="amount.activity > 0">- {{ money(amount.activity) }}</b>
               <b v-else class="none">未参与</b>
-            </div>
-            <div class="amount-row minus">
-              <span>会员折扣（{{ tierNameFor(amount.memberLevel) }}）<small v-if="amount.member <= 0">{{ amount.memberLevel > 0 ? '本单未产生等级折扣' : '普通会员无折扣' }}</small></span>
-              <b v-if="amount.member > 0">- {{ money(amount.member) }}</b>
-              <b v-else class="none">无</b>
             </div>
             <div class="amount-row minus">
               <span>积分抵扣<template v-if="amount.pointsUsed > 0">（{{ amount.pointsUsed }} 分）</template></span>
@@ -180,23 +189,50 @@
 
                ⚠️ 条件与后端严格一致：
                  · 确认收货：仅 SHIPPED（已发货/待取货）
-                 · 申请售后：仅 COMPLETED（收到货之后）
-               SHIPPED 时补一句「确认收货后，如有问题可申请售后」——
-               售后按钮此时不出现，不解释用户只会以为页面坏了（后端 409 文案他看不到）。 -->
+                 · 申请退款/售后：PAID（已付款未发货）/ SHIPPED / COMPLETED（2026-10-14 放宽，
+                   与 ReturnRequestService.apply 门禁一致；此前漏了 PAID，用户付完款找不到退款入口）
+               SHIPPED 时补一句「确认收货前也可直接申请退款」——
+               解释按钮为什么还在，不解释用户只会以为页面坏了（后端 409 文案他看不到）。 -->
           <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions detail-actions">
             <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
               确认收货
             </button>
-            <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">申请售后</button>
-            <small v-if="canConfirmReceipt" class="refund-hint">确认收货后，如有问题可申请售后</small>
+            <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">{{ applyRefundLabel }}</button>
+            <small v-if="canConfirmReceipt" class="refund-hint">确认收货前也可直接「申请退款」，商家审核后按原路退回</small>
           </div>
+          <!-- 售后/退款申请表单：紧贴操作按钮下方（点哪个按钮就在哪展开，不再跳到页面顶部）。
+               标签随订单状态：未收到货=退款原因，收到货=售后原因（2026-10-16 统一口径）。 -->
+          <form v-if="localRefund.open" ref="refundFormEl" class="refund-form-inline" @submit.prevent="sendRefund">
+            <h4>{{ refundTitle }}</h4>
+            <label>
+              {{ applyRefundLabel.slice(2) }}原因
+              <!-- 2026-10-18 去掉「请选择原因」占位项：打开表单即默认选中第一项，少一步操作 -->
+              <select v-model="localRefund.reason">
+                <option v-for="r in REFUND_REASONS" :key="r" :value="r">{{ r }}</option>
+              </select>
+            </label>
+            <!-- 2026-10-16：原因选「其他」时展开手填框，商家审核能看到具体内容 -->
+            <input
+              v-if="localRefund.reason === '其他'"
+              v-model="localRefund.reasonOther"
+              class="refund-other-input"
+              type="text"
+              maxlength="100"
+              placeholder="请填写具体原因"
+            />
+            <p class="refund-hint">提交后由商家审核；审核通过将按原支付方式退回。</p>
+            <div class="refund-actions">
+              <button type="submit" class="primary" :disabled="acting">{{ acting ? '提交中…' : '提交申请' }}</button>
+              <button type="button" class="ghost" :disabled="acting" @click="closeRefund">取消</button>
+            </div>
+          </form>
         </template>
       </section>
 </template>
 
 <script>
-import { computed, inject, reactive, ref, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, inject, reactive, ref, nextTick, onMounted, onUnmounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { orderOriginalSave, formatDate, withMinSpinner, userOrderStatus } from '../utils/format';
 export default {
   name: 'OrderDetailPage',
@@ -260,21 +296,75 @@ export default {
       if (fresh) appCtx.orderDetail.data = fresh;
     }
 
-    // ===== 履约操作：确认收货 / 申请售后（2026-10-07 补，此前只有列表页行尾有） =====
+    // ===== 履约操作：确认收货 / 申请退款·售后（2026-10-07 补，此前只有列表页行尾有） =====
     // 条件与后端校验对齐，别让用户点了才吃 409：
     //   · 确认收货：仅 SHIPPED（OrderService.confirmReceipt 拒绝其他状态）
-    //   · 申请售后：仅 PAID / SHIPPED，且不在审核中（applyRefund 同规则）
+    //   · 申请退款/售后：PAID / SHIPPED / COMPLETED，且不在审核中（ReturnRequestService.apply 同规则）
     const acting = ref(false);
     const canConfirmReceipt = computed(() => currentOrder.value?.status === 'SHIPPED');
-    // 售后入口：仅「已收货(COMPLETED)」可申请，与后端 applyRefund 一致（2026-10-07 改）。
-    // 原先 PAID/SHIPPED 都能申请 —— 货还没发就能退单，而收到货有问题反而不能申诉。
+    // 2026-10-14「随时退款」：已付款(PAID)/已发货(SHIPPED)可「申请退款」、已收货(COMPLETED)可「申请售后」，
+    // 都走新售后链路（POST /returns，商家审核决定要不要寄回、运费谁出）。
+    // ⚠️ PAID 必须包含：用户付完款第一眼找的就是退款入口，漏了它就是「买完不能退款」。
+    // 未付款(PENDING_PAYMENT)用「取消订单」秒退，不在此列；已在售后流程中(APPLYING/APPROVED)不再显示入口。
     const canApplyRefund = computed(() => {
       const o = currentOrder.value;
-      if (!o || o.status !== 'COMPLETED') return false;
-      return o.refundStatus !== 'APPLYING' && o.refundStatus !== 'APPROVED';
+      if (!o) return false;
+      if (o.status !== 'PAID' && o.status !== 'SHIPPED' && o.status !== 'COMPLETED') return false;
+      // 仅在「从未申请(NONE)」或「上次被驳回(REJECTED)」时显示入口；在途/已退款均不显示
+      // （与 ReturnRequestService.apply 的按单拦截、REJECTED 可重申口径一致）
+      return o.refundStatus === 'NONE' || o.refundStatus === 'REJECTED';
     });
-    // 售后原因选项：与订单列表页共用同一套口径，避免两个页面选项不一样
-    const REFUND_REASONS = ['商品缺货', '商品质量问题', '配送破损', '与描述不符', '不想要了', '其他'];
+    const applyRefundLabel = computed(() => (currentOrder.value?.status === 'COMPLETED' ? '申请售后' : '申请退款'));
+    // 原因选项分两套（2026-10-18）：未收到货的「申请退款」不该出现「商品质量问题/配送破损」
+    // 这类只有拿到货才会发生的售后原因；已收货（COMPLETED）的「申请售后」才用那套。
+    // 逐行售后入口只在 COMPLETED 出现，因此按整单状态分流即可覆盖两种表单。
+    const REFUND_REASONS_UNRECEIVED = ['不想要了', '拍错了/多拍了', '商品缺货', '发货时间太长', '其他'];
+    const REFUND_REASONS_RECEIVED = ['商品质量问题', '配送破损', '与描述不符', '少发/漏发', '其他'];
+    const REFUND_REASONS = computed(() =>
+      (currentOrder.value?.status === 'COMPLETED' ? REFUND_REASONS_RECEIVED : REFUND_REASONS_UNRECEIVED)
+    );
+
+    // ===== 2026-10-15 按商品行并行售后 =====
+    // 拉本单全部售后单（GET /returns/order/{id}，按商品行并行后可有多条），
+    // 用来：① 判断每行是否还能发起（在途/已退则收起入口）② 展示每行在途状态 ③ 整单在途时收起逐件入口。
+    const orderReturns = ref([]);
+    const OPEN_RETURN_STATUSES = ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK'];
+    async function loadOrderReturns(id) {
+      try {
+        const res = await appCtx.api.get(`/returns/order/${id}`);
+        // 后端返回 ApiResponse<List<ReturnRequestResponse>>，api.get 已解包成数组；
+        // 这里兼容「数组」与「带 items 的包装」两种形态，避免接口形态变动时拿不到数据。
+        orderReturns.value = Array.isArray(res) ? res : (res?.items || []);
+      } catch {
+        orderReturns.value = [];
+      }
+    }
+    // 整单在途售后（orderItemId 为 null）：存在则全单统一处理，逐件入口收起，避免重复发起
+    const hasOpenWholeOrderReturn = computed(() => (orderReturns.value || []).some(
+      (r) => r.orderItemId == null && OPEN_RETURN_STATUSES.includes(r.status)
+    ));
+    const wholeOrderReturnStatusLabel = computed(() => {
+      const w = (orderReturns.value || []).find((r) => r.orderItemId == null && OPEN_RETURN_STATUSES.includes(r.status));
+      return w ? w.statusLabel : '';
+    });
+    // 某商品行是否有在途售后（按 orderItemId 命中）；整单售后单（orderItemId=null）不命中任何行
+    const itemOpenReturn = (it) => (orderReturns.value || []).find(
+      (r) => r.orderItemId === it.id && OPEN_RETURN_STATUSES.includes(r.status)
+    ) || null;
+    // 某商品行是否可发起售后：① 整单处于可售后状态 ② 本行未退 ③ 本行无在途 ④ 无整单在途
+    // 2026-10-16 收紧：行内入口只在「已完成(COMPLETED)」订单出现——未收货(PAID/SHIPPED)
+    // 的退款是整单行为，走底部整单按钮，行内不再重复出「申请退款」（用户反馈两处按钮混淆）。
+    const itemCanRefund = (it) => {
+      const o = currentOrder.value;
+      if (!o) return false;
+      if (o.status !== 'COMPLETED') return false;
+      if (it.refunded === true) return false;
+      if (hasOpenWholeOrderReturn.value) return false;
+      return !itemOpenReturn(it);
+    };
+    // return 五态 → 徽标配色（与 ReturnsPage / AdminRefundsPanel 同源）
+    const RETURN_STATUS_TAG = { APPLYING: 'warn', WAITING_SHIP: 'warn', SHIPPED_BACK: 'info', APPROVED: 'ok', REJECTED: 'muted', PARTIAL: 'warn' };
+    const returnStatusCls = (s) => RETURN_STATUS_TAG[s] || 'muted';
 
     async function confirmThisOrder() {
       const o = currentOrder.value;
@@ -291,9 +381,22 @@ export default {
 
     // 本页局部表单。**刻意不叫 refundForm** —— appCtx 上已有一个同名共享 state
     //（列表页/本页共用的提交状态），同名会遮蔽它，两处状态互不同步（2026-10-07 踩过）。
-    const localRefund = reactive({ open: false, reason: '' });
+    // 2026-10-15 扩展支持「按商品行申请」：orderItemId 非空 = 仅退该商品行；null = 整单售后。
+    // 2026-10-16 增加 reasonOther：原因选「其他」时手填具体内容。
+    const localRefund = reactive({ open: false, reason: '', reasonOther: '', orderItemId: null, itemName: '' });
     function startRefund() {
-      localRefund.reason = '';
+      localRefund.reason = REFUND_REASONS.value[0] || '';
+      localRefund.reasonOther = '';
+      localRefund.orderItemId = null;
+      localRefund.itemName = '';
+      localRefund.open = true;
+    }
+    // 逐行申请：记下要退的商品行，表单标题带上商品名，便于用户确认退的是哪一件
+    function startRefundItem(it) {
+      localRefund.reason = REFUND_REASONS.value[0] || '';
+      localRefund.reasonOther = '';
+      localRefund.orderItemId = it.id;
+      localRefund.itemName = it.productName || '';
       localRefund.open = true;
     }
     function closeRefund() {
@@ -303,23 +406,39 @@ export default {
       const o = currentOrder.value;
       if (!o || acting.value) return;
       if (!localRefund.reason) {
-        appCtx.fail('请选择售后原因');
+        appCtx.fail(`请选择${applyRefundLabel.value.slice(2)}原因`);
         return;
+      }
+      // 选「其他」时必须手填具体原因，否则商家只看"其他"无从判断
+      let reasonText = localRefund.reason;
+      if (localRefund.reason === '其他') {
+        const detail = (localRefund.reasonOther || '').trim();
+        if (!detail) {
+          appCtx.fail('请填写具体原因');
+          return;
+        }
+        reasonText = `其他：${detail}`;
       }
       acting.value = true;
       try {
         // 复用 appCtx 上与列表页同一个 submitRefund：它内部用共享的 refundForm.reason、
         // 自带二次确认弹窗，成功后会重拉订单/钱包/会员/秒杀名额。
         // 这里先把本页的选项写进共享 state 再调，避免两页各维护一份原因与提交逻辑。
-        appCtx.refundForm.reason = localRefund.reason;
-        await appCtx.submitRefund(o.id);
+        appCtx.refundForm.reason = reasonText;
+        // 透传 orderItemId：非空=按行售后，null=整单售后（与 ReturnRequestService.apply 口径一致）
+        await appCtx.submitRefund(o.id, localRefund.orderItemId || null);
         localRefund.open = false;
+        localRefund.orderItemId = null;
         const fresh = await appCtx.api.get(`/orders/${o.id}`).catch(() => null);
         if (fresh) appCtx.orderDetail.data = fresh;
+        // 重新拉本单售后，刷新逐行在途 / 整单在途状态（避免刚提交的行还显示「申请售后」）
+        await loadOrderReturns(o.id);
       } finally {
         acting.value = false;
       }
     }
+    // 弹窗标题同样跟随订单状态：未收货=申请退款，已收货=申请售后（2026-10-16 修正写死文案）
+    const refundTitle = computed(() => (localRefund.orderItemId ? `${applyRefundLabel.value} · ${localRefund.itemName || '商品'}` : applyRefundLabel.value));
 
     let payTick = null;
     // 路由里的订单 id：用于「本页自己没数据时去拉」。
@@ -332,6 +451,34 @@ export default {
       const n = Number(raw);
       return Number.isFinite(n) && n > 0 ? n : null;
     });
+
+    // ===== 2026-10-16 列表页「申请退款」直达：消费 ?refund=1 =====
+    // 订单数据一落地（watch currentOrder.id）就自动展开底部退款表单并滚动定位，
+    // 然后立刻清掉 query 参数（防刷新/前进后退重复弹出）。条件不满足（如已在售后流程中）
+    // 则只清参数不弹表单 —— 页面上的售后状态徽标已说明原因。
+    const router = useRouter();
+    const refundFormEl = ref(null);
+    async function maybeAutoOpenRefund() {
+      if (String(route.query?.refund || '') !== '1') return;
+      router.replace({ query: { ...route.query, refund: undefined } });
+      await nextTick();
+      if (!canApplyRefund.value) return;
+      startRefund();
+      await nextTick();
+      refundFormEl.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // 订单详情数据由 openOrderDetail（列表页点进来）或本页 onMounted（直链/刷新）两处填充；
+    // 用 watch 统一在「订单 id 变化」时拉本单售后，两处入口都覆盖，无需各自改。
+    watch(
+      () => currentOrder.value?.id,
+      async (id) => {
+        if (!id) return;
+        await loadOrderReturns(id);
+        await maybeAutoOpenRefund();
+      },
+      { immediate: true }
+    );
 
     onMounted(async () => {
       recomputePayRemaining();
@@ -385,6 +532,30 @@ export default {
       const member = num(d.memberDiscount);
       const points = num(d.pointsDiscount);
       const totalDiscount = coupon + activity + member + points;
+
+      // 会员让利按**来源**拆两行（2026-10-13 用户要求）：
+      //   · 商品会员价更低 → 「会员优惠」（那是商品的专属价，不是你的等级折扣）
+      //   · 等级折扣价更低 → 「会员折扣」（银卡9.8折那类）
+      // 一个订单两种都有时分两行各算各的。来源以下单时快照 order_item.member_source 为准。
+      // 历史订单无快照（整单都没有 memberSource）→ 无法可靠拆分，沿用旧的「会员折扣」合并展示。
+      let tierSave = 0;
+      let memberPriceSave = 0;
+      const items = d.items || [];
+      const hasSource = items.some(it => it.memberSource === 'member' || it.memberSource === 'tier');
+      if (hasSource) {
+        for (const it of items) {
+          if (it.flashSaleId) continue; // 秒杀成交的让利来自秒杀价，不是会员权益
+          const save = (num(it.originalPrice) - num(it.productPrice)) * num(it.quantity || 1);
+          if (!(save > 0)) continue;
+          if (it.memberSource === 'member') memberPriceSave += save;
+          else tierSave += save;
+        }
+        memberPriceSave = Math.round(memberPriceSave * 100) / 100;
+        tierSave = Math.round(tierSave * 100) / 100;
+      } else {
+        tierSave = orderOriginalSave(d);
+      }
+
       return {
         goods,
         freight,
@@ -397,14 +568,17 @@ export default {
         points,
         pointsUsed: num(d.pointsUsed),
         pointsEarned: num(d.pointsEarned),
-        // 划线优惠只是"已省"信息（已含在商品小计的单价里），不进优惠合计
+        // 划线优惠只是"已省"信息（已含在商品小计的单价里），不进优惠合计。
         originalSave: orderOriginalSave(d),
+        memberSave: orderOriginalSave(d),
+        memberPriceSave,
+        tierSave,
         totalDiscount,
         pay: num(d.payAmount)
       };
     });
 
-    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, closeRefund, sendRefund, userOrderStatus, routeOrderId };
+    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, applyRefundLabel, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, startRefundItem, closeRefund, sendRefund, refundTitle, itemCanRefund, itemOpenReturn, hasOpenWholeOrderReturn, wholeOrderReturnStatusLabel, returnStatusCls, userOrderStatus, routeOrderId, refundFormEl };
   }
 };
 </script>

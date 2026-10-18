@@ -268,13 +268,14 @@ public class ReturnRequestService {
 
         // 是否需要用户寄回：优先采用管理员在审核弹窗里的手动选择；
         // 若管理员未显式选择（needReturn 为 null），再按订单状态自动兜底：
-        // · 未收到货（已付款未发货 PAID）—— 退款即可，无需寄回；
-        // · 已发货 / 已收货（SHIPPED / COMPLETED）—— 退货退款，需用户先寄回。
+        // · 未收到货（已付款未发货 PAID / 已发货但未签收 SHIPPED）—— 视为未收到货，退款即可、无需寄回，
+        //   退货运费由商家承担（SELLER），用户不承担运费；
+        // · 已收货确认（COMPLETED）—— 退货退款，需用户先寄回（运费默认用户自理，商家可改判）。
         // 这样商家既能「一键按状态处理」，也能对单个订单临机改判（如已发货的质量问题判不退件）。
         Boolean manualNeedReturn = req.getNeedReturn();
         boolean needReturn = (manualNeedReturn != null)
                 ? manualNeedReturn
-                : !"PAID".equals(order.getStatus());
+                : "COMPLETED".equals(order.getStatus());
         r.setAdminRemark(req.getRemark());
         r.setApprovedAt(LocalDateTime.now());
 

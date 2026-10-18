@@ -34,14 +34,14 @@
             <button @click="refreshCurrentAdminMenu">刷新</button>
           </header>
 
-          <AdminOrdersPanel v-if="adminMenu === 'orders'" :admin-orders="adminOrders" v-model:admin-order-keyword="adminOrderKeyword" :admin-order-status="adminOrderStatus" v-model:admin-order-jump-page="adminOrderJumpPage" :admin-order-total-pages="adminOrderTotalPages" :ship-form="shipForm" :search-admin-orders="searchAdminOrders" :change-admin-order-page="changeAdminOrderPage" :change-admin-order-page-size="changeAdminOrderPageSize" :go-admin-order-page="goAdminOrderPage" :reset-admin-order-search="resetAdminOrderSearch" :open-ship-form="openShipForm" :admin-order-ready="adminOrderReady" :submit-ship="submitShip" :complete-admin-order="completeAdminOrder" :cancel-admin-order="cancelAdminOrder" :open-order-detail="openOrderDetail"/>
+          <AdminOrdersPanel v-if="adminMenu === 'orders'" :admin-orders="adminOrders" v-model:admin-order-keyword="adminOrderKeyword" v-model:admin-order-status="adminOrderStatus" v-model:admin-order-jump-page="adminOrderJumpPage" :admin-order-total-pages="adminOrderTotalPages" :ship-form="shipForm" :search-admin-orders="searchAdminOrders" :change-admin-order-page="changeAdminOrderPage" :change-admin-order-page-size="changeAdminOrderPageSize" :go-admin-order-page="goAdminOrderPage" :reset-admin-order-search="resetAdminOrderSearch" :open-ship-form="openShipForm" :admin-order-ready="adminOrderReady" :submit-ship="submitShip" :complete-admin-order="completeAdminOrder" :cancel-admin-order="cancelAdminOrder" :open-order-detail="openOrderDetail"/>
 
-          <AdminRefundsPanel v-if="adminMenu === 'refunds'" :admin-ctx="adminCtx" :search-refunds="searchRefunds" :change-refund-page="changeRefundPage" :change-refund-page-size="changeRefundPageSize" :go-refund-page="goRefundPage" :reset-refund-search="resetRefundSearch" :review-admin-refund="reviewAdminRefund" :submit-refund-review="submitRefundReview" :refund-review-form="refundReviewForm" :refund-total-pages="refundTotalPages"  v-model:refund-status-filter="refundStatusFilter"  v-model:refund-jump-page="refundJumpPage"/>
-          <AdminStockPanel v-if="adminMenu === 'stock'" :stock-alerts="stockAlerts" v-model:stock-keyword="stockKeyword" :stock-page="stockPage" :stock-size="stockSize" v-model:stock-jump-page="stockJumpPage" :stock-filtered="stockFiltered" :stock-total-pages="stockTotalPages" :stock-page-items="stockPageItems" :change-stock-page="changeStockPage" :go-stock-page="goStockPage" :reset-stock-page="resetStockPage" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock" :reset-stock-search="resetStockSearch"/>
+          <AdminRefundsPanel v-if="adminMenu === 'refunds'" :admin-ctx="adminCtx" :search-refunds="searchRefunds" :change-refund-page="changeRefundPage" :change-refund-page-size="changeRefundPageSize" :go-refund-page="goRefundPage" :reset-refund-search="resetRefundSearch" :review-admin-refund="reviewAdminRefund" :submit-refund-review="submitRefundReview" :confirm-return-received="confirmReturnReceived" :review-submit-disabled="reviewSubmitDisabled" :refund-review-form="refundReviewForm" :refund-total-pages="refundTotalPages" :open-order-detail="openOrderDetail"  v-model:refund-status-filter="refundStatusFilter"  v-model:refund-jump-page="refundJumpPage"/>
+          <AdminStockPanel v-if="adminMenu === 'stock'" :stock-alerts="stockAlerts" v-model:stock-keyword="stockKeyword" :stock-page="stockPage" v-model:stock-size="stockSize" v-model:stock-jump-page="stockJumpPage" :stock-filtered="stockFiltered" :stock-total-pages="stockTotalPages" :stock-page-items="stockPageItems" :change-stock-page="changeStockPage" :go-stock-page="goStockPage" :reset-stock-page="resetStockPage" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock" :reset-stock-search="resetStockSearch"/>
 
           <AdminProductsPanel v-if="adminMenu === 'products'" :admin-ctx="adminCtx" :stock-form="stockForm" :open-stock-form="openStockForm" :submit-stock="submitStock"  v-model:admin-product-keyword="adminProductKeyword"  v-model:admin-jump-page="adminJumpPage"/>
 
-          <AdminCategoriesPanel v-if="adminMenu === 'categories'" :categories="categories" v-model:category-keyword="categoryKeyword" :category-page="categoryPage" :category-size="categorySize" v-model:category-jump-page="categoryJumpPage" :category-filtered="categoryFiltered" :category-total-pages="categoryTotalPages" :category-page-items="categoryPageItems" :change-category-page="changeCategoryPage" :go-category-page="goCategoryPage" :reset-category-page="resetCategoryPage" :reset-category-search="resetCategorySearch" :category-form="categoryForm" :save-category="saveCategory" :category-name="categoryName"/>
+          <AdminCategoriesPanel v-if="adminMenu === 'categories'" :categories="categories" v-model:category-keyword="categoryKeyword" :category-page="categoryPage" v-model:category-size="categorySize" v-model:category-jump-page="categoryJumpPage" :category-filtered="categoryFiltered" :category-total-pages="categoryTotalPages" :category-page-items="categoryPageItems" :change-category-page="changeCategoryPage" :go-category-page="goCategoryPage" :reset-category-page="resetCategoryPage" :reset-category-search="resetCategorySearch" :category-form="categoryForm" :save-category="saveCategory" :category-name="categoryName"/>
 
           <AdminCouponsPanel v-if="adminMenu === 'coupons'" :admin-ctx="adminCtx" :edit-coupon="editCoupon" :remove-coupon="removeCoupon" :reset-coupon-form="resetCouponForm" :fill-coupon-period="fillCouponPeriod" :save-coupon="saveCoupon" :search-admin-coupons="searchAdminCoupons" :change-admin-coupon-page-size="changeAdminCouponPageSize" :reset-admin-coupon-search="resetAdminCouponSearch" :toggle-coupon="toggleCoupon" :change-admin-coupon-page="changeAdminCouponPage" :go-admin-coupon-page="goAdminCouponPage" :admin-coupon-total-pages="adminCouponTotalPages" :coupon-form="couponForm"  v-model:admin-coupon-jump-page="adminCouponJumpPage"  v-model:admin-coupon-keyword="adminCouponKeyword"/>
           <AdminInsightsPanel v-if="adminMenu === 'insights'" ref="insightsPanelRef" :admin-ctx="adminCtx" :select-menu="selectAdminMenu" />
@@ -53,6 +53,10 @@
           <AdminNoticesPanel v-if="adminMenu === 'notices'" :admin-ctx="adminCtx" :notice-type-label="noticeTypeLabel" :notice-type-class="noticeTypeClass" />
           <AdminHotSearchesPanel v-if="adminMenu === 'hotSearches'" :admin-ctx="adminCtx" />
 
+          <!-- 首页氛围：切换 hero 区节日装饰（日常/中秋/关闭）。配置走后端 system_config.festive_theme，
+               切完本地即时预览 + 保存落库，前台 main.js 启动时拉取生效。 -->
+          <AdminFestivePanel v-if="adminMenu === 'festive'" ref="festivePanelRef" :admin-ctx="adminCtx" />
+
           <!-- 会员日：指定日期消费积分翻倍（从日历上挑具体日期，不再按「每月几号」循环）。
                原先「会员日 每月18号 双倍积分」只是公告里的一句话、后端没实现（假承诺）。
                公告文案由管理员自己维护，系统不改写。 -->
@@ -61,9 +65,9 @@
           <AdminBannersPanel v-if="adminMenu === 'banners'" :admin-ctx="adminCtx" :admin-product-name="adminProductName" />
           <AdminStoresPanel v-if="adminMenu === 'stores'" :admin-stores="adminStores" :store-form="storeForm" :store-form-open="storeFormOpen" :store-editing-id="storeEditingId" :open-store-form="openStoreForm" :close-store-form="closeStoreForm" :save-store="saveStore" :toggle-store-status="toggleStoreStatus" :delete-store="deleteStore" :load-admin-stores="loadAdminStores"/>
 
-          <AdminUsersPanel v-if="adminMenu === 'users'" :admin-ctx="adminCtx" :search-admin-users="searchAdminUsers" :change-admin-user-page="changeAdminUserPage" :change-admin-user-page-size="changeAdminUserPageSize" :go-admin-user-page="goAdminUserPage" :reset-admin-user-search="resetAdminUserSearch" :toggle-user="toggleUser" :member-level-name="memberLevelName" :admin-user-total-pages="adminUserTotalPages"  v-model:admin-user-jump-page="adminUserJumpPage"  v-model:admin-user-keyword="adminUserKeyword"  v-model:admin-user-status="adminUserStatus"  v-model:admin-user-role="adminUserRole"/>
-          <AdminReviewsPanel v-if="adminMenu === 'reviews'" :admin-ctx="adminCtx" :search-admin-reviews="searchAdminReviews" :change-admin-review-page="changeAdminReviewPage" :save-review-reply="saveReviewReply" :toggle-review-hidden="toggleReviewHidden" :admin-review-total-pages="adminReviewTotalPages" :admin-reviews="adminReviews" :admin-review-summary="adminReviewSummary" :admin-review-rating="adminReviewRating" :admin-review-replied="adminReviewReplied" :admin-review-keyword="adminReviewKeyword" :load-admin-reviews="loadAdminReviews" :load-admin-review-unreplied="loadAdminReviewUnreplied" :review-reply-draft="reviewReplyDraft"/>
-          <AdminPasswordResetsPanel v-if="adminMenu === 'passwordResets'" :change-password-reset-page="changePasswordResetPage" :change-password-reset-page-size="changePasswordResetPageSize" :confirm-reject-password-reset="confirmRejectPasswordReset" :confirm-reset-password="confirmResetPassword" :copy-temp-password="copyTempPassword" v-model:password-reset-jump-page="passwordResetJumpPage" :password-reset-result="passwordResetResult" :password-reset-status="passwordResetStatus" :password-reset-status-class="passwordResetStatusClass" :password-reset-status-label="passwordResetStatusLabel" :password-reset-total-pages="passwordResetTotalPages" :password-resets="passwordResets" :refresh-current-admin-menu="refreshCurrentAdminMenu"/>
+          <AdminUsersPanel v-if="adminMenu === 'users'" :admin-ctx="adminCtx" :search-admin-users="searchAdminUsers" :change-admin-user-page="changeAdminUserPage" :change-admin-user-page-size="changeAdminUserPageSize" :go-admin-user-page="goAdminUserPage" :reset-admin-user-search="resetAdminUserSearch" :toggle-user="toggleUser" :create-admin="createAdmin" :member-level-name="memberLevelName" :admin-user-total-pages="adminUserTotalPages"  v-model:admin-user-jump-page="adminUserJumpPage"  v-model:admin-user-keyword="adminUserKeyword"  v-model:admin-user-status="adminUserStatus"  v-model:admin-user-role="adminUserRole"  v-model:admin-user-member-level="adminUserMemberLevel"/>
+          <AdminReviewsPanel v-if="adminMenu === 'reviews'" :admin-ctx="adminCtx" :search-admin-reviews="searchAdminReviews" :change-admin-review-page="changeAdminReviewPage" :go-admin-review-page="goAdminReviewPage" :save-review-reply="saveReviewReply" :toggle-review-hidden="toggleReviewHidden" :delete-review="deleteReview" :admin-review-total-pages="adminReviewTotalPages" :admin-reviews="adminReviews" :admin-review-summary="adminReviewSummary" v-model:admin-review-jump-page="adminReviewJumpPage" :admin-review-rating="adminReviewRating" @update:admin-review-rating="adminReviewRating = $event" :admin-review-replied="adminReviewReplied" @update:admin-review-replied="adminReviewReplied = $event" :admin-review-keyword="adminReviewKeyword" @update:admin-review-keyword="adminReviewKeyword = $event" :load-admin-reviews="loadAdminReviews" :load-admin-review-unreplied="loadAdminReviewUnreplied" :review-reply-draft="reviewReplyDraft"/>
+          <AdminPasswordResetsPanel v-if="adminMenu === 'passwordResets'" :change-password-reset-page="changePasswordResetPage" :change-password-reset-page-size="changePasswordResetPageSize" :confirm-reject-password-reset="confirmRejectPasswordReset" :confirm-reset-password="confirmResetPassword" :copy-temp-password="copyTempPassword" v-model:password-reset-jump-page="passwordResetJumpPage" :password-reset-result="passwordResetResult" v-model:password-reset-status="passwordResetStatus" :password-reset-status-class="passwordResetStatusClass" :password-reset-status-label="passwordResetStatusLabel" :password-reset-total-pages="passwordResetTotalPages" :password-resets="passwordResets" :refresh-current-admin-menu="refreshCurrentAdminMenu"/>
         </div>
       </section>
 </template>
@@ -107,6 +111,7 @@ const AdminStockPanel = defineAsyncComponent(() => import('./AdminStockPanel.vue
 const AdminCategoriesPanel = defineAsyncComponent(() => import('./AdminCategoriesPanel.vue'));
 const AdminUsersPanel = defineAsyncComponent(() => import('./AdminUsersPanel.vue'));
 const AdminCouponsPanel = defineAsyncComponent(() => import('./AdminCouponsPanel.vue'));
+const AdminFestivePanel = defineAsyncComponent(() => import('./AdminFestivePanel.vue'));
 
 const props = defineProps({
   // 响应式：admin 内会读取 view / categories
@@ -120,7 +125,7 @@ const props = defineProps({
 const isAdmin = { value: true };
 const view = toRef(props, 'view');
 const categories = toRef(props, 'categories');
-const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, hint, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, refundApplyingCount, loadRefundApplyingCount, pendingShipCount, loadPendingShipCount, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, } = props.adminCtx;
+const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, hint, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, refundApplyingCount, loadRefundApplyingCount, pendingShipCount, loadPendingShipCount, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, } = props.adminCtx;
 
 // 会员等级名称（与后端 MemberService 档位一致，后台仅展示用）
 const MEMBER_LEVEL_NAMES = ['普通用户', '银卡会员', '金卡会员', '钻石会员', '紫钻会员', '黑卡会员', '至尊会员'];
@@ -151,6 +156,7 @@ const adminIcons = {
   hotSearches: adminIcon('<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.2 15.2 20.5 20.5"/>'),
   banners: adminIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M3 9.5h18M7.5 13.5h4"/><path d="M8 20.5 12 17l4 3.5"/>'),
   reviews: adminIcon('<path d="M12 3.6 14.5 9l6 .9-4.3 4.1 1 6-5.2-2.8L6.8 20l1-6-4.3-4.1 6-.9L12 3.6z"/>'),
+  festive: adminIcon('<path d="M12 3v3M12 18v3M4.2 7.2l2.1 2.1M17.7 14.7l2.1 2.1M3 12h3M18 12h3M4.2 16.8l2.1-2.1M17.7 9.3l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/>'),
 };
 
 const adminMenuItems = computed(() => [
@@ -167,6 +173,7 @@ const adminMenuItems = computed(() => [
   { key: 'notices', label: '公告管理', desc: '发布商城公告：类型分类（促销类标题会进首页顶栏）、排序、随时停用', group: '管理', badge: adminAnnouncements.value.length || '' },
   { key: 'hotSearches', label: '热搜词', desc: '维护首页头部搜索框下方的「热搜」那排词：搜索词、展示文案、排序与启停（点击即跳转搜索）', group: '管理', badge: adminHotSearches.value.length || '' },
   { key: 'memberDays', label: '会员日', desc: '从日历上挑日期：挑中的那天消费积分翻倍（可配多天、可调倍率）；公告文案由你自己维护', group: '管理', badge: memberDays.value.filter((d) => Number(d.enabled) === 1 && !d.expired).length || '' },
+  { key: 'festive', label: '首页氛围', desc: '切换首页 hero 区的节日装饰：日常特效 / 中秋特效 / 关闭，切完前台即时生效', group: '管理' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
@@ -188,16 +195,21 @@ const adminMenuGroups = computed(() => {
 
 const currentAdminMenu = computed(() => adminMenuItems.value.find((item) => item.key === adminMenu.value) || adminMenuItems.value[0]);
 
-// 进后台就拉一次待处理数：否则菜单角标要等点进「找回密码」才显示，等于没提醒
-onMounted(() => {
-  loadPasswordResetPendingCount();
-  loadAdminReviewUnreplied();
-  // 当前模块数据补一次：默认「经营看板」此前没有任何地方会触发 dashboard 接口（只有面板里的手动刷新按钮），
-  // 深链 /admin?tab=notices 同理。挂载时兜住，保证「进来就有数据」。
-  refreshCurrentAdminMenu();
+// 进后台就并行拉取「侧边栏所有角标」依赖的数据，保证数字打开即显示，
+// 不用逐个点进对应列表才出现。角标由各响应式承载，loader 填充它即可；
+// 除下面 4 个「仅计数」接口外，其余由各模块列表 loader 填充 total/length。
+onMounted(async () => {
+  await Promise.allSettled([
+    ...Object.values(adminMenuLoaders).map((loader) => loader()),
+    loadPendingShipCount(),       // 订单角标=待发货
+    loadRefundApplyingCount(),    // 售后角标=退款中
+    loadAdminReviewUnreplied(),   // 评价角标=未回复
+    loadPasswordResetPendingCount(), // 找回密码角标=待处理
+  ]);
 });
 
 const insightsPanelRef = ref(null);
+const festivePanelRef = ref(null);
 /* ---------------- 门店 / 秒杀：已抽为 composable ---------------- */
 // 装配点必须在 isAdmin / fail / run / askConfirm 之后（adminCtx 已解构出它们）。
 const { adminStores, storeFormOpen, storeEditingId, storeForm, loadAdminStores, resetStoreForm, openStoreForm, closeStoreForm, storePayload, saveStore, toggleStoreStatus, deleteStore } = useAdminStores({ isAdmin, fail, run, askConfirm });
@@ -210,7 +222,7 @@ const { passwordResets, passwordResetStatus, passwordResetJumpPage, passwordRese
 
 const { memberDays, memberDayFormOpen, memberDayForm, memberDayCalendarCursor, memberDayEnabledCount, memberDaySlogan, MDC_WEEK, isoDateOf, memberDayTodayIso, memberDayCalendarMonthText, memberDayCalendarCells, memberDayDateTaken, memberDayDateLabel, memberDayShortLabel, firstFreeMemberDayDate, shiftMemberDayCalendar, resetMemberDayCalendar, loadMemberDays, openMemberDayForm, closeMemberDayForm, saveMemberDay, toggleMemberDay, deleteMemberDay } = useAdminMemberDays({ isAdmin, fail, run, askConfirm, showAlert });
 
-const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages, loadAdminReviews, searchAdminReviews, changeAdminReviewPage, loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden } = useAdminReviews({ run, askConfirm, showAlert });
+const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages, adminReviewJumpPage, loadAdminReviews, searchAdminReviews, changeAdminReviewPage, goAdminReviewPage, loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden, deleteReview } = useAdminReviews({ run, askConfirm, showAlert });
 
 // ===== 分类 / 库存 / 订单 / 退款 / 优惠券 / 用户：已抽为 composable =====
 const { categoryKeyword, categoryPage, categorySize, categoryJumpPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, stockKeyword, stockPage, stockSize, stockJumpPage, stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage, resetCategoryPage, resetCategorySearch, resetStockPage, resetStockSearch } = useAdminCategoryStockPaging({ categories, stockAlerts });
@@ -219,11 +231,11 @@ const { categoryForm, stockForm, noticeTypeLabel, noticeTypeClass, adminProductN
 
 const { shipForm, adminOrderTotalPages, searchAdminOrders, changeAdminOrderPage, changeAdminOrderPageSize, goAdminOrderPage, resetAdminOrderSearch, openShipForm, adminOrderReady, submitShip, completeAdminOrder, cancelAdminOrder } = useAdminOrders({ api, run, fail, askConfirm, money, orderSavedTotal, formatRole, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, loadAdminOrders, loadRefundOrders, loadAdminUsers });
 
-const { refundReviewForm, refundTotalPages, searchRefunds, changeRefundPage, changeRefundPageSize, goRefundPage, resetRefundSearch, reviewAdminRefund, submitRefundReview } = useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal, refundOrders, refundJumpPage, refundStatusFilter, loadRefundOrders, loadRefundApplyingCount, loadAdminOrders });
+const { refundReviewForm, refundTotalPages, searchRefunds, changeRefundPage, changeRefundPageSize, goRefundPage, resetRefundSearch, reviewAdminRefund, submitRefundReview, confirmReturnReceived, reviewSubmitDisabled } = useAdminRefunds({ api, run, askConfirm, money, orderSavedTotal, refundOrders, refundJumpPage, refundStatusFilter, loadRefundOrders, loadRefundApplyingCount, loadAdminOrders });
 
 const { couponForm, adminCouponTotalPages, searchAdminCoupons, changeAdminCouponPage, changeAdminCouponPageSize, goAdminCouponPage, resetAdminCouponSearch, fillCouponPeriod, saveCoupon, toggleCoupon, editCoupon, removeCoupon, resetCouponForm } = useAdminCoupons({ api, run, fail, hint, askConfirm, money, adminCoupons, adminCouponKeyword, adminCouponJumpPage, loadAdminCoupons });
 
-const { adminUserTotalPages, searchAdminUsers, changeAdminUserPage, changeAdminUserPageSize, goAdminUserPage, resetAdminUserSearch, toggleUser } = useAdminUsers({ api, run, askConfirm, money, formatRole, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage, loadAdminUsers });
+const { adminUserTotalPages, searchAdminUsers, changeAdminUserPage, changeAdminUserPageSize, goAdminUserPage, resetAdminUserSearch, toggleUser, createAdmin } = useAdminUsers({ api, run, askConfirm, money, formatRole, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUserJumpPage, loadAdminUsers });
 
 const adminMenuLoaders = {
   insights: () => insightsPanelRef.value?.load(),
@@ -243,6 +255,7 @@ const adminMenuLoaders = {
   banners: () => loadAdminBanners(),
   users: () => loadAdminUsers(),
   passwordResets: () => loadPasswordResets(),
+  festive: () => festivePanelRef.value?.load(),
 };
 
 // 只负责改 adminMenu。数据加载统一交给下面的 watch —— 「点侧边菜单」和「URL 回填（深链/返回键）」
