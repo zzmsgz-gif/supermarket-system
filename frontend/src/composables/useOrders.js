@@ -18,7 +18,8 @@ export function useOrders({
     const nextPage = reset ? 1 : orders.page + 1;
     orders.loading = true;
     try {
-      const data = await api.get(`/orders?page=${nextPage}&size=${orders.size}`);
+      const statusParam = orders.statusFilter ? `&status=${encodeURIComponent(orders.statusFilter)}` : '';
+      const data = await api.get(`/orders?page=${nextPage}&size=${orders.size}${statusParam}`);
       const items = data?.items || [];
       orders.items = reset ? items : [...orders.items, ...items];
       orders.total = data?.total || 0;
@@ -37,7 +38,8 @@ export function useOrders({
     const safe = Math.max(1, page | 0);
     orders.loading = true;
     try {
-      const data = await api.get(`/orders?page=${safe}&size=${orders.size}`);
+      const statusParam = orders.statusFilter ? `&status=${encodeURIComponent(orders.statusFilter)}` : '';
+      const data = await api.get(`/orders?page=${safe}&size=${orders.size}${statusParam}`);
       orders.items = data?.items || [];
       orders.total = data?.total || 0;
       orders.page = safe;
@@ -115,6 +117,9 @@ export function useOrders({
           message: `${res.addedCount ? `已加入 ${res.addedCount} 种；` : ''}未能加入 ${skipped.length} 种：${detail}`,
         });
       }
+      // 2026-10-12 用户要求：点击「再来一单」后跳到购物车界面。
+      // 只要成功加进了商品就跳（没加进任何商品时不跳，停留在详情页看清为什么没加）。
+      if (res.addedCount) navigate('cart');
     } finally {
       reorderLock = null;
     }
@@ -156,31 +161,43 @@ export function useOrders({
     refundForm.reason = '';
   }
 
-  async function submitRefund(id) {
+  async function submitRefund(id, orderItemId = null) {
     if (!refundForm.reason.trim()) { fail('请填写退款原因'); return; }
     const confirmed = await askConfirm({
       title: '提交退款申请',
-      message: '提交后需要商家审核，审核通过后款项会退回你的钱包。',
+      message: '提交后需要商家审核，审核通过后款项按原支付方式退回。',
       confirmText: '提交申请',
       danger: true,
       details: [{ label: '退款原因', value: refundForm.reason.trim() }],
     });
     if (!confirmed) return;
     await run(async () => {
-      await api.post(`/orders/${id}/refund-apply`, { reason: refundForm.reason.trim() });
+      // 2026-10-14 走新售后链路（return_request），不再是旧的 /orders/{id}/refund-apply。
+      // 2026-10-15 按商品行并行售后：orderItemId 非空 = 仅退该商品行；null = 整单售后
+      // （与 ReturnRequestService.apply 的口径一致：不传则按整单拦截）。
+      const body = { orderId: id, reason: refundForm.reason.trim() };
+      if (orderItemId != null) body.orderItemId = orderItemId;
+      await api.post('/returns', body);
       refundForm.orderId = null;
       await loadOrders();
     }, '退款申请已提交，等待商家处理');
   }
 
-  async function openOrderDetail(order) {
+  // opts.intent === 'refund'：列表页「申请退款/售后」按钮进来 —— 落地详情页后
+  // 自动展开底部退款表单并滚动定位（query ?refund=1 由 OrderDetailPage 消费后即清除），
+  // 用户不再需要「列表点一次 → 详情页滚到底再点一次」。
+  async function openOrderDetail(order, opts = {}) {
     if (isOrderNavLocked()) return;
     setOrderNavLock(true);
     try {
       orderDetail.data = null;
       orderDetail.error = '';
       orderDetail.loading = true;
-      router.push({ name: 'orderDetail', params: { id: order.id } });
+      router.push({
+        name: 'orderDetail',
+        params: { id: order.id },
+        query: opts.intent === 'refund' ? { refund: '1' } : undefined,
+      });
       try {
         const url = isAdmin.value ? `/admin/orders/${order.id}` : `/orders/${order.id}`;
         orderDetail.data = await api.get(url);
@@ -194,8 +211,19 @@ export function useOrders({
     }
   }
 
+  // 「返回」按钮：优先走浏览器历史回退，回到「进入详情页前的那一页」及其状态。
+  // 管理端场景尤其关键——点开订单号进入详情时 AdminPanel 被卸载，若用 navigate('admin')
+  // 不带 ?tab= 会把 adminMenu 重置成默认看板（看起来像被推到首页），且覆盖掉 adminCtx 里
+  // 本可恢复的页码。router.back() 退回到 /admin?tab=refunds 那一页，tab 与 adminCtx 里的
+  // 页码都会被原样恢复，等于「取消上一次进入详情的导航」。
+  // 仅当没有可回退的历史（如直接粘贴 /order/:id 深链、或刷新进来）才回退到默认列表。
   function closeOrderDetail() {
-    navigate(isAdmin.value ? 'admin' : 'orders');
+    const histState = (typeof window !== 'undefined' && window.history && window.history.state) || null;
+    if (histState && histState.back != null) {
+      router.back();
+    } else {
+      navigate(isAdmin.value ? 'admin' : 'orders');
+    }
   }
 
   return {
