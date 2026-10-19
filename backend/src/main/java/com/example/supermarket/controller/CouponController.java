@@ -55,7 +55,7 @@ public class CouponController {
     @GetMapping("/usable")
     public ApiResponse<List<UserCouponResponse>> listUsableCoupons(
             @AuthenticationPrincipal CurrentUser currentUser,
-            @RequestParam BigDecimal amount
+            @RequestParam(required = false) BigDecimal amount
     ) {
         return ApiResponse.ok(couponService.listUsableCoupons(currentUser.getId(), amount));
     }

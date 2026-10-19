@@ -14,6 +14,7 @@ import com.example.supermarket.repository.UserCouponRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -316,18 +317,33 @@ public class CouponService {
     @Transactional(readOnly = true)
     public List<UserCouponResponse> listUsableCoupons(Long userId, BigDecimal orderAmount) {
         LocalDateTime now = LocalDateTime.now();
-        BigDecimal target = orderAmount == null ? BigDecimal.ZERO : orderAmount;
-        return userCouponRepository.findByUserIdOrderByIdDesc(userId).stream()
-                .filter(userCoupon -> UNUSED.equals(userCoupon.getStatus()))
-                .filter(userCoupon -> {
-                    Coupon coupon = couponRepository.findById(userCoupon.getCouponId()).orElse(null);
-                    return coupon != null
-                            && !coupon.getStartTime().isAfter(now)
-                            && !coupon.getEndTime().isBefore(now)
-                            && coupon.getThresholdAmount().compareTo(target) <= 0;
-                })
-                .map(userCoupon -> UserCouponResponse.from(userCoupon, couponRepository.findById(userCoupon.getCouponId()).orElseThrow()))
-                .toList();
+        // amount 现在可选（2026-10-18 修复）：未传时不按门槛过滤，直接返回「未使用 + 在有效期」的券，
+        // 避免调用方漏传参数时抛 MissingServletRequestParameterException 退化成 500。
+        boolean thresholdCheck = orderAmount != null;
+        List<UserCoupon> userCoupons = userCouponRepository.findByUserIdOrderByIdDesc(userId);
+        List<UserCouponResponse> result = new ArrayList<>();
+        for (UserCoupon userCoupon : userCoupons) {
+            if (!UNUSED.equals(userCoupon.getStatus())) {
+                continue;
+            }
+            Coupon coupon = couponRepository.findById(userCoupon.getCouponId()).orElse(null);
+            if (coupon == null) {
+                continue;
+            }
+            // 时间窗判空，防止存量脏数据（start_time/end_time 为 NULL）触发 NPE。
+            if (coupon.getStartTime() != null && coupon.getStartTime().isAfter(now)) {
+                continue;
+            }
+            if (coupon.getEndTime() != null && coupon.getEndTime().isBefore(now)) {
+                continue;
+            }
+            if (thresholdCheck && coupon.getThresholdAmount() != null
+                    && coupon.getThresholdAmount().compareTo(orderAmount) > 0) {
+                continue;
+            }
+            result.add(UserCouponResponse.from(userCoupon, coupon));
+        }
+        return result;
     }
 
     /**

@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -68,6 +69,14 @@ public class GlobalExceptionHandler {
         String supported = ex.getSupportedHttpMethods() == null ? "" : ex.getSupportedHttpMethods().toString();
         String msg = "请求方法不被支持：" + ex.getMethod() + "，本接口支持的 HTTP 方法为 " + supported;
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(ApiResponse.fail(405, msg));
+    }
+
+    // 缺少必填请求参数（如 @RequestParam 未传）：属于调用方错误，应返回 400 而非 500 Server error，
+    // 避免把这类可预期的前端/调用方失误暴露成「服务器内部错误」（2026-10-18 优惠券 usable 接口 500 复盘）。
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(MissingServletRequestParameterException ex) {
+        String msg = "缺少必填参数：" + ex.getParameterName();
+        return ResponseEntity.badRequest().body(ApiResponse.fail(400, msg));
     }
 
     @ExceptionHandler(Exception.class)
