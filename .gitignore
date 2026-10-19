@@ -66,14 +66,9 @@ _*.json
 _*.sql
 _*.sh
 
-# 根目录测试截图与图片
-banner-test.png
-big-test.png
-carousel-arrow-fixed.png
-carousel-fixed.png
-login-fail.png
-register-fail.png
-shot-*.png
+# 根目录测试截图与图片（仅根目录 /*.png，不影响 frontend/public 等子目录里的正式图片）
+/*.png
+backend/test.png
 
 # 前端源码目录的拆分/探测中产物
 frontend/src/App.vue.bak_*
@@ -91,6 +86,7 @@ deploy/_*.py
 deploy/_*.json
 deploy/verify-*.py
 deploy/probe-*.py
+deploy/make-*.py
 
 # 备份与构建产物（_backups 含 113MB uploads 压缩包，绝不入库）
 _backups/
