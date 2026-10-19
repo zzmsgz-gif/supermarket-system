@@ -44,7 +44,8 @@ import java.time.LocalDateTime;
 @Table(name = "return_request", indexes = {
         @Index(name = "idx_return_order", columnList = "order_id"),
         @Index(name = "idx_return_user", columnList = "user_id,created_at"),
-        @Index(name = "idx_return_status", columnList = "status")
+        @Index(name = "idx_return_status", columnList = "status"),
+        @Index(name = "idx_return_order_item", columnList = "order_id, order_item_id")
 })
 public class ReturnRequest {
 
@@ -57,6 +58,33 @@ public class ReturnRequest {
 
     @Column(name = "order_id", nullable = false)
     private Long orderId;
+
+    /**
+     * 按商品行维度的售后：关联的订单行 id。
+     * null 表示「整单售后」（存量旧单或按整单申请的单），新申请都带此值 —— 同单不同商品可各自并行售后。
+     */
+    @Column(name = "order_item_id")
+    private Long orderItemId;
+
+    /** 商品行快照：申请时的商品名（避免商品改名 / 下架后售后单上什么都看不出） */
+    @Column(name = "item_product_name", length = 120)
+    private String itemProductName;
+
+    /** 商品行快照：封面图 */
+    @Column(name = "item_cover_url", length = 500)
+    private String itemCoverUrl;
+
+    /** 商品行快照：数量 */
+    @Column(name = "item_quantity")
+    private Integer itemQuantity;
+
+    /** 商品行快照：成交单价 */
+    @Column(name = "item_unit_price", precision = 10, scale = 2)
+    private BigDecimal itemUnitPrice;
+
+    /** 商品行快照：该行小计（= 退款金额来源） */
+    @Column(name = "item_subtotal", precision = 10, scale = 2)
+    private BigDecimal itemSubtotal;
 
     /**
      * 流程状态（不是订单主状态）：
@@ -139,6 +167,54 @@ public class ReturnRequest {
 
     public void setOrderId(Long orderId) {
         this.orderId = orderId;
+    }
+
+    public Long getOrderItemId() {
+        return orderItemId;
+    }
+
+    public void setOrderItemId(Long orderItemId) {
+        this.orderItemId = orderItemId;
+    }
+
+    public String getItemProductName() {
+        return itemProductName;
+    }
+
+    public void setItemProductName(String itemProductName) {
+        this.itemProductName = itemProductName;
+    }
+
+    public String getItemCoverUrl() {
+        return itemCoverUrl;
+    }
+
+    public void setItemCoverUrl(String itemCoverUrl) {
+        this.itemCoverUrl = itemCoverUrl;
+    }
+
+    public Integer getItemQuantity() {
+        return itemQuantity;
+    }
+
+    public void setItemQuantity(Integer itemQuantity) {
+        this.itemQuantity = itemQuantity;
+    }
+
+    public BigDecimal getItemUnitPrice() {
+        return itemUnitPrice;
+    }
+
+    public void setItemUnitPrice(BigDecimal itemUnitPrice) {
+        this.itemUnitPrice = itemUnitPrice;
+    }
+
+    public BigDecimal getItemSubtotal() {
+        return itemSubtotal;
+    }
+
+    public void setItemSubtotal(BigDecimal itemSubtotal) {
+        this.itemSubtotal = itemSubtotal;
     }
 
     public String getStatus() {

@@ -141,7 +141,7 @@ public class CartService {
         Integer myLeft = flashSaleService.remainingForUser(userId, sale);
         if (myLeft != null && newQuantity > myLeft) {
             throw new BusinessException(409, "「" + name + "」每人限购 " + sale.getPerUserLimit()
-                    + " 件，已达上限，请去原商品按原价购买");
+                    + " 件，已达上限，无法再加购");
         }
     }
 
@@ -192,7 +192,7 @@ public class CartService {
 
     private CartResponse buildCartResponse(Long userId, List<CartItem> cartItems) {
         if (cartItems.isEmpty()) {
-            return new CartResponse(List.of(), 0, BigDecimal.ZERO, BigDecimal.ZERO, null);
+            return new CartResponse(List.of(), 0, BigDecimal.ZERO, BigDecimal.ZERO, null, BigDecimal.ZERO);
         }
         List<Long> productIds = cartItems.stream().map(CartItem::getProductId).distinct().toList();
         Map<Long, Product> productMap = productRepository.findAllById(productIds)
@@ -239,14 +239,24 @@ public class CartService {
                 .filter(CartItemResponse::getSelected)
                 .map(CartItemResponse::getSubtotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // 互斥口径：秒杀行不参与活动、不可用券，所以活动门槛/小计与券资格都只基于「非秒杀部分」。
+        // 购物车里命中秒杀的商品（flashSaleId != null）整行视为秒杀行 —— 下单时这些行会被拆成纯秒杀价，
+        // 不会混进活动/券的计算基数。
+        BigDecimal nonFlashSelectedAmount = items.stream()
+                .filter(CartItemResponse::getSelected)
+                .filter(item -> item.getFlashSaleId() == null)
+                .map(CartItemResponse::getSubtotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         // 同一商品可能因规格不同存在多行，活动门槛金额必须按商品累加所有行，
         // 而非只取第一行（否则门槛判定/折扣基数偏小，出现「购物车合计与活动优惠对不上」）。
         Map<Long, BigDecimal> productSubtotal = new HashMap<>();
-        items.stream().filter(CartItemResponse::getSelected).forEach(item ->
-                productSubtotal.merge(item.getProductId(), item.getSubtotalAmount(), BigDecimal::add));
+        items.stream().filter(CartItemResponse::getSelected)
+                .filter(item -> item.getFlashSaleId() == null)
+                .forEach(item -> productSubtotal.merge(item.getProductId(), item.getSubtotalAmount(), BigDecimal::add));
         ActivityEvaluation activityEval = activityService.evaluateBestActivity(productSubtotal, productMap);
         return new CartResponse(items, selectedCount, selectedAmount, activityEval.getDiscount(),
-                activityEval.getActivity() != null ? activityEval.getActivity().getName() : null);
+                activityEval.getActivity() != null ? activityEval.getActivity().getName() : null,
+                nonFlashSelectedAmount);
     }
 
     private Product getAvailableProduct(Long productId) {

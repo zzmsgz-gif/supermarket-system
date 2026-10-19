@@ -178,9 +178,11 @@ public class CartItemResponse {
         }
         response.setFlashQty(fq);
         // 划线对照价 = 售价（会员折前）。见字段注释：差额必须恰好等于会员让利，用户才核得出来。
-        // 秒杀行用 regular（min(售价, 会员价)）= 秒杀前的价，同样与 unitPriceFor 同源。
-        response.setProductOriginalPrice(flashApplies
-                ? regular : (skuPrice != null ? skuPrice : product.getPrice()));
+        // ⚠️ 2026-10-13 用户纠正：秒杀行**同样用售价**，不能用 regular ——
+        // 「省¥X」= 实际售价(不含会员折扣) − 应付价(秒杀价)。之前秒杀行用 regular(min(售价,会员价,等级折))，
+        // 金卡 0.98 把 12.80 压成 12.54、秒杀 9.60 只算出「省 2.94」，与详情页口径（省 3.20）对不上。
+        // 两条分支统一：规格价优先，否则商品售价（与 OrderService.buildOrderItem 的 originalPrice 同源）。
+        response.setProductOriginalPrice(skuPrice != null ? skuPrice : product.getPrice());
         response.setStock(product.getStock());
         response.setOnSale(ON_SALE.equals(product.getStatus())
                 && product.getDeleted() != null && product.getDeleted() == NOT_DELETED);

@@ -55,3 +55,44 @@ node_modules/
 # 拆分脚本的中间产物
 *.b2out
 *.b5out*
+
+# 数据库备份（含生产用户数据，绝不入库；换服务器/本地启动用 git add -f 按需）
+db-backups/
+
+# ===== 2026-10-18 清理：排除临时/垃圾文件（仅不入库，文件保留在磁盘）=====
+# 根目录临时脚本/基线/备份
+_*.py
+_*.json
+_*.sql
+_*.sh
+
+# 根目录测试截图与图片
+banner-test.png
+big-test.png
+carousel-arrow-fixed.png
+carousel-fixed.png
+login-fail.png
+register-fail.png
+shot-*.png
+
+# 前端源码目录的拆分/探测中产物
+frontend/src/App.vue.bak_*
+frontend/src/App.vue.new
+frontend/src/App.vue.test
+frontend/src/_*
+frontend/src/components/_*
+
+# 后端临时文件
+backend/args_tmp.txt
+backend/test.png
+
+# 部署目录临时探针脚本
+deploy/_*.py
+deploy/_*.json
+deploy/verify-*.py
+deploy/probe-*.py
+
+# 备份与构建产物（_backups 含 113MB uploads 压缩包，绝不入库）
+_backups/
+miniprogram/dist/
+frontend/dist_*.tgz

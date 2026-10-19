@@ -135,7 +135,6 @@
               loading="lazy" decoding="async"/>
             <div>
               <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
-              <span v-if="item.flashSaleId" class="flash-chip">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
               <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
               <small v-if="Number(item.flashQty || 0) > 0 && Number(item.flashQty) < Number(item.quantity)">
                 <span class="seg flash">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
@@ -147,6 +146,7 @@
                 <span v-if="itemOriginalSave(item) >= 1" class="save-chip">省 {{ money(itemOriginalSave(item)) }}</span>
                 <span v-if="memberTagText(item)" class="member-price-tag">{{ memberTagText(item) }}</span>
               </small>
+              <small v-if="item.flashSaleId" class="flash-note">秒杀价商品，不参与活动 / 不可用券</small>
             </div>
             <strong class="line-total">{{ money(item.subtotalAmount) }}</strong>
           </div>
@@ -155,7 +155,11 @@
         <div class="checkout-block">
           <h3>优惠券</h3>
           <span v-if="selectedCoupon" class="coupon-picked">{{ selectedCoupon.couponName }}（减 {{ money(selectedCoupon.discountAmount) }}）</span>
-          <span v-else class="coupon-picked muted">不使用优惠券</span>
+          <span v-else-if="hasUsableCoupon" class="coupon-picked muted">不使用优惠券</span>
+          <span v-else class="coupon-picked muted">无可用优惠券</span>
+          <p v-if="selectedCoupon && (!appliedPromo || appliedPromo.type !== 'coupon')" class="promo-note">
+            本单已自动选用更优的活动优惠，未消耗此券（活动与券不叠加）
+          </p>
         </div>
 
         <div class="checkout-summary">
@@ -165,8 +169,13 @@
               ? '快递配送 · 第三方物流'
               : '同城即时配送 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
           <div class="row"><span>商品金额</span><strong>{{ money(cartLocalTotal) }}</strong></div>
-          <div v-if="selectedCoupon" class="row"><span>优惠券</span><strong class="minus">- {{ money(selectedCoupon.discountAmount) }}</strong></div>
-          <div v-if="Number(cart.activityDiscount) > 0" class="row"><span>活动优惠（{{ cart.activityName }}）</span><strong class="minus">- {{ money(cart.activityDiscount) }}</strong></div>
+          <div v-if="appliedPromo" class="row">
+            <span>{{ appliedPromo.type === 'coupon' ? '优惠券' : ('活动优惠（' + (appliedPromo.name || '') + '）') }}</span>
+            <strong class="minus">- {{ money(appliedPromo.amount) }}</strong>
+          </div>
+          <div v-if="selectedCoupon && Number(cart.activityDiscount) > 0" class="row promo-exclusive">
+            <span>优惠互斥</span><small>活动与券不叠加，已自动选更优的{{ appliedPromo && appliedPromo.type === 'coupon' ? '优惠券' : '活动' }}</small>
+          </div>
           <!-- 积分抵扣金额与券/活动并排成同一组（原先它被夹在运费行前面，读起来像在算运费） -->
           <div v-if="usePoints && memberPreview.pointsUsed > 0" class="row">
             <span>积分抵扣（{{ memberPreview.pointsUsed }} 分）</span>
@@ -195,11 +204,7 @@
                 <span>可抵扣</span>
                 <strong>- {{ money(memberPreview.pointsValue || 0) }}</strong>
               </div>
-              <button class="ghost sm" @click="useMaxPoints" type="button">全部抵扣</button>
             </div>
-            <small v-if="!usePoints && memberPreview.maxRedeemPoints > 0" class="points-hint">
-              最多可用 {{ memberPreview.maxRedeemPoints }} 分，本单可抵 {{ money(memberPreview.maxRedeemPoints / 100) }}
-            </small>
           </div>
 
 
@@ -207,10 +212,9 @@
           <div v-else-if="isExpress" class="row"><span>运费（快递配送）</span><strong class="text-ok">已满 ¥99 免运费</strong></div>
 
           <div class="row pay"><span>应付金额</span><strong>{{ money(memberPreview.finalPay) }}</strong></div>
-          <div class="row balance" :class="{ insufficient: !balanceSufficient }">
-            <span>账户余额 {{ money(wallet.balance) }}</span>
-            <strong :class="balanceSufficient ? 'text-ok' : 'text-warn'">{{ balanceSufficient ? '余额充足' : '余额不足' }}</strong>
-          </div>
+          <!-- ⚠️ 「账户余额 / 余额充足」提示已移到收银台（PayPage）的「余额支付」选项内
+               （2026-10-12 用户要求）：结算页只负责建单，真正的扣款在收银台发生，
+               余额是否够、够不够都该跟着「余额支付」那一项展示。 -->
         </div>
 
         <div v-if="outOfRange" class="blocker-bar" role="alert">
@@ -244,14 +248,20 @@
           <button class="ghost" @click="backToCart">{{ quickBuy ? '取消立即购买' : '返回' }}</button>
           <button v-if="blockedCount > 0" class="primary" disabled title="请先移除买不了的商品">有商品买不了，无法提交</button>
           <button v-else-if="outOfRange" class="primary" disabled title="该地址超出同城即时配送范围">超出配送范围，无法提交</button>
-          <button v-else-if="balanceSufficient" class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
+          <button v-else class="primary" :class="{ loading: paying }" :disabled="paying" @click="createOrder">
             <span v-if="paying" class="spinner"></span>
             <span>{{ paying ? '提交中…' : '提交订单 ' + money(memberPreview.finalPay) }}</span>
           </button>
-          <button v-else class="primary" disabled>余额不足，无法支付</button>
-          <a v-if="!balanceSufficient && blockedCount === 0 && !outOfRange" class="link" @click="navigate('recharge')">去充值 ›</a>
         </div>
       </section>
+      <!-- 空态双保险：loadCart 之后到 navigate 之前，购物车已空但页面还没跳走。
+           2026-10-12 用户反馈这期间会闪一下「购物车是空的」—— 提交中（paying）一律不渲染空态。
+           （根因修复在 useCheckout.afterOrderCreated：改成先导航、刷新转后台，这里是兜底。） -->
+      <div v-else-if="paying" class="checkout-empty">
+        <div class="empty-illu">⏳</div>
+        <h3>正在提交订单…</h3>
+        <p>订单已创建，正在前往收银台。</p>
+      </div>
       <div v-else class="checkout-empty">
         <div class="empty-illu">🛒</div>
         <h3>购物车是空的</h3>
@@ -287,12 +297,13 @@ export default {
     const onRegionProvince = () => { appCtx.addressForm.city = ''; appCtx.addressForm.district = ''; };
     const onRegionCity = () => { appCtx.addressForm.district = ''; };
     const clampPoints = () => {
-      const max = appCtx.memberPreview.value.maxRedeemPoints;
+      const mp = appCtx.memberPreview.value;
+      // 条目9「有多少抵多少」：上限 = min(账户可用积分, 本单最多可抵积分)，不允许超过。
+      const max = Math.min(mp.userPoints || 0, mp.maxRedeemPoints || 0);
       const v = Number(appCtx.pointsToUse.value) || 0;
       if (v < 0) appCtx.pointsToUse.value = 0;
       else if (v > max) appCtx.pointsToUse.value = max;
     };
-    const useMaxPoints = () => { appCtx.pointsToUse.value = appCtx.memberPreview.value.maxRedeemPoints; };
     // 结算页同样要堵住失效行：从购物车过来时可能还是好的，商品在这期间被下架/售罄
     // （或用户在别处改了下架状态）。否则用户填完配送方式＋地址才被打回，白折腾一遍。
     // 只展示「已勾选」的项：正常流程全部勾选→显示全部；「立即购买」隔离后只显示当前件
@@ -323,6 +334,12 @@ export default {
     // 不再渲染配送方式/地址/提交按钮 —— 否则用户直接 URL 输入 /checkout 也能看到可下单界面，还能提交 ¥0 订单。
     const hasItems = computed(() => checkoutItems.value.length > 0);
 
+    // 2026-10-12 与购物车选券区保持一致：没有任何可用券时显示「无可用优惠券」，
+    // 有券时才显示「不使用优惠券」这一状态（而非把「不使用」当成永久选项）。
+    const hasUsableCoupon = computed(() =>
+      (appCtx.myCoupons?.items || []).some((c) => c.status !== 'USED')
+    );
+
     // 即时配送范围：选定地址后就地问后端能否送达。判定口径以后端为准（唯一真源），
     // 前端只负责**提前提示** —— 与失效行体检同一条原则，真正的强制仍在下单侧。
     const rangeCheck = ref(null);
@@ -336,6 +353,13 @@ export default {
         const data = await appCtx.api.get(`/delivery-range?${qs}`);
         // 快速切换地址时会有多个请求在飞，只认最后一次，避免旧响应覆盖新结果
         if (seq === rangeSeq) rangeCheck.value = data;
+        // 条目10：同城不可达时自动回落快递，避免「卡死在不可达的同城态、无法提交」。
+        // 只在仍是 INSTANT 时回落 —— 已经是快递就不用再切。selectFulfillment 改了 type，
+        // 会触发上面的 watch 重新跑 loadRangeCheck，届时 type!==INSTANT 直接清空 rangeCheck，
+        // 不可达提示条也随之消失。
+        if (data && data.deliverable === false && appCtx.fulfillment.type === 'INSTANT') {
+          appCtx.selectFulfillment('EXPRESS');
+        }
       } catch {
         // 查询失败就不提示，交给下单时后端兜底 —— 别因为一个提示接口抖动就挡住用户下单
         if (seq === rangeSeq) rangeCheck.value = null;
@@ -367,9 +391,9 @@ export default {
 
     return {
       saveAddressChecked, digitsOnly, onPhoneInput,
-      ...appCtx, clampPoints, useMaxPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
+      ...appCtx, clampPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
       backToCart,
-      rangeCheck, outOfRange, hasItems, isMemberItem, memberTagText,
+      rangeCheck, outOfRange, hasItems, hasUsableCoupon, isMemberItem, memberTagText,
       regionData, citiesOf, districtsOf, onRegionProvince, onRegionCity,
     };
   }

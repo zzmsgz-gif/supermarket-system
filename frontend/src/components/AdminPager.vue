@@ -4,7 +4,7 @@
 //
 // ⚠️ 刻意**不持有任何状态**：page / totalPages / jumpPage 全部由父级持有，这里只负责渲染和发事件。
 //    这样抽组件时不用动 AdminPanel 的响应式数据，也不用把 adminCtx 传进来 —— 零逻辑改动。
-//    没传 jumpPage 时不渲染「跳至 N 页」（评价管理那块是简版，本来就没有跳页）。
+//    没传 jumpPage 时不渲染「跳至 N 页」（要不要跳页由父级决定，传了才有）。
 defineProps({
   page: { type: Number, required: true },
   totalPages: { type: Number, required: true },

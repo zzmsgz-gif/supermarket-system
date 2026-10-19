@@ -181,15 +181,18 @@ export function useCheckout({
     usePoints.value = false;
     pointsToUse.value = 0;
     await loadCart();
-    await loadOrders();
-    // 下单会占掉秒杀名额（未付款也占），必须重拉，否则「还能买几件」停留在旧值
-    await loadFlashSales();
-    // 建单即扣库存（后端 deductStocks 在建单时执行）→ 商品目录里的库存/销量已经变了。
-    // 不重拉的话返回列表页看到的还是下单前的旧值（用户反馈「购买后库存跟销量没正确显示」）。
-    await loadProducts();
-    // 当前正停在商品详情页时（立即购买虚拟项的来源页），把它的库存/销量一并刷新
-    await refreshProductDetail();
+    // ⚠️ 2026-10-12 修复「提交订单后闪现『购物车是空的』1-2 秒」：
+    // 原实现 loadCart 之后又同步 await 了 4 个刷新接口才 navigate —— 那几拍里购物车已空、
+    // 结算页还挂着，用户看到的就是空态页闪一下。**先导航**，刷新全部改为不阻塞的后台任务
+    // （它们只是让订单列表/秒杀名额/商品库存在其他页面保持新鲜，没理由挡住用户去收银台）。
     navigate('pay', { id: order.id });
+    (async () => {
+      try {
+        await Promise.all([loadOrders(), loadFlashSales(), loadProducts(), refreshProductDetail()]);
+      } catch {
+        // 后台刷新失败不影响已建成的订单：收银台倒计时照样走，用户回到列表页时再拉一次即可
+      }
+    })();
     return order;
   }
 
@@ -218,6 +221,12 @@ export function useCheckout({
         cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
         await afterOrderCreated(order);
         return order;
+      } catch (e) {
+        // 2026-10-16 生产故障复盘：这条路径原来**没有 catch** —— 后端一拒绝（库存/名额/
+        // 地址/以及当天的 refunded NOT NULL 500），前端只看到按钮转两圈后恢复、零提示，
+        // 用户原话「提交订单点完后没反应」。购物车路径有 run() 兜底展示错误，立即购买这条必须自己 fail。
+        fail(e?.message || '提交订单失败，请稍后重试');
+        return null;
       } finally {
         paying.value = false;
       }

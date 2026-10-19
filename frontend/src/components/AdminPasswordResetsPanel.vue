@@ -13,7 +13,6 @@ const props = defineProps({
   confirmResetPassword: { type: Function, required: true },
   copyTempPassword: { type: Function, required: true },
   passwordResetResult: { type: Object, required: true },
-  passwordResetStatus: { type: String, required: true },
   passwordResetStatusClass: { type: Function, required: true },
   passwordResetStatusLabel: { type: Function, required: true },
   passwordResetTotalPages: { type: Number, required: true },
@@ -25,8 +24,11 @@ const props = defineProps({
 // 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
 //    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
 //    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+// passwordResetStatus 同坑（2026-10-13 补）：原生 <select v-model> 写只读 prop，
+// 选了状态回不到父组件，searchPasswordResets 永远拿旧值。
 const passwordResetJumpPage = defineModel('passwordResetJumpPage', { type: Number, required: true });
-const { changePasswordResetPage, changePasswordResetPageSize, confirmRejectPasswordReset, confirmResetPassword, copyTempPassword, passwordResetResult, passwordResetStatus, passwordResetStatusClass, passwordResetStatusLabel, passwordResetTotalPages, passwordResets, refreshCurrentAdminMenu } = toRefs(props);
+const passwordResetStatus = defineModel('passwordResetStatus', { type: String, required: true });
+const { changePasswordResetPage, changePasswordResetPageSize, confirmRejectPasswordReset, confirmResetPassword, copyTempPassword, passwordResetResult, passwordResetStatusClass, passwordResetStatusLabel, passwordResetTotalPages, passwordResets, refreshCurrentAdminMenu } = toRefs(props);
 </script>
 
 <template>

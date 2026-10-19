@@ -14,7 +14,6 @@ import { imgFallback } from '../utils/format';
 const props = defineProps({
   categories: { type: Array, required: true },
   categoryPage: { type: Number, required: true },
-  categorySize: { type: Number, required: true },
   categoryFiltered: { type: Array, required: true },
   categoryTotalPages: { type: Number, required: true },
   categoryPageItems: { type: Array, required: true },
@@ -31,9 +30,13 @@ const props = defineProps({
 // 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
 //    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
 //    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+// categorySize 也是同一个坑（2026-10-13 补）：它是 AdminPageSize 的 v-model 目标，
+// 而 AdminPageSize emit 的是 update:modelValue —— 所以模板里必须显式写
+// :model-value + @update:model-value，v-model 简写对不上 update:categorySize。
 const categoryJumpPage = defineModel('categoryJumpPage', { type: Number, required: true });
 const categoryKeyword = defineModel('categoryKeyword', { type: String, required: true });
-const { categories, categoryPage, categorySize, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch, categoryForm, saveCategory, categoryName } = toRefs(props);
+const categorySize = defineModel('categorySize', { type: Number, required: true });
+const { categories, categoryPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch, categoryForm, saveCategory, categoryName } = toRefs(props);
 </script>
 
 <template>
@@ -72,7 +75,7 @@ const { categories, categoryPage, categorySize, categoryFiltered, categoryTotalP
     <template v-else>
       <div class="toolbar">
         <AdminSearchBox v-model="categoryKeyword" placeholder="按分类名称搜索" @search="resetCategoryPage" />
-        <AdminPageSize v-model="categorySize" @change="resetCategoryPage" />
+        <AdminPageSize :model-value="categorySize" @update:model-value="categorySize = $event" @change="resetCategoryPage" />
         <button class="ghost" @click="resetCategorySearch">重置</button>
         <span class="result-count">共 {{ categoryFiltered.length }} 个分类</span>
       </div>

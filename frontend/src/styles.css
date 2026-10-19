@@ -734,6 +734,35 @@ h3 { margin-bottom: 0; font-size: 16px; line-height: 1.35; }
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 14px;
 }
+/* 首页楼层用一行横滑（与 .channel-row 同思路）而不是网格：
+   楼层固定 8 件而宽屏算出 6 列 → 第二行只放 2 件、右侧空 4 格，看着像货架空了。
+   横滑让「末行空洞」在结构上不可能出现，楼层高度也从 ~773px 压到一行。
+   筛选结果区仍用 .product-grid（件数随筛选变化、且是结果列表，语义不同）。 */
+.floor-row {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -12px;
+  padding: 12px 12px 18px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.floor-row > * {
+  flex: 0 0 200px;
+  min-width: 200px;
+  max-width: 240px;
+}
+.floor-row .product-card { margin: 0; }
+/* 楼层懒加载哨兵：滚到它才补渲染下一批楼层 */
+.floor-sentinel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .product-card, .data-panel, .form-card {
   border: 1px solid var(--line);
@@ -1606,6 +1635,10 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 .admin-sidebar {
   position: sticky;
   top: 16px;
+  /* 菜单项多时让左侧栏自身可独立滚动（2026-10-14）：以往要滚到整页底部才能看到被挡住的菜单。
+     限高 + 内部滚动，吸附在视口顶部仍可随时滚动菜单。 */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   display: grid;
   gap: 12px;
   align-content: start;
@@ -1741,7 +1774,7 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 
 @media (max-width: 980px) {
   .admin-layout { grid-template-columns: 1fr; }
-  .admin-sidebar { position: static; padding-bottom: 12px; }
+  .admin-sidebar { position: static; max-height: none; overflow: visible; padding-bottom: 12px; }
   .sidebar-nav { grid-auto-flow: column; grid-auto-columns: minmax(140px, max-content); overflow-x: auto; padding-bottom: 4px; }
   .sidebar-group, .sidebar-foot { display: none; }
 }
@@ -1886,9 +1919,84 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 
 .order-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .order-head .order-amount { margin-left: auto; font-weight: 600; color: var(--ink); }
+/* 条目12：订单状态筛选 tab */
+.order-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.order-tab {
+  border: 1px solid var(--line, #e5e7eb);
+  background: #fff;
+  color: var(--muted, #6b7280);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.order-tab:hover { border-color: var(--brand, #2f74d0); color: var(--brand, #2f74d0); }
+.order-tab.on {
+  background: var(--brand, #2f74d0);
+  border-color: var(--brand, #2f74d0);
+  color: #fff;
+  font-weight: 600;
+}
 .ship-hint { color: #046a4a; }
 .ship-line { color: var(--ink); }
 .ship-flag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; background: #e8f1fd; color: #2f74d0; font-size: 12px; }
+
+/* 收银台支付方式选择 */
+.pay-methods { margin-bottom: 16px; }
+.pay-methods h4 { margin: 0 0 10px; font-size: 14px; color: var(--ink); }
+/* 三种支付方式横向单行排列（2026-10-12 用户要求：一行放下、高度压扁，不再换行两行） */
+.pm-list { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 10px; }
+.pm-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  flex: 1 1 0; min-width: 0; position: relative;
+  text-align: left;
+  border: 1px solid var(--line, #e5e7eb);
+  background: #fff; border-radius: 10px;
+  padding: 10px 12px; cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.pm-item:hover { border-color: var(--brand, #2f74d0); }
+.pm-item.on { border-color: var(--brand, #2f74d0); background: #f3f8ff; }
+.pm-name { font-size: 15px; font-weight: 600; color: var(--ink); }
+.pm-hint { font-size: 12px; color: var(--muted, #9ca3af); }
+/* 余额行压成一行不换行（超长时省略号兜底），保证三张卡等高 */
+.pm-balance { font-size: 11.5px; color: var(--muted, #6b7280); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pm-balance b.text-ok, .pm-balance b.ok { color: #046a4a; }
+.pm-balance.insufficient b { color: #c0392b; }
+.pm-radio {
+  position: absolute; top: 10px; right: 12px; width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid #c9ced6; box-sizing: border-box;
+}
+.pm-radio.on { border-color: var(--brand, #2f74d0); }
+.pm-radio.on::after {
+  content: ''; position: absolute; inset: 3px; border-radius: 50%;
+  background: var(--brand, #2f74d0);
+}
+/* 立即支付 / 取消订单：右下角对齐（2026-10-12 用户要求）。
+   ⚠️ 收银台里 .pay-actions 在低屏媒体查询被覆盖成 flex 行，导致「支付方式」和「按钮行」
+   挤在同一行 —— 这里用 .pay-cashier 作用域把它钉回纵向堆叠：支付方式一行、按钮独占一行右对齐。 */
+.pay-action-row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.pay-cashier .pay-actions { display: grid; gap: 10px; }
+
+/* 微信/支付宝模拟扫码弹窗（与充值页扫码页同款观感） */
+.pay-qr-modal {
+  position: fixed; inset: 0; z-index: 320;
+  background: rgba(15, 23, 33, .45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.pay-qr-card {
+  background: #fff; border-radius: 14px; padding: 22px 24px;
+  width: 320px; max-width: 100%;
+  display: grid; gap: 12px; justify-items: center;
+  box-shadow: 0 18px 48px rgba(15, 23, 33, .22);
+}
+.pay-qr-card .pay-amount { font-size: 26px; }
+.pay-qr-simulate { color: #b45309; font-size: 12px; }
+.pay-qr-actions { display: flex; gap: 10px; width: 100%; }
+.pay-qr-actions .primary { flex: 1; }
+.pay-qr-actions .ghost { flex: 0 0 auto; }
 
 /* 订单列表里的商品摘要 + 下单时间（问题 10：光看订单编号找不到订单）。
    紧凑单行横向排列：用户扫一行就能认出「买了什么」，多行反而会挤乱卡片。 */
@@ -2792,6 +2900,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .coupon-reason { font-size: 12px; color: var(--danger); }
 .coupon-picked { font-weight: 600; color: var(--brand-deep); }
 .coupon-picked.muted { color: var(--ink); font-weight: 500; }
+.coupon-empty { color: var(--muted); font-size: 14px; }
 
 /* ===== 图片上传组件 ===== */
 .img-upload { width: 100%; }
@@ -2846,12 +2955,28 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 /* ===== 结算确认页 ===== */
 .checkout-block { padding: 14px 0; border-bottom: 1px dashed #d7efe6; }
 .checkout-block:last-of-type { border-bottom: none; }
-.addr-card { padding: 12px 14px; border: 1px solid #e8ecea; border-radius: 8px; background: #fff; }
-.addr-card.selected { border-color: var(--brand); background: var(--brand-soft); }
+.addr-card { padding: 12px 14px; border: 1px solid #e8ecea; border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+/* 选中的地址卡片：品牌色描边 + 浅底 + 投影，与未选中（纯白）拉开差距（2026-10-12 优化） */
+.addr-card.selected { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 6px 16px rgba(250,141,31,.15); }
 .addr-card strong { display: block; }
 .addr-card small { color: var(--muted); }
 .addr-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.addr-chip { padding: 6px 12px; border-radius: 999px; border: 1px solid #e8ecea; background: #fff; cursor: pointer; font-size: 13px; }
+/* 地址选择 chip：未选中也给清晰描边 + 浅投影，不再是「全白一片分不清」；
+   选中态加品牌色描边/底色/勾选标记，一眼能认出当前选的是哪个（2026-10-12 优化）。 */
+.addr-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px;
+  border: 1px solid #e8ecea; background: #fff; color: var(--ink);
+  cursor: pointer; font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.addr-chip:hover { border-color: var(--brand); color: var(--brand-deep); }
+.addr-chip.on {
+  border-color: var(--brand); background: var(--brand-soft); color: var(--brand-deep);
+  font-weight: 600; box-shadow: 0 0 0 2px rgba(250,141,31,.18);
+}
+.addr-chip.on::before { content: '✓'; font-weight: 700; margin-right: 2px; }
 .addr-chip.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-deep); }
 .addr-add { margin-top: 10px; }
 .addr-add summary { cursor: pointer; color: var(--brand-deep); font-size: 13px; }
@@ -3361,16 +3486,43 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   letter-spacing: 1px;
 }
 .flash-row {
+  /* 改成可横向滑动的秒杀商品列表（2026-10-14）：卡片固定宽度、整行不换行，
+     超出容器即横向滚动；scroll-snap 让每次停在一张卡片上，体验顺滑。 */
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;  /* mandatory 会在滚轮逐步滚动时不断吸回去、手感卡顿，改 proximity */
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 33, .28) rgba(15, 23, 33, .06);
 }
+/* 用户反馈「滑不了」（2026-10-16）：之前的滚动条 track 全透明 + thin，几乎看不见，
+   鼠标滚轮又不会横滚 → 看起来就像坏了一样。三管齐下：
+   ① 滚动条改常显（track 淡灰 + thumb 深色）；② ShopPage 里滚轮竖→横翻译；③ 图片列收窄别挤文字。 */
+.flash-row::-webkit-scrollbar,
+.channel-row::-webkit-scrollbar { height: 8px; }
+.flash-row::-webkit-scrollbar-track,
+.channel-row::-webkit-scrollbar-track {
+  background: rgba(15, 23, 33, .06);
+  border-radius: 4px;
+}
+.flash-row::-webkit-scrollbar-thumb,
+.channel-row::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 33, .28);
+  border-radius: 4px;
+}
+.flash-row::-webkit-scrollbar-thumb:hover,
+.channel-row::-webkit-scrollbar-thumb:hover { background: rgba(15, 23, 33, .4); }
 .flash-card {
   /* 真正铺满整行（flex-grow 填满），不再留左右空白；
      卡片少（1~2 个）时各自均分整行宽度，多到放不下就换行成网格。
      图左文右的横版布局，宽卡片也顺眼，不会像竖版那样被拉成一长条。 */
-  flex: 1 1 0;
-  min-width: 300px;
+  flex: 0 0 440px;
+  width: 440px;
+  max-width: 440px;
+  scroll-snap-align: start;
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -3381,6 +3533,21 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   cursor: pointer;
   transition: box-shadow .18s ease, transform .18s ease;
 }
+/* 已结束的秒杀：盖一层半透明遮罩 +「已结束」角标，与售罄遮罩同款但文案不同（2026-10-14） */
+.flash-ended-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 33, .5);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  pointer-events: none;
+}
 .flash-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(15, 23, 33, .08);
@@ -3388,7 +3555,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .flash-card.upcoming { opacity: .82; }
 .flash-img {
   position: relative;
-  width: 170px;            /* 横版：图片固定占左侧一列 */
+  width: 120px;            /* 横版：图片固定占左侧一列（170→120：320px 卡里给文字区让位，别把标题挤成省略号） */
   flex: none;
   height: auto;
   min-height: 150px;
@@ -3411,24 +3578,44 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   font-size: 11px;
   font-weight: 600;
 }
-/* 窄屏：横版改成竖版，避免图片被压太窄 */
+/* 窄屏：横版改成竖版，避免图片被压太窄；同时恢复换行，不在手机上强制横滑 */
 @media (max-width: 600px) {
+  .flash-row { flex-wrap: wrap; overflow-x: visible; }
+  .flash-card { flex: 1 1 0; width: auto; max-width: none; }
   .flash-card { flex-direction: column; }
   .flash-img { width: 100%; height: 150px; }
 }
 .flash-card.upcoming .flash-tag { background: #b07a2b; }
-.flash-body { padding: 10px 12px 12px; }
+.flash-body {
+  /* 关键修复（2026-10-16）：flash-card 是 flex 横排容器，flex 子项默认 min-width:auto
+     —— 内容（长标题）会把文字区撑到超出卡片宽度，被卡片 overflow:hidden 直接裁掉，
+     连 h4 的省略号都触发不了（这就是「文字被挤没了」的根因）。
+     flex:1 占满剩余宽度 + min-width:0 允许收缩，内部省略/折行才能生效。 */
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 12px 12px;
+}
 .flash-body h4 {
   margin: 0 0 6px;
   font-size: 14px;
   font-weight: 500;
-  white-space: nowrap;
+  line-height: 1.4;
+  /* 标题最多两行折行，超出才出省略号（单行 nowrap 对「智利进口车厘子 J级 2kg 礼盒装」
+     这种长名太狠，144px 文字区只能显示三四个字） */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
+  white-space: normal;
   text-overflow: ellipsis;
 }
 .flash-price {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .flash-price strong { font-size: 18px; color: var(--danger, #e34d59); }
@@ -3980,6 +4167,88 @@ button.mini.danger:hover {
   font-weight: 600;
   color: var(--brand, #00a870);
 }
+
+/* 2026-10-15 按商品行并行售后：订单详情逐行「申请售后」入口与在途/已退状态 */
+.order-item-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+}
+.order-item-done { font-size: 12px; }
+/* 2026-10-16 退款/售后表单：原因选「其他」时的手填框，与下拉同宽同款边框 */
+.refund-form-inline .refund-other-input {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  box-sizing: border-box;
+}
+.order-return-banner {
+  margin: -2px 0 10px;
+  padding: 8px 12px;
+  background: #fdeae6;
+  color: var(--danger);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 我的售后：逐行商品快照 */
+.rpr-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--brand-soft, #f3f9f6);
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.rpr-item-img {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #f5f0ea;
+  flex: 0 0 auto;
+}
+.rpr-item-info { flex: 1 1 auto; min-width: 0; }
+.rpr-item-name { font-weight: 600; color: var(--ink, #0f1721); }
+.rpr-item-meta {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted, #5a6673);
+}
+.rpr-item-meta .subtotal { margin-left: auto; font-weight: 600; color: var(--brand, #00a870); }
+
+/* 后台售后管理：商品列 */
+.rp-item-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 220px;
+}
+.rp-item-img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f5f0ea;
+  flex: 0 0 auto;
+}
+.rp-item-text { min-width: 0; }
+.rp-item-name {
+  font-weight: 600;
+  color: var(--ink, #0f1721);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 170px;
+}
 .order-total-row {
   margin-top: 14px;
   text-align: right;
@@ -4145,7 +4414,8 @@ button.mini.danger:hover {
   display: none;
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: 0;     /* 2026-10-17 用户拍板：面板必须占满楼层/轮播图高度（自适应版被否）。
+                    列表 flex:1 塞满剩余空间，超出才滚动+出滚动条 */
   left: 216px;   /* 200px 分类栏 + 16px gap */
   right: 306px;  /* 290px 公告栏 + 16px gap */
   z-index: 6;
@@ -4182,17 +4452,42 @@ button.mini.danger:hover {
 .hcp-head .cat-icon { width: 18px; height: 18px; object-fit: cover; border-radius: 4px; vertical-align: middle; margin-right: 6px; flex: 0 0 auto; }
 .hcp-count { margin-left: auto; font-size: 12px; color: var(--glass-ink-soft); }
 .hcp-list {
+  /* 2026-10-17 终版：列表 flex:1 撑满「头部以下、查看全部以上」的全部剩余空间，
+     溢出才出滚动条（商品多 → 出条；小分类 → 不出）。查看全部由 flex 布局自然沉到面板最底。
+     ⚠️ 不许再写 max-height 限高：那会把「查看全部」顶到列表正下方（面板下半截空一大块），
+     上一版就是栽在这里。 */
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 行高用 min-content：nowrap 按钮的 min-content 就是「文字+内边距」的完整自然高度，
+     既不会被容器压扁（上一版 grid-auto-rows:18px 把字裁成一半就是教训），
+     也不会因为 auto 行被压缩导致该溢出的不溢出。 */
+  grid-auto-rows: min-content;
   gap: 2px 12px;
   align-content: start;
-  padding: 10px 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  padding: 10px 6px 10px 0;
+  /* ⚠️ 不能写 scrollbar-width / scrollbar-color：在 Windows 的 Edge/Chrome 上它们会触发
+     系统「半透明覆盖式」滚动条（平时不可见、只在悬停/滚动时闪现），同时还会禁用下面
+     自定义的 webkit 滚动条。用户反馈「该出条时看不到条」就是这个原因。
+     只保留 ::-webkit-scrollbar 自定义样式 → 浏览器切到「经典常驻」滚动条，溢出即稳定可见。 */
 }
+/* 经典常驻滚动条：一旦自定义 ::-webkit-scrollbar，Chrome/Edge 才真正露出可拖的进度条。
+   品牌绿实芯滑块 + 浅轨道，深色玻璃面上一眼可辨「下面还有内容」。 */
+.hcp-list::-webkit-scrollbar { width: 10px; }
+.hcp-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+.hcp-list::-webkit-scrollbar-thumb {
+  background: var(--glass-accent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.hcp-list::-webkit-scrollbar-thumb:hover { background: var(--glass-accent-hover); }
 /* ⚠️ 全局 button 规则会漏到这些小按钮上（min-height:38px + 绿渐变 + hover 光晕 + active 下移）。
    单类选择器能压过它，但 min-height 优先于 height → 必须显式写 min-height:0，并逐个覆盖背景/圆角/字重。 */
 .hcp-item,
@@ -4209,6 +4504,8 @@ button.mini.danger:hover {
   border-radius: 8px;
   color: var(--glass-ink);
   font-size: 13px;
+  /* 显式行高：min-content 行高 = 20px 文字行 + 12px 内边距 = 32px，字绝不被裁 */
+  line-height: 20px;
   font-weight: 400;
   text-align: left;
   overflow: hidden;
@@ -4769,7 +5066,7 @@ button.mini.danger:hover {
 .fav-btn:focus-visible,
 .fav-btn.on { opacity: 1; }
 
-/* ④ 中秋氛围（开关在 src/festive.js：`FESTIVE_THEME = 'midautumn'`）
+/* ④ 节日氛围（开关在 src/festive.js：currentFestiveTheme，默认 daily，后台「首页氛围」可切 daily/midautumn/none）
    装饰层盖在 hero 上，所以必须 pointer-events:none —— 绝不能挡住轮播/分类/公告的点击。 */
 [data-festive='midautumn'] .festive-decor {
   position: absolute;
@@ -4827,9 +5124,108 @@ button.mini.danger:hover {
   animation-timing-function: linear;
 }
 
-/* 减少动效时：只留静态光晕与月亮，不留飘落（飘落是最容易引起不适的那类） */
+/* 日常氛围：柔和上浮光斑（常年底色，比中秋更克制，不抢内容）。
+   定位与中秋一致：只在 hero 内（absolute + border-radius），不铺满全屏。 */
+[data-festive='daily'] .festive-decor {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 18px;
+  pointer-events: none;
+}
+
+.fd-daily-glow {
+  position: absolute;
+  left: 50%;
+  bottom: -40px;
+  width: 760px;
+  height: 200px;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side,
+              rgba(255, 255, 255, 0.22),
+              rgba(180, 210, 255, 0.10) 62%,
+              rgba(180, 210, 255, 0) 100%);
+}
+
+/* 柔光上浮：从 hero 底部缓缓升起 + 轻微横移，落地感干净不喧宾夺主 */
+@keyframes fd-rise {
+  0%   { transform: translate3d(0, 0, 0) scale(0.7); opacity: 0; }
+  15%  { opacity: var(--fd-op, 0.45); }
+  85%  { opacity: var(--fd-op, 0.45); }
+  100% { transform: translate3d(var(--fd-drift, 12px), -150px, 0) scale(1.15); opacity: 0; }
+}
+
+.fd-spark {
+  position: absolute;
+  bottom: -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #ffffff, rgba(255, 255, 255, 0.6) 55%, rgba(255, 255, 255, 0) 100%);
+  box-shadow: 0 0 8px rgba(190, 215, 255, 0.55);
+  animation-name: fd-rise;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+/* 减少动效时：不留飘落/上浮（这类持续运动最容易引发不适），只留静态光晕 */
 @media (prefers-reduced-motion: reduce) {
   .fd-petal { display: none; }
+  .fd-spark { display: none; }
+}
+
+/* ==========================================================================
+   后台「首页氛围」面板：选项卡（festive-options）
+   —— 单选做成卡片比下拉直观，选中态用品牌绿。纯展示，删掉不影响功能。
+   ========================================================================== */
+.festive-options {
+  display: grid;
+  gap: 10px;
+}
+.festive-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.festive-option:hover {
+  border-color: var(--brand);
+}
+.festive-option.on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.festive-option.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.festive-option input[type="radio"] {
+  margin-top: 3px;
+  accent-color: var(--brand);
+}
+.fo-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fo-label {
+  font-weight: 700;
+  color: var(--ink);
+}
+.fo-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+.festive-current {
+  font-size: 13px;
+  color: var(--ink);
+}
+.festive-current b {
+  color: var(--brand-dark);
 }
 
 /* ==========================================================================
@@ -5195,6 +5591,16 @@ select {
   font-style: normal;
   overflow: hidden;
 }
+/* 内层 img 必须自己约束尺寸：外层 span 的 object-fit 不生效（span 不是图片），
+   缺这条时原图按原始尺寸渲染再被圆圈裁掉，看起来像被放大（与个人页 .pf-avatar img 同款修正） */
+.review-avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* 有头像时可点开放大：与晒图、个人页头像保持同一套交互语言 */
+.review-avatar.is-clickable { cursor: zoom-in; transition: box-shadow 140ms ease, transform 140ms ease; }
+.review-avatar.is-clickable:hover { box-shadow: 0 0 0 2px var(--brand); transform: scale(1.06); }
 .review-user { font-weight: 500; color: var(--ink); }
 .review-imgs img { cursor: zoom-in; transition: opacity 140ms ease; }
 .review-imgs img:hover { opacity: 0.85; }
@@ -5282,6 +5688,18 @@ select {
 }
 .arr-order { color: var(--brand); cursor: pointer; }
 .arr-order:hover { text-decoration: underline; }
+/* 支付方式标签（2026-10-13 用户要求金额明细标渠道）：小徽标，弱化但可读 */
+.arr-channel {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #e5e7eb);
+  background: var(--chip-bg, #f6f7f9);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+.arr-channel + .arr-order { margin-left: 8px; }
 .arr-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 @media (max-width: 560px) {
@@ -5766,3 +6184,62 @@ a.brand-link { text-decoration: none; color: inherit; }
 
 /* ProductPicker：框里显示已选商品名（非输入态）时加深字色，与占位符区分 */
 .pk-input.filled { color: var(--ink); font-weight: 600; }
+
+/* ===== 支付成功动画（PayPage，#539）===== */
+.pay-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 33, 0.45);
+}
+.ps-card {
+  background: #fff;
+  border-radius: var(--r-lg);
+  padding: 34px 44px 28px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(16, 24, 40, 0.25);
+  animation: ps-pop 0.35s ease;
+}
+.ps-check { width: 86px; height: 86px; display: block; margin: 0 auto; }
+.ps-check-circle {
+  stroke: var(--brand);
+  stroke-width: 3;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: ps-circle 0.5s ease forwards;
+}
+.ps-check-mark {
+  stroke: var(--brand);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: ps-mark 0.35s 0.45s ease forwards;
+}
+.ps-title { margin-top: 14px; font-size: 20px; font-weight: 700; color: var(--ink); }
+.ps-sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+@keyframes ps-pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes ps-circle { to { stroke-dashoffset: 0; } }
+@keyframes ps-mark { to { stroke-dashoffset: 0; } }
+.ps-fade-enter-active, .ps-fade-leave-active { transition: opacity 0.25s; }
+.ps-fade-enter-from, .ps-fade-leave-to { opacity: 0; }
+
+/* 商品详情评价分页（ProductPage，#541） */
+.review-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.review-pager-info { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+/* 后台评价管理「删除」按钮（AdminReviewsPanel，#542）：破坏性操作，红色描边警示 */
+button.ghost.danger { color: var(--danger); border-color: var(--danger); }
+button.ghost.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }

@@ -13,6 +13,20 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     /** 一笔订单当前的售后单（同一订单同时只允许一张未终结的售后单） */
     Optional<ReturnRequest> findByOrderIdAndStatusIn(Long orderId, List<String> statuses);
 
+    /** 某订单某商品行的在途售后单（按商品行维度去重：同单不同商品可各自并行） */
+    @Query("select r from ReturnRequest r where r.orderId = :orderId and r.orderItemId = :orderItemId "
+            + "and r.status in :statuses")
+    Optional<ReturnRequest> findByOrderIdAndOrderItemIdAndStatusIn(
+            @Param("orderId") Long orderId,
+            @Param("orderItemId") Long orderItemId,
+            @Param("statuses") List<String> statuses);
+
+    /** 后台「进行中」汇总：多状态（逗号拆分的 APPLYING,WAITING_SHIP,SHIPPED_BACK）一起查 */
+    @Query("select r from ReturnRequest r where r.status in :statuses order by r.id desc")
+    List<ReturnRequest> findByStatusIn(@Param("statuses") List<String> statuses, Pageable pageable);
+
+    long countByStatusIn(@Param("statuses") List<String> statuses);
+
     /** 用户是否已有进行中的售后（防止重复申请） */
     @Query("select count(r) > 0 from ReturnRequest r where r.userId = :userId "
             + "and r.status in ('APPLYING','WAITING_SHIP','SHIPPED_BACK')")

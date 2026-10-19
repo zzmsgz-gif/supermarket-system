@@ -303,8 +303,14 @@ public class OrderService {
                     int flashQty = Math.min(qty, Math.max(rem, 0));
                     flashRemain.put(fs.getId(), Math.max(rem - flashQty, 0));
                     if (flashQty <= 0) {
+                        // 独立秒杀品没有「原商品」（sourceProductId 为 null），不能引导用户去按原价买 —— 那条路走不通，属误导；
+                        // 只有挂在原商品上的普通秒杀，名额用完后才提示去原商品按原价继续买。
+                        if (fs.getSourceProductId() != null) {
+                            throw new BusinessException(409,
+                                    "该秒杀商品你已买满 " + fs.getPerUserLimit() + " 件（每人限购），请前往原商品按原价购买");
+                        }
                         throw new BusinessException(409,
-                                "该秒杀商品你已买满 " + fs.getPerUserLimit() + " 件（每人限购），请前往原商品按原价购买");
+                                "该秒杀商品每人限购 " + fs.getPerUserLimit() + " 件，你已买满，名额已用完，无法再加购");
                     }
                     if (flashQty < qty) {
                         // 正常 UI 已按名额夹量，不会到这；同名额被并发/后台调小时兜底拒绝
@@ -357,25 +363,54 @@ public class OrderService {
         order.setRemark(trimToNull(request.getRemark()));
         OrderEntity savedOrder = orderRepository.save(order);
 
-        BigDecimal couponDiscount = ZERO;
-        if (request.getUserCouponId() != null) {
-            CouponService.CouponUsage usage =
-                    couponService.consumeForOrder(userId, request.getUserCouponId(), savedOrder.getId(), totalAmount);
-            couponDiscount = usage.discountAmount();
-            savedOrder.setUserCouponId(request.getUserCouponId());
-            savedOrder.setCouponName(usage.couponName());
-        }
-        // 同一商品可能对应多个订单行（购物车多规格行），活动门槛金额按商品累加所有行
+        // ===== 互斥口径（活动 / 秒杀 / 优惠券 三者不可叠加）=====
+        // 秒杀行（flashSaleId != null）是纯折扣通道：整行走秒杀价、不参与活动、不可用券。
+        // 因此活动的门槛/小计、以及券的门槛/减免，都只基于「剔除秒杀行后的小计」计算。
+        BigDecimal nonFlashSubtotal = orderItems.stream()
+                .filter(item -> item.getFlashSaleId() == null)
+                .map(OrderItem::getSubtotalAmount)
+                .reduce(ZERO, BigDecimal::add);
+
+        // 活动：仅对「非秒杀部分」匹配最优活动（同一商品多规格行按商品累加）
         Map<Long, BigDecimal> productSubtotal = new HashMap<>();
-        orderItems.forEach(item ->
-                productSubtotal.merge(item.getProductId(), item.getSubtotalAmount(), BigDecimal::add));
+        orderItems.stream()
+                .filter(item -> item.getFlashSaleId() == null)
+                .forEach(item -> productSubtotal.merge(item.getProductId(), item.getSubtotalAmount(), BigDecimal::add));
         ActivityEvaluation activityEval = activityService.evaluateBestActivity(productSubtotal, productMap);
         BigDecimal activityDiscount = activityEval.getDiscount();
-        savedOrder.setDiscountAmount(couponDiscount);
-        savedOrder.setActivityId(activityEval.getActivity() != null ? activityEval.getActivity().getId() : null);
-        savedOrder.setActivityDiscount(activityDiscount);
-        savedOrder.setActivityName(activityEval.getActivity() != null ? activityEval.getActivity().getName() : null);
-        savedOrder.setPayAmount(totalAmount.subtract(couponDiscount).subtract(activityDiscount).max(ZERO));
+
+        // 券：先预览「若用券能减多少」（门槛按非秒杀部分判定），不立即消耗。
+        // 互斥：仅当券减免 > 活动减免 时才真正核销券；否则用活动、券原样保留给用户。
+        BigDecimal couponPreview = couponService.previewDiscount(userId, request.getUserCouponId(), nonFlashSubtotal);
+        boolean couponWins = request.getUserCouponId() != null
+                && couponPreview.compareTo(activityDiscount) > 0;
+
+        BigDecimal couponDiscount = ZERO;
+        Long finalCouponId = null;
+        String finalCouponName = null;
+        if (couponWins) {
+            // 门槛以非秒杀部分判定，与 previewDiscount 完全一致（preview 已确认满足，不会重复拦截）
+            CouponService.CouponUsage usage =
+                    couponService.consumeForOrder(userId, request.getUserCouponId(), savedOrder.getId(), nonFlashSubtotal);
+            couponDiscount = usage.discountAmount();
+            finalCouponId = request.getUserCouponId();
+            finalCouponName = usage.couponName();
+        }
+
+        // 互斥：只用减免更大的那一档，另一档清零（绝不双减）
+        BigDecimal bestPromo = couponDiscount.max(activityDiscount);
+        BigDecimal finalActivityDiscount = couponWins ? ZERO : activityDiscount;
+        BigDecimal finalCouponDiscount = couponWins ? couponDiscount : ZERO;
+
+        savedOrder.setDiscountAmount(finalCouponDiscount); // 落库约定：discountAmount 存券减
+        savedOrder.setUserCouponId(finalCouponId);
+        savedOrder.setCouponName(finalCouponName);
+        savedOrder.setActivityId(finalActivityDiscount.compareTo(ZERO) > 0
+                && activityEval.getActivity() != null ? activityEval.getActivity().getId() : null);
+        savedOrder.setActivityDiscount(finalActivityDiscount);
+        savedOrder.setActivityName(finalActivityDiscount.compareTo(ZERO) > 0
+                && activityEval.getActivity() != null ? activityEval.getActivity().getName() : null);
+        savedOrder.setPayAmount(totalAmount.subtract(bestPromo).max(ZERO));
         savedOrder = orderRepository.save(savedOrder);
 
         // 积分抵扣（在优惠券/活动优惠之后继续叠加，避免重复计算）。
@@ -483,13 +518,27 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse payOrder(Long userId, Long orderId) {
+    public OrderResponse payOrder(Long userId, Long orderId, String channel) {
         OrderEntity order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
         if (!PENDING_PAYMENT.equals(order.getStatus())) {
             throw new BusinessException(409, "Only pending payment orders can be paid");
         }
-        walletService.payOrder(userId, order.getId(), order.getPayAmount());
+        // 支付渠道：BALANCE 走钱包余额扣款；WECHAT / ALIPAY 为**模拟支付**（系统暂无真实商户网关），
+        // 仅标记订单已支付、不扣钱包余额 —— 与充值流程「模拟支付」同一道理。
+        String payChannel = PAYMENT_CHANNEL_BALANCE;
+        if ("WECHAT".equals(channel) || "ALIPAY".equals(channel)) {
+            payChannel = channel;
+        } else if (!PAYMENT_CHANNEL_BALANCE.equals(channel)) {
+            throw new BusinessException(400, "不支持的支付方式");
+        }
+        if (PAYMENT_CHANNEL_BALANCE.equals(payChannel)) {
+            walletService.payOrder(userId, order.getId(), order.getPayAmount());
+        } else {
+            // 微信 / 支付宝模拟支付：不扣余额，但记一笔 PAYMENT 流水，
+            // 让「金额明细」能看到这笔消费（#544）。
+            walletService.recordPaymentOnly(userId, order.getId(), order.getPayAmount());
+        }
         LocalDateTime now = LocalDateTime.now();
         order.setStatus(PAID);
         order.setPaymentStatus(PAYMENT_PAID);
@@ -501,7 +550,7 @@ public class OrderService {
         memberService.awardOnPaidOrder(userId, orderId, order.getPayAmount(), consumeDate);
         OrderEntity savedOrder = orderRepository.save(order);
         if (paymentRecordRepository.findByOrderId(orderId).isEmpty()) {
-            paymentRecordRepository.save(buildPaymentRecord(order, now));
+            paymentRecordRepository.save(buildPaymentRecord(order, now, payChannel));
         }
         // 消息中心：支付成功（自提给自提码、即时配送给时段、快递说明交由快递发出）
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已支付成功",
@@ -534,7 +583,7 @@ public class OrderService {
         OrderEntity savedOrder = orderRepository.save(order);
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已取消",
                 "订单 " + savedOrder.getOrderNo() + " 已取消，占用的库存已释放"
-                        + (PAYMENT_REFUNDED.equals(savedOrder.getPaymentStatus()) ? "，支付金额已退回钱包余额。" : "。"),
+                        + (PAYMENT_REFUNDED.equals(savedOrder.getPaymentStatus()) ? "，支付金额已原路退回。" : "。"),
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:CANCELED:" + savedOrder.getId());
         return toResponse(savedOrder, toItemResponses(orderItems));
     }
@@ -615,9 +664,12 @@ public class OrderService {
         // 取最低对用户最公平，也保证购物车/结算预览/实际下单口径一致。
         // 会员价仅 level>=1 可享（普通用户按原价，否则原价失去意义）；会员价与等级折扣取优、不叠加。
         BigDecimal skuPrice = skuPriceSupport.priceOf(product.getId(), cartItem.getSkuSpec());
-        BigDecimal unitPrice = MemberService.unitPriceFor(memberLevel,
-                skuPrice != null ? skuPrice : product.getPrice(),
-                skuPrice == null ? product.getMemberPrice() : null);
+        BigDecimal basePrice = skuPrice != null ? skuPrice : product.getPrice();
+        BigDecimal effMemberPrice = skuPrice == null ? product.getMemberPrice() : null;
+        BigDecimal unitPrice = MemberService.unitPriceFor(memberLevel, basePrice, effMemberPrice);
+        // 让利来源快照（member=商品会员价 / tier=等级折扣 / null=无），与 unitPriceFor 同一判定；
+        // 订单详情页据此把「会员优惠」「会员折扣」拆成两行分开列。历史订单无快照由前端回退旧展示。
+        String memberSource = MemberService.sourceOf(memberLevel, basePrice, effMemberPrice);
         // 秒杀价按「折扣率」套到规格价上：与 CartItemResponse.from 同口径，保证预览与实付一致
         if (flashSale != null) {
             BigDecimal flashUnit = flashSale.flashPriceFor(product.getPrice(), skuPrice);
@@ -625,9 +677,12 @@ public class OrderService {
                 unitPrice = flashUnit;
                 // 只有真的按秒杀价成交才占名额（会员价更低时走会员价，不消耗秒杀名额）
                 item.setFlashSaleId(flashSale.getId());
+                // 按秒杀价成交时，让利来自秒杀而非会员权益 → 不标会员来源
+                memberSource = null;
             }
         }
         item.setProductPrice(unitPrice);
+        item.setMemberSource(memberSource);
         // 划线对照价 = <b>售价</b>（会员折前），不是 product.original_price（吊牌价）。
         //
         // 2026-10-07 修正：原口径用吊牌价，于是订单详情页那行「划线优惠（已省）」的文案
@@ -640,6 +695,9 @@ public class OrderService {
         item.setOriginalPrice(skuPrice != null ? skuPrice : product.getPrice());
         item.setQuantity(quantity);
         item.setSubtotalAmount(unitPrice.multiply(BigDecimal.valueOf(quantity)));
+        // 逐行售后标记：新行恒为未退。必须显式置 false —— 只靠实体字段默认值不够直观，
+        // 且历史上正是漏了这行 + 实体字段为 null 导致 INSERT 显式写 NULL 撞 NOT NULL（2026-10-16 生产故障）。
+        item.setRefunded(false);
         return item;
     }
 
@@ -701,11 +759,11 @@ public class OrderService {
         return log;
     }
 
-    private PaymentRecord buildPaymentRecord(OrderEntity order, LocalDateTime paidAt) {
+    private PaymentRecord buildPaymentRecord(OrderEntity order, LocalDateTime paidAt, String channel) {
         PaymentRecord record = new PaymentRecord();
         record.setOrderId(order.getId());
         record.setPaymentNo(generatePaymentNo());
-        record.setChannel(PAYMENT_CHANNEL_BALANCE);
+        record.setChannel(channel);
         record.setAmount(order.getPayAmount());
         record.setStatus(PAYMENT_SUCCESS);
         record.setPaidAt(paidAt);
@@ -722,7 +780,15 @@ public class OrderService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("userId"), userId));
             if (StringUtils.hasText(status)) {
-                predicates.add(cb.equal(root.get("status"), status.trim()));
+                String s = status.trim();
+                if ("AFTER_SALE".equals(s)) {
+                    // 售后 tab：仍处在任何退款流程中的订单（refundStatus != NONE）。
+                    // 这类订单的 order.status 可能是 PAID/SHIPPED/COMPLETED，无法用单一 status 命中，
+                    // 所以用「refundStatus 不等于 NONE」来表达「有未完结的售后」。
+                    predicates.add(cb.notEqual(root.get("refundStatus"), REFUND_NONE));
+                } else {
+                    predicates.add(cb.equal(root.get("status"), s));
+                }
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

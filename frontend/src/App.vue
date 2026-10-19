@@ -103,6 +103,11 @@
                 <div v-if="isAdmin" class="account-menu-list account-menu-lead">
                   <button role="menuitem" @click="navigate('admin')">后台管理</button>
                 </div>
+                <!-- 管理员的「个人资料」入口（2026-10-14）：资料页本身对角色无门禁，
+                     之前只是下拉里没给入口 —— 管理员想改昵称/头像/手机/邮箱或自助改密都没地方去。 -->
+                <div v-if="isAdmin" class="account-menu-list">
+                  <button role="menuitem" @click="navigate('profile')">个人资料</button>
+                </div>
                 <button v-if="!isAdmin" class="account-menu-assets" role="menuitem" @click="navigate('points')" :title="'等级：' + tierNameFor(session.user.memberLevel)">
                   <span class="ama-balance"><small>余额</small><strong>{{ money(wallet.balance) }}</strong></span>
                   <span class="ama-tier">{{ tierNameFor(session.user.memberLevel) }} · {{ session.user.points || 0 }} 积分</span>
@@ -118,7 +123,7 @@
                 <div v-if="!isAdmin" class="account-menu-list">
                   <button role="menuitem" @click="navigate('orders')">我的订单</button>
                   <button role="menuitem" @click="navigate('returns')">我的售后</button>
-                  <button role="menuitem" @click="navigate('coupons')">优惠券</button>
+                  <button role="menuitem" @click="navigate('coupons')">优惠券<span v-if="unclaimedCouponCount" class="nav-badge">{{ unclaimedCouponCount > 99 ? '99+' : unclaimedCouponCount }}</span></button>
                 </div>
                 <div v-if="!isAdmin" class="account-menu-list">
                   <button role="menuitem" @click="navigate('amountRecords')">金额明细</button>
@@ -446,7 +451,13 @@ function previewMyAvatar() {
   const url = session?.user?.avatarUrl;
   if (url) openImageViewer(url);
 }
-function toggleAccountMenu() { accountMenuOpen.value = !accountMenuOpen.value; }
+function toggleAccountMenu() {
+  accountMenuOpen.value = !accountMenuOpen.value;
+  // 打开下拉时刷新可领优惠券，让「优惠券」项的未领取红数字保持最新（#537/#543）。
+  if (accountMenuOpen.value && session?.user && !isAdmin.value) {
+    loadCoupons().catch(() => {});
+  }
+}
 function closeAccountMenu() { accountMenuOpen.value = false; }
 function onDocumentClick(event) { if (!event.target.closest('.account-menu-wrap')) closeAccountMenu(); }
 function onDocumentKeydown(event) { if (event.key === 'Escape') closeAccountMenu(); }
@@ -463,10 +474,16 @@ const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
 // 商品星级聚合：{ productId: { avg, count } }，商品卡/详情展示平均星级
 const ratingSummaryMap = ref({});
 
-const orders = reactive({ items: [], total: 0, page: 1, size: 20, loading: false });
+const orders = reactive({ items: [], total: 0, page: 1, size: 20, loading: false, statusFilter: '' });
 const addresses = ref([]);
 const selectedAddressId = ref(null);
 const coupons = ref([]);
+// 未领取优惠券数量：下拉「优惠券」菜单右侧的红数字（#543），
+// 同时充当 #537 的「有券可领」红点提示——有未领券时该数字 > 0 自然亮起。
+const unclaimedCouponCount = computed(() => {
+  if (!session?.user || isAdmin.value) return 0;
+  return (coupons.value || []).filter((c) => !c.receivedByCurrentUser).length;
+});
 const paying = ref(false);
 const reviewedMap = reactive({});
 const reviewedItemMap = reactive({});
@@ -532,11 +549,9 @@ const adminOrderStatus = ref('');
 const adminOrderJumpPage = ref(1);
 
 // 管理后台退款（售后）列表：筛选与分页状态
-// 默认筛选 =「退款中 + 退款成功」（2026-10-11 用户要求）：
-// 售后管理默认只关心真正有售后的单，无售后（NONE）的不掺进来；
-// 「全部」仍在下拉里可手动选。审核通过后 refund_status 变 APPROVED，记录仍保留
-// —— 售后是需要留痕的财务记录，默认视图里也能看到已办结的。
-const refundStatusFilter = ref('APPLYING,APPROVED');
+// 2026-10-14 扶正 return_request 新链路后，筛选用 return 五态单值（APPLYING/WAITING_SHIP/
+// SHIPPED_BACK/APPROVED/REJECTED）。默认 = 待审核（APPLYING），「全部」在下拉里可手动选。
+const refundStatusFilter = ref('APPLYING');
 const refundJumpPage = ref(1);
 // 侧栏「售后管理」红色角标 = 退款中（APPLYING）的订单数量（2026-10-11 用户要求）。
 // 只在进后台/审核动作后刷新，用 size=1 的列表请求拿 total，不为它单开后端接口。
@@ -549,6 +564,7 @@ const pendingShipCount = ref(0);
 const adminUserKeyword = ref('');
 const adminUserRole = ref('');
 const adminUserStatus = ref('');
+const adminUserMemberLevel = ref('');
 const adminUserJumpPage = ref(1);
 
 // 管理后台优惠券列表：查询条件与分页状态
@@ -687,7 +703,7 @@ const { flashSales, nowTick, runningFlashSales, FLASH_TICK_WINDOW_SECONDS, loadF
 const { hotProducts, newProducts, guessProducts, dwellRankProducts, CHANNEL_PAGE, channelPool, channelCursor, channelRefs, channelPage, loadChannel, rotateChannel, channelRotatable, loadHot, loadNew, loadGuess, loadDwellRank, loadHomeChannels } = useChannels();
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'amountRecords', 'profile', 'returns', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
-const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'stores', 'banners', 'users', 'passwordResets'];
+const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'festive', 'stores', 'banners', 'users', 'passwordResets'];
 
 // ⚠️ 装配点必须在 ADMIN_MENU_KEYS 定义之后（要用它做 tab 白名单校验）——
 // 放它前面会 TDZ: Cannot access 'ADMIN_MENU_KEYS' before initialization，整页白屏。
@@ -718,7 +734,7 @@ const { headerKeyword, hotSearches, subEmail, subMsg, goSearch, quickSearch, loa
 const { adminAnnouncements, announcementForm, announcementFormOpen, loadAdminAnnouncements, openAnnouncementForm, closeAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch, adminBanners, bannerForm, bannerFormOpen, bannerUploading, loadAdminBanners, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner } = useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches });
 // 商品详情：SKU 规格、图集、停留上报、评价提交。productNavLock 是 App.vue 的 let 变量
 //（syncRoute 也要用）→ 留在原地，这里用读写器操作，避免两个来源各管一半。
-const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, refreshProductDetail, reportDwell, backFromProduct, changeDetailQty, loadRatingSummary } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, reviewedItemMap, loadProducts, ratingSummaryMap, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getView: () => view.value });
+const { productDetail, detailQuantity, currentImageIndex, reviewForm, relatedProducts, dwellEnterTs, dwellProductId, dwellSource, selectedSpec, safeParseSpec, selectedSkuImage, galleryImages, currentGalleryImage, specDimensions, selectedSku, selectedSpecText, selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice, openReviewForm, submitReview, openProductDetail, refreshProductDetail, reportDwell, backFromProduct, changeDetailQty, loadRatingSummary, loadReviewsPage } = useProductDetail({ api, run, fail, isAdmin, router, navigate, activeActivities, reviewedMap, reviewedItemMap, loadProducts, ratingSummaryMap, isProductNavLocked: () => productNavLock, setProductNavLock: (v) => { productNavLock = v; }, getFlashLimitOfProduct: flashLimitOfProduct, getFlashSaleOfProduct: flashSaleOfProduct, getView: () => view.value });
 
 // 购物车：增删改 + 可用券的数据源。
 // 购物车：金额合计、增删改、可用券。⚠️ 装配点必须在 useGuestCart 之后（要用 guestAdd / guestRemoveItem 等）。
@@ -728,7 +744,7 @@ const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cart
 
 // 购物车的纯金额计算层：只读状态，无副作用。⚠️ 必须在 useCart 之后（读它的 usableCoupons /
 //    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview）。
-const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
+const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice, appliedPromo } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
 
 // 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview /
 // effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
@@ -741,7 +757,7 @@ const { addDetailToCart, buildQuickBuyCartItem, buyDetailNow, enterQuickBuy, con
 // 优惠券中心：可领列表 / 我的券 / 领取。与 useCart 的「可用券选择」是两件事（那边服务结算）。
 const { loadCoupons, receiveCoupon } = useCoupons({ api, run, session, isAdmin, coupons, myCoupons });
 // 后台各列表的数据加载。state 仍留在 App.vue —— 侧栏菜单要读它们的 total 算角标。
-const { loadAdminProducts, loadAdminOrders, loadAdminStatsOverview, loadRefundOrders, loadRefundApplyingCount, loadPendingShipCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers } = useAdminLoaders({ api, isAdmin, adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, adminStatsOverview, refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage, pendingShipCount, stockAlerts, adminCoupons, adminCouponKeyword, adminCouponJumpPage, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage });
+const { loadAdminProducts, loadAdminOrders, loadAdminStatsOverview, loadRefundOrders, loadRefundApplyingCount, loadPendingShipCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers } = useAdminLoaders({ api, isAdmin, adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, adminStatsOverview, refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage, pendingShipCount, stockAlerts, adminCoupons, adminCouponKeyword, adminCouponJumpPage, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUserJumpPage });
 // 结算下单：地址簿 + 去结算 + 提交订单（购物车 / 立即购买两条路径）。
 const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder,
         editingAddressId, addrPage, ADDR_PAGE_SIZE,
@@ -749,8 +765,10 @@ const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder,
 
 
 function ensureAllowedView() {
+  // profile 2026-10-14 加入管理员白名单：管理员也是 sys_user，改昵称/头像/手机/邮箱 + 自助改密
+  // 都在资料页（此前管理员没有任何自助改密入口，只能靠「找回密码」重置）。
   const allowed = isAdmin.value
-    ? ['shop', 'admin', 'product', 'orderDetail', 'terms', 'privacy'].includes(view.value)
+    ? ['shop', 'admin', 'product', 'orderDetail', 'terms', 'privacy', 'profile'].includes(view.value)
     : view.value !== 'admin';
   if (allowed) return;
   router.replace({ name: 'shop' });
@@ -993,9 +1011,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onDocumentKeydown);
 
 });
-const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, refundApplyingCount, loadRefundApplyingCount, pendingShipCount, loadPendingShipCount, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
+const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, refundApplyingCount, loadRefundApplyingCount, pendingShipCount, loadPendingShipCount, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
-const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, pickAvatar, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, cartActivityProgress, imgFallback, openImageViewer, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses,
+const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, pickAvatar, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, appliedPromo, cartActivityProgress, imgFallback, openImageViewer, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses,
   // 地址编辑 / 删除 / 设默认 / 分页（2026-10-09 补）
   editingAddressId, addrPage, ADDR_PAGE_SIZE,
   startEditAddress, cancelEditAddress, deleteAddress, setDefaultAddress, changeAddrPage,
@@ -1019,6 +1037,7 @@ appCtx.memberUnitView = memberUnitView;
 //    `appCtx.refreshProductDetail is not a function` 抛错 → 整个 withMinSpinner reject
 //    → 支付成功却不跳转、还顺带吞掉转圈（2026-10-07 踩过，症状极具误导性）。
 appCtx.refreshProductDetail = refreshProductDetail;
+appCtx.loadReviewsPage = loadReviewsPage;
 // 管理员「以某会员身份预览价格」：状态暴露给需要直接读取的面板（卡片/详情页走上面两个函数已自动生效）
 appCtx.previewTier = previewTier;
 appCtx.isPreviewing = isPreviewing;
@@ -1030,6 +1049,8 @@ appCtx.catalogBasePrice = catalogBasePrice;
 appCtx.openLegal = openLegal;
 appCtx.navigate = navigate;
 appCtx.session = session;
+// 下拉「优惠券」菜单的未领取红数字（#537/#543）：有未领券时 > 0 自然亮起
+appCtx.unclaimedCouponCount = unclaimedCouponCount;
 appCtx.showAlert = showAlert;
 appCtx.error = error;
 appCtx.fail = fail;

@@ -22,6 +22,12 @@ public class ProductSummaryResponse {
     private Byte isHot;
     private Byte isNew;
     private String tags;
+    /**
+     * 商品类型（NORMAL / FLASH），2026-10-15 起透出。
+     * 收藏夹要用它判断「这是秒杀商品且本场已结束」→ 盖「已结束」遮罩；
+     * 反过来 /flash-sales 只返回 RUNNING+UPCOMING，靠那个列表反查是查不到已结束场次的。
+     */
+    private String kind;
 
     public ProductSummaryResponse() {
     }
@@ -45,6 +51,7 @@ public class ProductSummaryResponse {
         response.setIsHot(product.getIsHot());
         response.setIsNew(product.getIsNew());
         response.setTags(product.getTags());
+        response.setKind(product.getKind());
         return response;
     }
 
@@ -182,5 +189,13 @@ public class ProductSummaryResponse {
 
     public void setTags(String tags) {
         this.tags = tags;
+    }
+
+    public String getKind() {
+        return kind;
+    }
+
+    public void setKind(String kind) {
+        this.kind = kind;
     }
 }

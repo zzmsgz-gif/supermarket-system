@@ -102,12 +102,14 @@ export function formatPaymentStatus(status) {
 }
 
 export function formatRefundStatus(status) {
-  const statusMap = { NONE: '-', APPLYING: '退款审核中', APPROVED: '退款成功', REJECTED: '退款被拒绝' };
+  // 2026-10-15 按商品行并行售后：订单仅当全部商品行退完才 APPROVED，
+  // 仍有在途或无在途但有已退部分时保持 APPLYING / PARTIAL（部分退款）。
+  const statusMap = { NONE: '-', APPLYING: '退款审核中', PARTIAL: '部分退款', APPROVED: '退款成功', REJECTED: '退款被拒绝' };
   return statusMap[status] || status || '-';
 }
 
 export function refundStatusTag(status) {
-  const tagMap = { APPLYING: 'warn', APPROVED: 'ok', REJECTED: 'muted' };
+  const tagMap = { APPLYING: 'warn', PARTIAL: 'warn', APPROVED: 'ok', REJECTED: 'muted' };
   return tagMap[status] || 'muted';
 }
 
@@ -297,3 +299,37 @@ export function withMinSpinner(work, minMs = MIN_SPINNER_MS) {
     new Promise((resolve) => setTimeout(resolve, rest)),
   ]).then((r) => r[0]);
 }
+
+/**
+ * 昵称「视觉宽度」计算 —— 与后端 util/TextWidth.java 的 columns() **必须同一套规则**，
+ * 否则会出现「前端放行、后端拒」或反过来。
+ *
+ * 约定：汉字/假名/韩文/全角 = 2 列，英文数字与半角符号 = 1 列。
+ * 为什么按宽度而不是按字符数：12 个汉字占 24 列，能把评价列表、订单行、后台表格撑折行，
+ * 而 12 个字母还很宽松；按字符数定两套规则（中文 ≤6、英文 ≤12）又判不了「小明Tom」这种混合昵称。
+ */
+export const NICKNAME_MAX_COLUMNS = 12;
+
+export function nicknameColumns(value) {
+  const text = String(value || '');
+  let width = 0;
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    const wide =
+      (cp >= 0x1100 && cp <= 0x115f) ||
+      (cp >= 0x2e80 && cp <= 0xa4cf) ||
+      (cp >= 0xac00 && cp <= 0xd7a3) ||
+      (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0xfe30 && cp <= 0xfe4f) ||
+      (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6);
+    width += wide ? 2 : 1;
+  }
+  return width;
+}
+
+/** 昵称超限的统一文案（与后端 TextWidth.NICKNAME_TOO_WIDE 一致） */
+export const NICKNAME_TOO_WIDE = '昵称过长：中文不超过 6 个字，英文不超过 12 个字母';
+
+/** 用户名规则：登录标识，字母/数字/下划线、3-20 位（与后端 RegisterRequest @Pattern 一致） */
+export const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;

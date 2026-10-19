@@ -15,7 +15,8 @@ import jakarta.validation.constraints.Size;
  */
 public class ProfileUpdateRequest {
 
-    @Size(max = 40, message = "昵称过长")
+    // 与注册同一套口径：硬上限 12 个字符，视觉宽度 ≤12 列由 AuthService 的 TextWidth 校验
+    @Size(max = 12, message = "昵称过长：中文不超过 6 个字，英文不超过 12 个字母")
     private String nickname;
 
     @Email(message = "邮箱格式不正确")

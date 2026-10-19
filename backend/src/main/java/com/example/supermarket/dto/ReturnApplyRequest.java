@@ -10,6 +10,9 @@ public class ReturnApplyRequest {
     @NotNull(message = "orderId 不能为空")
     private Long orderId;
 
+    /** 按商品行申请时传：关联的订单行 id（同单不同商品可各自并行售后）。整单申请可不传。 */
+    private Long orderItemId;
+
     @NotBlank(message = "请选择申请原因")
     @Size(max = 60, message = "原因过长")
     private String reason;
@@ -27,6 +30,14 @@ public class ReturnApplyRequest {
 
     public void setOrderId(Long orderId) {
         this.orderId = orderId;
+    }
+
+    public Long getOrderItemId() {
+        return orderItemId;
+    }
+
+    public void setOrderItemId(Long orderItemId) {
+        this.orderItemId = orderItemId;
     }
 
     public String getReason() {

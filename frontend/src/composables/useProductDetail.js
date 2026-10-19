@@ -9,7 +9,7 @@ export function useProductDetail({
   isProductNavLocked, setProductNavLock,
   getFlashLimitOfProduct, getFlashSaleOfProduct, getView,
 }) {
-  const productDetail = reactive({ data: null, reviews: [], loading: false });
+  const productDetail = reactive({ data: null, reviews: [], reviewsPage: 1, reviewsSize: 10, reviewsTotal: 0, reviewsLoading: false, loading: false });
   const detailQuantity = ref(1);
   const currentImageIndex = ref(0);
   // 评价表单：一笔订单含多个商品，每个商品（订单项）独立评价。
@@ -151,8 +151,10 @@ export function useProductDetail({
         const order = await api.get(`/orders/${id}`).catch(() => null);
         const pid = order?.items?.[0]?.productId;
         if (pid && getView() === 'product' && productDetail.data && productDetail.data.id === pid) {
-          const r = await api.get(`/reviews/products/${pid}?page=1&size=20`).catch(() => ({ items: [] }));
+          const r = await api.get(`/reviews/products/${pid}?page=1&size=20`).catch(() => ({ items: [], total: 0 }));
           productDetail.reviews = r?.items || [];
+          productDetail.reviewsTotal = r?.total || 0;
+          productDetail.reviewsPage = 1;
         }
       } catch (_) { /* 刷新评价失败不影响主流程 */ }
     }, '评价提交成功，感谢反馈');
@@ -178,7 +180,7 @@ export function useProductDetail({
       try {
         const [detail, reviews, related, activities] = await Promise.all([
           api.get(isAdmin.value ? `/admin/products/${product.id}` : `/products/${product.id}`).catch(() => null),
-          api.get(`/reviews/products/${product.id}?page=1&size=20`).catch(() => ({ items: [] })),
+          api.get(`/reviews/products/${product.id}?page=1&size=${productDetail.reviewsSize}`).catch(() => ({ items: [] })),
           api.get(`/products/related/${product.id}?limit=6`).catch(() => []),
           api.get(`/activities/active`).catch(() => []),
         ]);
@@ -191,6 +193,8 @@ export function useProductDetail({
           for (const k in firstSpec) selectedSpec[k] = firstSpec[k];
         }
         productDetail.reviews = reviews?.items || [];
+        productDetail.reviewsTotal = reviews?.total || 0;
+        productDetail.reviewsPage = reviews?.page || 1;
         relatedProducts.value = related || [];
         activeActivities.value = activities || [];
       } catch (err) {
@@ -212,6 +216,23 @@ export function useProductDetail({
     dwellEnterTs.value = 0;
     if (seconds < 3) return; // 太短忽略，避免误触
     api.post('/dwell', { productId: pid, seconds, source: dwellSource.value || 'detail' }).catch(() => {});
+  }
+
+  // 评价分页：拉取某一页评价（#541）。productDetail.reviews 只存当前页 items，
+  // 总条数/总页数靠 reviewsTotal 与 reviewsPage 维护，翻页按钮据此渲染。
+  async function loadReviewsPage(page) {
+    const d = productDetail.data;
+    if (!d || !d.id) return;
+    const p = Math.max(1, page || 1);
+    productDetail.reviewsLoading = true;
+    try {
+      const r = await api.get(`/reviews/products/${d.id}?page=${p}&size=${productDetail.reviewsSize}`).catch(() => ({ items: [], total: 0, page: p }));
+      productDetail.reviews = r?.items || [];
+      productDetail.reviewsTotal = r?.total || 0;
+      productDetail.reviewsPage = r?.page || p;
+    } finally {
+      productDetail.reviewsLoading = false;
+    }
   }
 
   function backFromProduct() {
@@ -266,6 +287,6 @@ export function useProductDetail({
     specDimensions, selectedSku, selectedSpecText,
     selectedSkuPrice, selectedSkuOriginalPrice, effectiveDetailPrice,
     openReviewForm, submitReview, openProductDetail, refreshProductDetail, reportDwell, backFromProduct, changeDetailQty,
-    loadRatingSummary,
+    loadRatingSummary, loadReviewsPage,
   };
 }

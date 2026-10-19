@@ -13,7 +13,6 @@ import AdminStockFormRow from './AdminStockFormRow.vue';
 const props = defineProps({
   stockAlerts: { type: Array, required: true },
   stockPage: { type: Number, required: true },
-  stockSize: { type: Number, required: true },
   stockFiltered: { type: Array, required: true },
   stockTotalPages: { type: Number, required: true },
   stockPageItems: { type: Array, required: true },
@@ -30,9 +29,12 @@ const props = defineProps({
 // 而 props 只读，面板里赋值会**静默失败**：搜索/翻页看着能点但不动，
 //    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
 //    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
+// stockSize 同坑（2026-10-13 补）：AdminPageSize emit update:modelValue，
+// 模板里显式写 :model-value + @update:model-value，v-model 简写对不上。
 const stockJumpPage = defineModel('stockJumpPage', { type: Number, required: true });
 const stockKeyword = defineModel('stockKeyword', { type: String, required: true });
-const { stockAlerts, stockPage, stockSize, stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage, resetStockPage, stockForm, openStockForm, submitStock, resetStockSearch } = toRefs(props);
+const stockSize = defineModel('stockSize', { type: Number, required: true });
+const { stockAlerts, stockPage, stockFiltered, stockTotalPages, stockPageItems, changeStockPage, goStockPage, resetStockPage, stockForm, openStockForm, submitStock, resetStockSearch } = toRefs(props);
 </script>
 
 <template>
@@ -41,7 +43,7 @@ const { stockAlerts, stockPage, stockSize, stockFiltered, stockTotalPages, stock
     <template v-else>
       <div class="toolbar">
         <AdminSearchBox v-model="stockKeyword" placeholder="按商品名称 / 编号搜索" @search="resetStockPage" />
-        <AdminPageSize v-model="stockSize" @change="resetStockPage" />
+        <AdminPageSize :model-value="stockSize" @update:model-value="stockSize = $event" @change="resetStockPage" />
         <button class="ghost" @click="resetStockSearch">重置</button>
         <span class="result-count">共 {{ stockFiltered.length }} 条预警</span>
       </div>

@@ -22,6 +22,8 @@ export function useAdminReviews({ run, askConfirm, showAlert }) {
   const adminReviewRating = ref('');
   const adminReviewReplied = ref('');
   const adminReviewKeyword = ref('');
+  // 跳页输入框的值（与 useAdminUsers 的 adminUserJumpPage 同一模式）
+  const adminReviewJumpPage = ref(1);
   // 商家回复草稿：按评价 id 存，key 随列表增长（loadAdminReviews 会回填）
   const reviewReplyDraft = reactive({});
 
@@ -50,6 +52,7 @@ export function useAdminReviews({ run, askConfirm, showAlert }) {
 
   function searchAdminReviews() {
     adminReviews.page = 1;
+    adminReviewJumpPage.value = 1;
     run(loadAdminReviews);
   }
 
@@ -58,6 +61,17 @@ export function useAdminReviews({ run, askConfirm, showAlert }) {
     if (next < 1 || next > adminReviewTotalPages.value) return;
     adminReviews.page = next;
     run(loadAdminReviews);
+  }
+
+  // 跳页：非法输入回显当前页（与 goAdminUserPage 同一守卫）
+  async function goAdminReviewPage() {
+    const p = Number(adminReviewJumpPage.value);
+    if (!Number.isInteger(p) || p < 1 || p > adminReviewTotalPages.value) {
+      adminReviewJumpPage.value = adminReviews.page;
+      return;
+    }
+    adminReviews.page = p;
+    await loadAdminReviews();
   }
 
   // 侧边菜单角标：未回复评价数（"有人等你回话"）。拉失败就不显示角标，不打扰页面。
@@ -100,10 +114,26 @@ export function useAdminReviews({ run, askConfirm, showAlert }) {
     });
   }
 
+  async function deleteReview(review) {
+    const ok = await askConfirm({
+      title: '删除这条评价？',
+      message: '删除后将彻底从后台与商品详情页移除。注意：原评价用户可能对同一订单项重新评价。',
+      confirmText: '删除',
+      danger: true,
+      details: [{ label: '商品', value: review.productName }, { label: '评价', value: review.content || '（无文字）' }],
+    });
+    if (!ok) return;
+    await run(async () => {
+      await api.delete(`/admin/reviews/${review.id}`);
+      await loadAdminReviews();
+      showAlert({ type: 'success', title: '已删除', message: '该评价已彻底移除。' });
+    });
+  }
+
   return {
     adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied,
-    adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages,
-    loadAdminReviews, searchAdminReviews, changeAdminReviewPage,
-    loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden,
+    adminReviewKeyword, reviewReplyDraft, adminReviewTotalPages, adminReviewJumpPage,
+    loadAdminReviews, searchAdminReviews, changeAdminReviewPage, goAdminReviewPage,
+    loadAdminReviewUnreplied, saveReviewReply, toggleReviewHidden, deleteReview,
   };
 }

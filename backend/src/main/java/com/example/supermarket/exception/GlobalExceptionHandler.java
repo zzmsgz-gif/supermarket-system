@@ -39,7 +39,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.fail(409, "Data conflict"));
+        // 2026-10-12：原文案是英文 "Data conflict"，用户领券撞唯一键时弹出来完全看不懂。
+        // 真正的原因（如每日券跨天再领）已在各 Service 层用中文拦住；走到这里说明是
+        // 并发/重复提交撞了数据库约束，提示刷新重试即可。
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.fail(409, "操作冲突，可能重复提交了，请刷新后重试"));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

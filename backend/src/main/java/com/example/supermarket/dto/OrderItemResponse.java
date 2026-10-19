@@ -14,8 +14,12 @@ public class OrderItemResponse {
     private BigDecimal productPrice;
     private BigDecimal originalPrice;
     private Long flashSaleId;
+    /** 会员让利来源快照：member=商品会员价、tier=等级折扣、null=无让利（含秒杀成交） */
+    private String memberSource;
     private Integer quantity;
     private BigDecimal subtotalAmount;
+    /** 该订单行是否已退货退款（按商品行维度的售后标记） */
+    private Boolean refunded;
 
     public static OrderItemResponse from(OrderItem item) {
         OrderItemResponse response = new OrderItemResponse();
@@ -28,8 +32,10 @@ public class OrderItemResponse {
         response.setProductPrice(item.getProductPrice());
         response.setOriginalPrice(item.getOriginalPrice());
         response.setFlashSaleId(item.getFlashSaleId());
+        response.setMemberSource(item.getMemberSource());
         response.setQuantity(item.getQuantity());
         response.setSubtotalAmount(item.getSubtotalAmount());
+        response.setRefunded(item.getRefunded());
         return response;
     }
 
@@ -105,6 +111,14 @@ public class OrderItemResponse {
         this.flashSaleId = flashSaleId;
     }
 
+    public String getMemberSource() {
+        return memberSource;
+    }
+
+    public void setMemberSource(String memberSource) {
+        this.memberSource = memberSource;
+    }
+
     public Integer getQuantity() {
         return quantity;
     }
@@ -119,5 +133,13 @@ public class OrderItemResponse {
 
     public void setSubtotalAmount(BigDecimal subtotalAmount) {
         this.subtotalAmount = subtotalAmount;
+    }
+
+    public Boolean getRefunded() {
+        return refunded;
+    }
+
+    public void setRefunded(Boolean refunded) {
+        this.refunded = refunded;
     }
 }

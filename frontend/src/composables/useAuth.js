@@ -19,6 +19,7 @@ import { reactive, ref } from 'vue';
 import { api, setToken } from '../api/client';
 import { useUserStore } from '../stores/user';
 import { checkPhone } from '../utils/validate';
+import { nicknameColumns, NICKNAME_MAX_COLUMNS, NICKNAME_TOO_WIDE, USERNAME_PATTERN } from '../utils/format';
 
 export function useAuth(deps) {
   const {
@@ -33,7 +34,7 @@ export function useAuth(deps) {
   const authSubmitting = ref(false);
   const loginForm = reactive({ username: '', password: '', remember: true });
   const registerForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', phone: '', email: '', agree: false });
-  const authErrors = reactive({ username: '', password: '', confirmPassword: '', phone: '', email: '', agree: '' });
+  const authErrors = reactive({ username: '', password: '', confirmPassword: '', phone: '', email: '', nickname: '', agree: '' });
   const changeForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const changeErrors = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const changeSubmitting = ref(false);
@@ -145,9 +146,14 @@ export function useAuth(deps) {
   function validateRegisterForm() {
     const e = {};
     if (!registerForm.username.trim()) e.username = '请输入用户名';
-    else if (registerForm.username.trim().length < 3) e.username = '用户名至少 3 个字符';
+    // 与后端 RegisterRequest @Pattern 一致：用户名只做登录标识，不放开中文
+    // （中文登录名要打输入法、易同音/繁简/全半角出错、还难搜索难审计）
+    else if (!USERNAME_PATTERN.test(registerForm.username.trim())) e.username = '用户名只能包含字母、数字、下划线，长度 3-20 位';
     if (!registerForm.password) e.password = '请输入密码';
     else if (registerForm.password.length < 6) e.password = '密码至少 6 位';
+    // 昵称按视觉宽度：中文 6 字 = 英文 12 字母 = 12 列
+    const nick = registerForm.nickname.trim();
+    if (nick && nicknameColumns(nick) > NICKNAME_MAX_COLUMNS) e.nickname = NICKNAME_TOO_WIDE;
     if (registerForm.confirmPassword !== registerForm.password) e.confirmPassword = '两次输入的密码不一致';
     if (!registerForm.phone.trim()) e.phone = '请输入手机号';
     else {
@@ -162,7 +168,7 @@ export function useAuth(deps) {
   async function submitRegister() {
     resetAuthErrors();
     Object.assign(authErrors, validateRegisterForm());
-    if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.agree) return { ok: false };
+    if (authErrors.username || authErrors.password || authErrors.confirmPassword || authErrors.phone || authErrors.email || authErrors.nickname || authErrors.agree) return { ok: false };
     authSubmitting.value = true;
     try {
       const data = await api.post('/auth/register', {

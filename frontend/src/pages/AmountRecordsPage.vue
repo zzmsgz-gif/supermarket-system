@@ -2,7 +2,7 @@
   <section class="data-panel amount-page">
     <div class="panel-head">
       <h3>金额明细</h3>
-      <small>只统计真正的资金进出（含运费、已扣优惠）；右侧是这笔之后的余额</small>
+      <small>累计 = 钱包余额的进出（充值 / 余额支付 / 退回余额的退款）；微信、支付宝支付与退款仅展示、不计入。右侧是这笔之后的余额</small>
     </div>
 
     <!-- 汇总：累计支出（红）/ 累计收入（绿） -->
@@ -33,6 +33,8 @@
             </strong>
           </div>
           <div class="arr-meta">
+            <span v-if="r.channelLabel" class="arr-channel">{{ r.channelLabel }}</span>
+            <span v-if="r.external" class="arr-external" title="微信/支付宝不经过钱包余额，仅作记录">不计入累计</span>
             <span v-if="r.orderNo" class="arr-order" @click="goOrder(r.orderId)">
               订单 {{ r.orderNo }}
             </span>
@@ -159,3 +161,16 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.arr-external {
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px dashed var(--line, #e5e7eb);
+  border-radius: 999px;
+  padding: 0 6px;
+  margin-left: 6px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+</style>

@@ -87,11 +87,37 @@
       <!-- 操作区 -->
       <div class="pay-actions">
         <template v-if="isPending">
-          <button class="primary" :class="{ loading: paying }" :disabled="paying" @click="doPay">
-            <span v-if="paying" class="spinner"></span>
-            <span>{{ paying ? '支付处理中…' : '立即支付 ' + money(order.payAmount) }}</span>
-          </button>
-          <button class="ghost" :disabled="paying" @click="doCancel">取消订单</button>
+          <div class="pay-methods">
+            <h4>选择支付方式</h4>
+            <div class="pm-list">
+              <button
+                v-for="m in payMethods"
+                :key="m.key"
+                type="button"
+                class="pm-item"
+                :class="{ on: selectedMethod === m.key }"
+                @click="selectMethod(m)"
+              >
+                <span class="pm-name">{{ m.label }}</span>
+                <span class="pm-hint">{{ m.hint }}</span>
+                <!-- 余额支付：把「账户余额 / 余额充足」提示搬到这里（2026-10-12 用户要求：
+                     原来在结算页底部摘要里，位置太远；余额是余额支付这一项最相关的信息，
+                     应当跟随「余额支付」选项一起展示）。文案压短，保证三张卡单行等高不换行。 -->
+                <span v-if="m.key === 'BALANCE'" class="pm-balance" :class="{ insufficient: !balanceSufficient }">
+                  余额 {{ money(wallet.balance) }} · <b :class="balanceSufficient ? 'text-ok' : 'text-warn'">{{ balanceSufficient ? '充足' : '不足' }}</b>
+                </span>
+                <span class="pm-radio" :class="{ on: selectedMethod === m.key }"></span>
+              </button>
+            </div>
+          </div>
+          <!-- 立即支付 / 取消订单：移到右下角（2026-10-12 用户要求） -->
+          <div class="pay-action-row">
+            <button class="ghost" :disabled="paying" @click="doCancel">取消订单</button>
+            <button class="primary" :class="{ loading: paying }" :disabled="paying" @click="doPay">
+              <span v-if="paying" class="spinner"></span>
+              <span>{{ paying ? '支付处理中…' : '立即支付 ' + money(order.payAmount) }}</span>
+            </button>
+          </div>
         </template>
         <template v-else>
           <button class="primary" @click="navigate('shop')">继续挑选商品</button>
@@ -99,6 +125,43 @@
         </template>
       </div>
     </template>
+
+    <!-- 微信/支付宝模拟扫码弹窗（与充值页同款交互）：展示装饰性二维码，
+         点「已完成支付」才真正向后端发起模拟支付。 -->
+    <div v-if="qrChannel" class="pay-qr-modal" @click.self="closeQrModal">
+      <div class="pay-qr-card">
+        <div class="pay-head">
+          <span class="pay-method" :class="qrChannel === 'ALIPAY' ? 'alipay' : 'wechat'">{{ qrMethodLabel }}</span>
+          <h3>向「超市购物系统」付款</h3>
+        </div>
+        <div class="pay-amount">{{ money(order.payAmount) }}</div>
+        <div class="pay-qr">
+          <div class="qr-frame" v-html="qrSvg"></div>
+          <p>请使用{{ qrMethodLabel }}扫一扫付款</p>
+        </div>
+        <div class="pay-qr-actions">
+          <button class="primary" :class="{ loading: paying }" :disabled="paying" @click="confirmQrPay">
+            <span v-if="paying" class="spinner"></span>
+            <span>{{ paying ? '支付处理中…' : '已完成支付' }}</span>
+          </button>
+          <button class="ghost" :disabled="paying" @click="closeQrModal">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 支付成功动画：从支付成功到跳转订单详情之间，给用户明确的「成了」反馈（#539） -->
+    <transition name="ps-fade">
+      <div v-if="paySuccess" class="pay-success-overlay">
+        <div class="ps-card">
+          <svg class="ps-check" viewBox="0 0 52 52">
+            <circle class="ps-check-circle" cx="26" cy="26" r="24" fill="none"/>
+            <path class="ps-check-mark" fill="none" d="M14 27 l8 8 l16 -18"/>
+          </svg>
+          <div class="ps-title">支付成功</div>
+          <div class="ps-sub">正在跳转到订单详情…</div>
+        </div>
+      </div>
+    </transition>
   </section>
 </template>
 
@@ -125,6 +188,20 @@ export default {
     const loading = ref(true);
     const loadError = ref('');
     const paying = ref(false);
+    // 支付成功后、跳转订单详情之前的「支付成功」动画开关（#539）
+    const paySuccess = ref(false);
+    // 当前选中的支付方式（默认余额）。
+    const selectedMethod = ref('BALANCE');
+    // 余额支付已就绪；微信/支付宝为**模拟支付**（系统暂无真实商户网关），
+    // 与充值流程同理：点「立即支付」即模拟网关成功、标记订单已支付，不从钱包扣款。
+    const payMethods = [
+      { key: 'BALANCE', label: '余额支付', hint: '从钱包余额扣款' },
+      { key: 'WECHAT', label: '微信支付', hint: '扫码支付' },
+      { key: 'ALIPAY', label: '支付宝', hint: '扫码支付' },
+    ];
+    function selectMethod(m) {
+      selectedMethod.value = m.key;
+    }
     // 剩余秒数：基于后端给的**绝对截止时刻**计算，绝不用「客户端当前时间 + 时长」反推，
     // 否则浏览器与服务端之间的时钟偏差会让倒计时不可信。
     const remainingSec = ref(0);
@@ -225,8 +302,61 @@ export default {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
-    async function doPay() {
+    // 微信/支付宝模拟扫码弹窗（2026-10-12 用户要求：跟充值功能一样，点支付先弹模拟二维码）。
+    // qrChannel 为 null 表示弹窗关闭；WECHAT/ALIPAY 表示正在展示对应渠道的扫码页。
+    const qrChannel = ref(null);
+    /** 根据种子生成一张装饰性「二维码」SVG（与充值页同款，非真实二维码，仅模拟扫码页） */
+    function buildQrSvg(seed) {
+      const size = 21;
+      const cell = 8;
+      let hash = 0;
+      for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+      const rand = () => {
+        hash = (hash * 1103515245 + 12345) >>> 0;
+        return hash / 4294967296;
+      };
+      let rects = '';
+      for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+          if (rand() > 0.5) {
+            rects += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" />`;
+          }
+        }
+      }
+      // 三个定位角
+      const finder = (ox, oy) => `<rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="#fff"/><rect x="${ox * cell}" y="${oy * cell}" width="${cell * 7}" height="${cell * 7}" fill="none" stroke="#1f2933" stroke-width="${cell}"/><rect x="${(ox + 2) * cell}" y="${(oy + 2) * cell}" width="${cell * 3}" height="${cell * 3}" fill="#1f2933"/>`;
+      const svg = `<svg viewBox="0 0 ${size * cell} ${size * cell}" xmlns="http://www.w3.org/2000/svg" fill="#1f2933">${rects}${finder(0, 0)}${finder(size - 7, 0)}${finder(0, size - 7)}</svg>`;
+      return svg;
+    }
+    // 订单号 + 渠道做种子：同一单的微信码和支付宝码长得不一样，更像真的
+    const qrSvg = computed(() => buildQrSvg(`${order.value?.orderNo || 'ORDER'}:${qrChannel.value || 'X'}`));
+    const qrMethodLabel = computed(() => (qrChannel.value === 'WECHAT' ? '微信支付' : qrChannel.value === 'ALIPAY' ? '支付宝' : ''));
+
+    function doPay() {
       if (paying.value || !isPayable.value) return;
+      // 微信/支付宝：先弹模拟二维码扫码页，用户点「已完成支付」才真正走支付
+      if (selectedMethod.value === 'WECHAT' || selectedMethod.value === 'ALIPAY') {
+        qrChannel.value = selectedMethod.value;
+        return;
+      }
+      return submitPay(selectedMethod.value);
+    }
+
+    function closeQrModal() {
+      if (!paying.value) qrChannel.value = null;
+    }
+
+    async function confirmQrPay() {
+      const channel = qrChannel.value;
+      if (!channel) return;
+      await submitPay(channel);
+      // submitPay 成功会跳转订单详情；失败时留在收银台并关掉弹窗让用户重试
+      qrChannel.value = null;
+    }
+
+    async function submitPay(channel) {
+      // 余额通道走钱包扣款；微信/支付宝为模拟支付 —— 都只需把所选渠道带给后端，
+      // 后端据此标记订单已支付（模拟渠道不从钱包扣款）。
       paying.value = true;
       try {
         // ⚠️ **跳转必须放在 withMinSpinner 之外、之后**，绝不能塞进回调里。
@@ -234,7 +364,7 @@ export default {
         // 用户只看到 25ms，与 MIN_SPINNER_MS 设多大完全无关（设 3000ms 也一样）。
         // 所以这里只让「支付 + 各项数据重拉」占满最短时长，跳转留到转圈真正转完之后。
         await withMinSpinner(async () => {
-          await appCtx.api.post(`/orders/${orderId.value}/pay`);
+          await appCtx.api.post(`/orders/${orderId.value}/pay?channel=${encodeURIComponent(channel)}`);
           // 付款后各项额度都变了：订单列表、钱包、会员成长值、秒杀名额都要重拉。
           // 商品库存/销量同样在付款这一刻才结算 —— 漏掉它们，回到列表页看到的还是付款前的旧值。
           await Promise.all([
@@ -258,6 +388,11 @@ export default {
         const paidOrderId = orderId.value;
         const fresh = await appCtx.api.get(`/orders/${paidOrderId}`).catch(() => null);
         if (fresh) appCtx.orderDetail.data = fresh;
+        // 「支付成功」动画：从支付成功到跳转订单详情之间，给用户一个明确的「成了」反馈（#539）。
+        // 先关掉可能存在的扫码弹窗，再放动画，约 1.3s 后跳详情页。
+        qrChannel.value = null;
+        paySuccess.value = true;
+        await new Promise((r) => setTimeout(r, 1300));
         appCtx.navigate('orderDetail', { id: paidOrderId });
       } catch (e) {
         // 付失败最常见的两种：余额不足、订单已被超时关闭。刷新一次状态让用户看到真实情况
@@ -291,7 +426,8 @@ export default {
       ...appCtx,
       order, loading, loadError, paying, remainingSec, mmss, totalQuantity,
       isPending, isPayable, stateClass, stateBadge, stateTitle, stateDesc,
-      doPay, doCancel, num,
+      doPay, doCancel, num, selectedMethod, payMethods, selectMethod,
+      qrChannel, qrSvg, qrMethodLabel, confirmQrPay, closeQrModal, paySuccess,
     };
   },
 };

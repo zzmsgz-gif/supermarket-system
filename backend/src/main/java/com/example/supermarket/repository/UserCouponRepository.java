@@ -1,6 +1,7 @@
 package com.example.supermarket.repository;
 
 import com.example.supermarket.entity.UserCoupon;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -38,4 +39,11 @@ public interface UserCouponRepository extends JpaRepository<UserCoupon, Long>, J
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select uc from UserCoupon uc where uc.id = :id and uc.userId = :userId")
     Optional<UserCoupon> findByIdAndUserIdForUpdate(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * 定时清理：删除「已使用」且 used_at 早于 cutoff 的券记录（条目5）。
+     * 默认保留 30 天（app.coupon.cleanup-retention-days 可调），由 CouponCleanupScheduler 触发。
+     * 派生删除查询，返回被删除的行数。
+     */
+    long deleteByStatusAndUsedAtBefore(String status, LocalDateTime usedAtBefore);
 }

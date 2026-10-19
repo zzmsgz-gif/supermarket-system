@@ -7,6 +7,7 @@ import com.example.supermarket.dto.ReturnRequestResponse;
 import com.example.supermarket.dto.ReturnShipRequest;
 import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.service.ReturnRequestService;
+import java.util.List;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -42,9 +43,9 @@ public class ReturnRequestController {
         return ApiResponse.ok(service.listMine(currentUser.getId(), page, size));
     }
 
-    /** 某订单的当前售后单（订单详情页用） */
+    /** 某订单的全部售后单（订单详情页用，按商品行并行后可有多条） */
     @GetMapping("/order/{orderId}")
-    public ApiResponse<ReturnRequestResponse> getByOrder(
+    public ApiResponse<List<ReturnRequestResponse>> getByOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
             @PathVariable("orderId") Long orderId
     ) {

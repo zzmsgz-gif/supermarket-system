@@ -37,7 +37,8 @@
       <form v-else-if="tab === 'register'" class="auth-form" @submit.prevent="handleRegister">
         <label class="auth-field">
           <span>用户名 <i class="req">*</i></span>
-          <input v-model="appCtx.registerForm.username" placeholder="3-50 个字符" autocomplete="username" />
+          <!-- 用户名只做登录标识：字母/数字/下划线、3-20 位（中文登录名要打输入法、易打错、难搜索） -->
+          <input v-model="appCtx.registerForm.username" placeholder="字母 / 数字 / 下划线，3-20 位" autocomplete="username" />
           <small v-if="appCtx.authErrors.username" class="field-hint warn">{{ appCtx.authErrors.username }}</small>
         </label>
         <label class="auth-field">
@@ -52,7 +53,8 @@
         </label>
         <label class="auth-field">
           <span>昵称</span>
-          <input v-model="appCtx.registerForm.nickname" placeholder="不填则默认等于用户名" autocomplete="nickname" />
+          <input v-model="appCtx.registerForm.nickname" placeholder="不填则默认等于用户名（中文 ≤6 字 / 英文 ≤12 字母）" maxlength="12" autocomplete="nickname" />
+          <small v-if="appCtx.authErrors.nickname" class="field-hint warn">{{ appCtx.authErrors.nickname }}</small>
         </label>
         <label class="auth-field">
           <span>手机号 <i class="req">*</i></span>

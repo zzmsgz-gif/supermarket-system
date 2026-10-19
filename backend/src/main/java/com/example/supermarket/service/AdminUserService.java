@@ -1,6 +1,7 @@
 package com.example.supermarket.service;
 
 import com.example.supermarket.common.PageResponse;
+import com.example.supermarket.dto.AdminUserCreateRequest;
 import com.example.supermarket.dto.AdminUserResponse;
 import com.example.supermarket.dto.AdminUserUpdateRequest;
 import com.example.supermarket.dto.UserRoleRequest;
@@ -10,6 +11,7 @@ import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
 import com.example.supermarket.repository.SysUserRepository;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -18,6 +20,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import com.example.supermarket.util.TextWidth;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,21 +37,42 @@ public class AdminUserService {
     private static final Set<String> ALLOWED_ROLES = Set.of("USER", "ADMIN");
 
     private final SysUserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AdminUserService(SysUserRepository userRepository) {
+    public AdminUserService(SysUserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<AdminUserResponse> listUsers(int page, int size, String keyword, String role, Byte status) {
+    public PageResponse<AdminUserResponse> listUsers(int page, int size, String keyword, String role, Byte status, Integer memberLevel) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<SysUser> users = userRepository.findAll(buildUserSpec(keyword, role, status), pageable);
+        Page<SysUser> users = userRepository.findAll(buildUserSpec(keyword, role, status, memberLevel), pageable);
         List<AdminUserResponse> items = users.getContent().stream()
                 .map(AdminUserResponse::from)
                 .toList();
         return PageResponse.of(items, safePage, safeSize, users.getTotalElements());
+    }
+
+    /** 后台「新增管理员」：建一个角色=ADMIN、状态启用的账号。复用注册同款的密码加密与查重。 */
+    @Transactional
+    public AdminUserResponse createAdmin(AdminUserCreateRequest request) {
+        String username = request.getUsername().trim();
+        if (userRepository.existsByUsernameAndDeleted(username, NOT_DELETED)) {
+            throw new BusinessException(409, "用户名已存在");
+        }
+        TextWidth.assertNicknameWidth(request.getNickname());
+        SysUser user = new SysUser();
+        user.setUsername(username);
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setNickname(StringUtils.hasText(request.getNickname()) ? request.getNickname().trim() : username);
+        user.setRole("ADMIN");
+        user.setStatus(ENABLED);
+        user.setBalance(BigDecimal.ZERO);
+        user.setDeleted(NOT_DELETED);
+        return AdminUserResponse.from(userRepository.save(user));
     }
 
     @Transactional(readOnly = true)
@@ -117,7 +142,7 @@ public class AdminUserService {
         return user;
     }
 
-    private Specification<SysUser> buildUserSpec(String keyword, String role, Byte status) {
+    private Specification<SysUser> buildUserSpec(String keyword, String role, Byte status, Integer memberLevel) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("deleted"), NOT_DELETED));
@@ -136,6 +161,9 @@ public class AdminUserService {
             if (status != null) {
                 validateStatus(status);
                 predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (memberLevel != null) {
+                predicates.add(cb.equal(root.get("memberLevel"), memberLevel));
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };

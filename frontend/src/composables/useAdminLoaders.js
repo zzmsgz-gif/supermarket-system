@@ -12,7 +12,7 @@ export function useAdminLoaders({
   pendingShipCount,
   stockAlerts,
   adminCoupons, adminCouponKeyword, adminCouponJumpPage,
-  adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage,
+  adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUserJumpPage,
 }) {
   async function loadAdminProducts() {
     if (!isAdmin.value) return;
@@ -65,18 +65,16 @@ export function useAdminLoaders({
 
   async function loadRefundOrders() {
     if (!isAdmin.value) return;
-    // 筛选为空表示「全部」。URLSearchParams 会把它序列化成 `refundStatus=`，
-    // 后端 StringUtils.hasText 判定为空 → 不加该条件 → 返回全部订单。这一节是刻意的
-    // （原先只有「申请中/已通过/已拒绝」三个固定值，线上 54 单 refund_status 全是 NONE，
-    // 面板打开就是空的、像坏了）。
+    // 2026-10-14 扶正新售后链路：改查 /admin/return-requests（return_request 表）。
+    // 状态用 return 五态（APPLYING/WAITING_SHIP/SHIPPED_BACK/APPROVED/REJECTED），筛选为空=全部。
     const params = new URLSearchParams({
       page: String(refundOrders.page),
       size: String(refundOrders.size),
     });
     if (refundStatusFilter.value) {
-      params.set('refundStatus', refundStatusFilter.value);
+      params.set('status', refundStatusFilter.value);
     }
-    const data = await api.get(`/admin/orders?${params}`);
+    const data = await api.get(`/admin/return-requests?${params}`);
     // ⚠️ 竞态保护：面板组件用 `v-if` 挂在后台里，切换菜单会**卸载它**；
     // 而 `refundStatusFilter` 是父级 ref、切换菜单不会重置。若请求在卸载后才返回，
     // 下面这些写入（尤其 `refundJumpPage`，它绑在 AdminPager 上）会打到已卸载的链路上，
@@ -103,12 +101,11 @@ export function useAdminLoaders({
     refundJumpPage.value = safePage;
   }
 
-  // 侧栏「售后管理」角标数据源：退款中（APPLYING）的订单数量。
-  // 复用 /admin/orders 列表接口，size=1 只为拿 total，不为它单开后端接口。
+  // 侧栏「售后管理」角标数据源：待审核（APPLYING）的售后单数量。
   async function loadRefundApplyingCount() {
     if (!isAdmin.value) return;
     try {
-      const data = await api.get('/admin/orders?page=1&size=1&refundStatus=APPLYING');
+      const data = await api.get('/admin/return-requests?page=1&size=1&status=APPLYING');
       refundApplyingCount.value = Number(data?.total) || 0;
     } catch (e) {
       // 拉不到就保留旧值：角标是提醒性质，不该因为一次抖动归零误导管理员
@@ -158,6 +155,7 @@ export function useAdminLoaders({
     if (adminUserKeyword.value.trim()) params.set('keyword', adminUserKeyword.value.trim());
     if (adminUserRole.value) params.set('role', adminUserRole.value);
     if (adminUserStatus.value !== '') params.set('status', String(adminUserStatus.value));
+    if (adminUserMemberLevel.value !== '') params.set('memberLevel', String(adminUserMemberLevel.value));
     const data = await api.get(`/admin/users?${params}`);
     Object.assign(adminUsers, data);
     if (adminUsers.items.length === 0 && adminUsers.page > 1) {

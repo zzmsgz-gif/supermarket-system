@@ -117,6 +117,40 @@ public class MemberService {
         return best;
     }
 
+    /**
+     * 会员让利**来源**判定（与 {@link #unitPriceFor} 同一优先级，必须逐字对齐）：
+     * <ul>
+     *   <li>{@code "member"} —— 商品会员价被选中（够格、比基准低、且不高于等级折扣价）</li>
+     *   <li>{@code "tier"}  —— 等级折扣价被选中（比基准与会员价都低；平手时会员价优先，同 unitPriceFor）</li>
+     *   <li>{@code null}    —— 无会员让利（成交价=基准价）</li>
+     * </ul>
+     * 下单时把结果快照进 {@code order_item.member_source}，订单详情页据此把
+     * 「会员优惠」（会员价）与「会员折扣」（等级折扣）拆成两行分开列——
+     * 两者是性质不同的钱，冠同一个名字就是张冠李戴（购物车 memberSource 同口径，小写）。
+     */
+    public static String sourceOf(Integer level, BigDecimal basePrice, BigDecimal memberPrice) {
+        if (basePrice == null) {
+            return null;
+        }
+        BigDecimal best = unitPriceFor(level, basePrice, memberPrice);
+        if (best == null || best.compareTo(basePrice) >= 0) {
+            return null;
+        }
+        int idx = level == null ? 0 : Math.max(0, Math.min(level, TIER_RATES.length - 1));
+        BigDecimal levelPrice = basePrice.multiply(TIER_RATES[idx]).setScale(2, RoundingMode.HALF_UP);
+        boolean memberPriceWon = canUseMemberPrice(level) && memberPrice != null
+                && memberPrice.compareTo(basePrice) < 0
+                && memberPrice.compareTo(best) == 0
+                && memberPrice.compareTo(levelPrice) <= 0;
+        if (memberPriceWon) {
+            return "member";
+        }
+        if (levelPrice.compareTo(best) == 0) {
+            return "tier";
+        }
+        return null;
+    }
+
     /** 实付金额可获积分（每满 1 元 1 分，向下取整）；按「今天」判定会员日。 */
     public long earnPoints(BigDecimal paidAmount) {
         return earnPoints(paidAmount, LocalDate.now());

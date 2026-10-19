@@ -142,15 +142,32 @@ export function useShopFilters({ filters, products, productsLoading, adminMenu, 
     }
   }
 
+  // 筛选结果区没有分页器 -> 必须取满，否则「共 13 件」只渲染 12 件
+  // （旧实现写死 page=1&size=12，多出的那件被静默吞掉）。
+  // /products 单页上限 @Max(100) -> 按 total 逐页取满（项目既有约定：客户端全量取）。
+  const FETCH_PAGE_SIZE = 100;
   async function fetchProducts() {
-    const params = new URLSearchParams({ page: '1', size: String(products.size) });
-    if (filters.categoryId) params.set('categoryId', filters.categoryId);
-    if (filters.keyword) params.set('keyword', filters.keyword);
-    if (filters.minPrice !== '' && filters.minPrice != null) params.set('minPrice', String(filters.minPrice));
-    if (filters.maxPrice !== '' && filters.maxPrice != null) params.set('maxPrice', String(filters.maxPrice));
-    if (filters.sort) params.set('sort', filters.sort);
-    const data = await api.get(`/products?${params}`);
-    Object.assign(products, data);
+    const base = new URLSearchParams();
+    if (filters.categoryId) base.set('categoryId', filters.categoryId);
+    if (filters.keyword) base.set('keyword', filters.keyword);
+    if (filters.minPrice !== '' && filters.minPrice != null) base.set('minPrice', String(filters.minPrice));
+    if (filters.maxPrice !== '' && filters.maxPrice != null) base.set('maxPrice', String(filters.maxPrice));
+    if (filters.sort) base.set('sort', filters.sort);
+    base.set('size', String(FETCH_PAGE_SIZE));
+
+    base.set('page', '1');
+    const first = await api.get(`/products?${base}`);
+    let items = Array.isArray(first.items) ? first.items.slice() : [];
+    const total = Number(first.total) || items.length;
+    // 保险丝：total 异常时不至于无限翻页（50 页 = 5000 件，远超在售规模）
+    const pages = Math.min(Math.ceil(total / FETCH_PAGE_SIZE), 50);
+    for (let p = 2; p <= pages; p++) {
+      base.set('page', String(p));
+      const next = await api.get(`/products?${base}`);
+      items = items.concat(Array.isArray(next.items) ? next.items : []);
+    }
+    // products.size 保持旧值（骨架屏数量用），这里只更新真正渲染要用的三个字段
+    Object.assign(products, { page: 1, total, items });
     syncShopQuery();   // 所有筛选变更都从这里汇集出口，一处同步 URL 即可
     // 头部搜索/热搜留下的标记：等这一批商品渲染完再滚（nextTick 在 scrollToResultsIfNeeded 里）
     if (scrollToResultsAfterLoad) {

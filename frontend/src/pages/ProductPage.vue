@@ -41,10 +41,12 @@
               <p class="detail-subtitle">{{ productDetail.data.subtitle || '暂无副标题' }}</p>
 
               <div class="detail-price">
-                <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || detailPrice) }}</strong>
+                <strong>{{ money(flashPrice || detailPrice) }}</strong>
                 <template v-if="flashPrice">
                   <span class="detail-origin">原价 {{ money(flashOrigin) }}</span>
                   <span class="detail-flash">限时秒杀 · {{ flashDeadlineText(flashSale) }}<template v-if="Number(flashSale.perUserLimit) > 0"> · 每人限购 {{ flashSale.perUserLimit }} 件</template><template v-if="flashSale.remainingQuota <= 10"> · 仅剩 {{ flashSale.remainingQuota }} 件</template></span>
+                  <!-- 「省¥X」胶囊已按 2026-10-13 用户要求从详情页移除；秒杀让利只在
+                       购物车/结算行以「省 ¥X」表达（基准=实际售价−秒杀应付价，见 CartItemResponse）。 -->
                 </template>
               <template v-else>
                 <template v-if="memberView">
@@ -52,12 +54,17 @@
                 </template>
                 <template v-else>
                   <span v-if="detailOrigin > 0" class="detail-origin">原价 {{ money(detailOrigin) }}</span>
-                  <span v-if="discountSave(detailOrigin, detailPrice) >= 1" class="detail-discount">省 {{ money(discountSave(detailOrigin, detailPrice)) }} · 约 {{ discountRate(detailOrigin, detailPrice) }} 折</span>
+                  <!-- 「省¥X」= 售价 − 实付，不是吊牌价 − 实付（2026-10-12 用户反馈，与 10-06 金额口径同病灶）：
+                       吊牌价是运营参考价，拿它算"省多少"会把虚高部分也算成让利，结算页一核对就对不上。
+                       非会员实付=售价 → 本胶囊自动不显示；会员让利按 10-06 口径由「普通价」对照+等级标签表达，不列已省。 -->
+                  <span v-if="saveVsSale >= 1" class="detail-discount">省 {{ money(saveVsSale) }} · 约 {{ discountRate(salePrice, detailPrice) }} 折</span>
                 </template>
               </template>
-              <span v-if="memberView && memberView.source === 'member'" class="detail-member">会员价 {{ money(memberView.price) }}</span>
-              <span v-else-if="memberView && memberView.source === 'tier'" class="detail-member">{{ memberView.name }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
-              <span v-else-if="memberPrice" class="detail-member">会员专享价 {{ money(memberPrice) }}</span>
+              <!-- 会员折扣标签：秒杀价生效时一律不显示（2026-10-12 用户反馈「秒杀商品还挂金卡x.x折」）。
+                   秒杀价已是最低价、不再叠等级折扣，挂上去用户会以为还能更便宜 → 与 ProductCard 同口径。 -->
+              <span v-if="!flashPrice && memberView && memberView.source === 'member'" class="detail-member">会员价 {{ money(memberView.price) }}</span>
+              <span v-else-if="!flashPrice && memberView && memberView.source === 'tier'" class="detail-member">{{ memberView.name }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
+              <span v-else-if="!flashPrice && memberPrice" class="detail-member">会员专享价 {{ money(memberPrice) }}</span>
                 <span v-if="selectedSkuPrice" class="detail-spec-price">已选规格价</span>
                 <span class="detail-unit">/ {{ formatUnit(productDetail.data.unit) }}</span>
               </div>
@@ -157,7 +164,7 @@
 
           <div class="detail-section">
             <div class="panel-head">
-              <h3>用户评价（{{ productDetail.reviews.length }}）</h3>
+              <h3>用户评价（{{ productDetail.reviewsTotal }}）</h3>
               <span v-if="detailRating" class="rating-overall">
                 平均 <StarRating :rating="detailRating.avg" /> <b>{{ detailRating.avg.toFixed(1) }}</b> 分 · 共 {{ detailRating.count }} 条
               </span>
@@ -168,7 +175,10 @@
                 <div class="review-head">
                   <!-- 评价者头像（2026-10-07 用户要求）。没有头像时用昵称首字占位，
                        不留空白 —— 空白头像会被误读成「加载失败」。 -->
-                  <span class="review-avatar">
+                  <!-- 有头像时可点开看大图（与评价晒图同一套预览器）；无头像只有首字占位，没东西可放大就不挂点击 -->
+                  <span class="review-avatar" :class="{ 'is-clickable': review.avatarUrl }"
+                        :title="review.avatarUrl ? '点击看大图' : ''"
+                        @click="review.avatarUrl && openImageViewer(review.avatarUrl)">
                     <img v-if="review.avatarUrl" :src="review.avatarUrl" :alt="review.nickname || '用户'" loading="lazy" />
                     <template v-else>{{ initials(review.nickname || '匿') }}</template>
                   </span>
@@ -190,6 +200,15 @@
                   <small v-if="review.replyAt" class="review-reply-date">{{ formatDate(review.replyAt) }}</small>
                 </div>
               </div>
+              <!-- 评价分页（#541，2026-10-14 换数字页码）：复用全站 Pager，仅 >1 页渲染；
+                   总条数在上方「用户评价（N）」标题常驻可见 -->
+              <Pager
+                :page="productDetail.reviewsPage"
+                :total="productDetail.reviewsTotal"
+                :size="productDetail.reviewsSize"
+                :loading="productDetail.reviewsLoading"
+                @go="p => loadReviewsPage(p)"
+              />
             </div>
           </div>
         </template>
@@ -356,7 +375,19 @@ export default {
       const orig = Number(appCtx.selectedSkuOriginalPrice?.value ?? appCtx.productDetail.data?.originalPrice ?? 0);
       return orig > detailPrice.value ? orig : 0;
     });
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
+    // 售价（非会员实付价）：规格价优先，否则商品售价 —— 「省¥X」与划线价的对照基准
+    const salePrice = computed(() => Number(
+      appCtx.effectiveDetailPrice?.value ?? appCtx.productDetail.data?.price ?? 0,
+    ));
+    // 「省¥X」= 售价 − 实付（detailPrice 已是会员/规格后的实付价）。
+    // ⚠️ 2026-10-12 用户反馈：原先用吊牌价（detailOrigin）做基准，等于把运营标的虚高
+    // 也算成让利，用户拿结算页一核对就对不上。非会员实付=售价 → 自动为 0 不显示；
+    // 会员让利按 10-06 口径不列「已省」，由「普通价」对照 + 等级标签表达。
+    const saveVsSale = computed(() => {
+      const pay = Number(detailPrice.value || 0);
+      return salePrice.value > pay ? salePrice.value - pay : 0;
+    });
+    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, salePrice, saveVsSale, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
   }
 };
 </script>

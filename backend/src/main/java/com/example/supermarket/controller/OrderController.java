@@ -95,9 +95,10 @@ public class OrderController {
     @PostMapping("/{id}/pay")
     public ApiResponse<OrderResponse> payOrder(
             @AuthenticationPrincipal CurrentUser currentUser,
-            @PathVariable Long id
+            @PathVariable Long id,
+            @RequestParam(required = false, defaultValue = "BALANCE") String channel
     ) {
-        return ApiResponse.ok(orderService.payOrder(currentUser.getId(), id));
+        return ApiResponse.ok(orderService.payOrder(currentUser.getId(), id, channel));
     }
 
     @PostMapping("/{id}/cancel")

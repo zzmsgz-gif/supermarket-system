@@ -59,6 +59,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/legal-docs", "/legal-docs/**").permitAll()
                         // 首页头部「热搜」词条：游客也要能看到（原先这几条是前端写死的，现已后台可管）
                         .requestMatchers(HttpMethod.GET, "/hot-searches", "/hot-searches/**").permitAll()
+                        // 系统配置（首页氛围开关 festive_theme 等）：游客也要能读到，已在后台可管
+                        .requestMatchers(HttpMethod.GET, "/system-config", "/system-config/**").permitAll()
                         // 会员日（每月几号消费积分翻倍）：会员中心/页面提示未登录也要能读
                         .requestMatchers(HttpMethod.GET, "/member-days", "/member-days/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/dwell", "/dwell/**").permitAll()

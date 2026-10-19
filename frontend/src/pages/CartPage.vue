@@ -65,7 +65,6 @@
            loading="lazy" decoding="async"/>
           <div>
             <strong class="cart-item-link" @click="openProductDetail({ id: item.productId })">{{ item.productName }}</strong>
-            <span v-if="item.flashSaleId" class="flash-chip">限时秒杀 {{ money(item.flashPrice) }} ×{{ item.flashQty }}</span>
             <span v-if="cartItemIssue(item)" class="flash-chip invalid">{{ cartItemIssue(item) }}</span>
             <small v-if="item.skuSpec" class="sku-spec">已选：{{ item.skuSpec }}</small>
             <small v-if="unpaidHolds[item.productId]" class="flash-hold">
@@ -104,10 +103,14 @@
 
         <div v-if="cart.items?.length && session.user" class="coupon-block">
           <h3>优惠券</h3>
-          <div class="coupon-list">
+          <!-- 2026-10-12 用户要求：
+               没有任何可用券时显示「无可用优惠券」；
+               只有当确实存在可用券时，才出现「不使用优惠券」这一可选项。 -->
+          <p v-if="selectableCoupons.length === 0" class="coupon-empty">无可用优惠券</p>
+          <div v-else class="coupon-list">
             <button class="coupon-opt" :class="{ on: !selectedUserCouponId }" @click="chooseNoCoupon">不使用优惠券</button>
             <button
-              v-for="coupon in myCoupons.items"
+              v-for="coupon in selectableCoupons"
               :key="coupon.id"
               type="button"
               class="coupon-opt"
@@ -199,7 +202,18 @@ export default {
 
     // 凑单推荐：逻辑在 composables/useUpsell.js，**购物车与结算页共用一份**
     // （2026-10-09 抽出；之前只写在这里，结算页要显示就得抄一遍，抄的必然漂移）
-    const { upsell, addUpsellToCart } = useUpsell(appCtx, (p) => addToCart(p));
+    // ⚠️ 2026-10-12 修复「点击凑单商品无反应」：回调原先写 (p) => addToCart(p)，
+    // 而 addToCart 既没 import 也没从 appCtx 解构 —— 本页面里这个名字不存在，
+    // 点下去就是 ReferenceError，按钮看起来"没反应"（只在控制台报错，用户端静默）。
+    // 统一走 appCtx.addToCart（游客/登录两条路径它内部都处理）。
+    const { upsell, addUpsellToCart } = useUpsell(appCtx, (p) => appCtx.addToCart(p));
+
+    // 条目4：购物车/结算选券时，已使用（USED）的券不再出现。
+    // 后端 /usable 已过滤 USED，但购物车券选择区用的是「我的全部券」列表，
+    // 这里再在前端挡一道，保证已核销的券不会出现在可选列表里。
+    const selectableCoupons = computed(() =>
+      (appCtx.myCoupons?.items || []).filter((c) => c.status !== 'USED')
+    );
 
     // 该购物项是否享受了会员折扣（非秒杀、且后端标记 memberDiscount>0）
     function isMemberItem(item) {
@@ -217,7 +231,7 @@ export default {
     }
 
     return {
-      upsell, addUpsellToCart,
+      upsell, addUpsellToCart, selectableCoupons,
       ...appCtx, unpaidHolds, cartIssues, blockedCount, cartItemIssue, removeAllInvalid, upsell, isMemberItem, memberTagText,
     };
   }

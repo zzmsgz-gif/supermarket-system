@@ -32,24 +32,33 @@ export function useCartTotals({ cart, usableCoupons, selectedUserCouponId, getPr
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + itemOriginalSave(item), 0));
 
-  // 应付总额（不含运费）：商品金额 − 优惠券 − 活动优惠。
-  // 三项之外不再有任何加减 —— 会员价已含在单价里，运费在 useMemberPoints 里最后单独加上。
-  const orderPayPreview = computed(() => {
-    let pay = cartLocalTotal.value;
-    if (selectedCoupon.value) pay = Math.max(pay - Number(selectedCoupon.value.discountAmount || 0), 0);
-    if (Number(cart.activityDiscount) > 0) pay = Math.max(pay - Number(cart.activityDiscount || 0), 0);
-    return round2(pay);
+  // 优惠券减免（固定额，仅当已选且可用）与活动减免（后端按非秒杀部分算的最优活动）。
+  const couponDiscount = computed(() => selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0);
+  const activityDiscount = computed(() => Number(cart.activityDiscount || 0));
+  // 互斥口径：活动与券二选一，取减免更大者（绝不双减）；两者都只作用于非秒杀部分（后端同口径）。
+  const bestPromo = computed(() => Math.max(couponDiscount.value, activityDiscount.value));
+  // 实际生效的那一档（用于结算页只展示一个优惠行 + 互斥提示）；券减免更大才用券，否则用活动（券不消耗）。
+  const appliedPromo = computed(() => {
+    if (couponDiscount.value > activityDiscount.value && selectedCoupon.value) {
+      return { type: 'coupon', name: selectedCoupon.value.couponName, amount: couponDiscount.value };
+    }
+    if (activityDiscount.value > 0) {
+      return { type: 'activity', name: cart.activityName, amount: activityDiscount.value };
+    }
+    return null;
   });
+
+  // 应付总额（不含运费）：商品金额 − max(优惠券, 活动优惠)。
+  // 三项之外不再有任何加减 —— 会员价已含在单价里，运费在 useMemberPoints 里最后单独加上。
+  const orderPayPreview = computed(() => Math.max(round2(cartLocalTotal.value - bestPromo.value), 0));
 
   // 已勾选件数（结算明细展示用）
   const cartSelectedQty = computed(() => (cart.items || [])
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
-  // 实际抵扣掉的金额合计：活动优惠 + 优惠券（会员让利与划线价都已体现在现价里，只作说明不计入）
-  const cartTotalSaved = computed(() =>
-    Number(cart.activityDiscount || 0)
-    + (selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0));
+  // 实际抵扣掉的金额合计：只算生效的那一档（活动优惠 或 优惠券 二者取一，互斥不叠加）
+  const cartTotalSaved = computed(() => bestPromo.value);
 
   // 商品目录基价（非会员售价）映射：管理端/卡片需要「不认会员时的价」时反查目录。
   // 列表分页可能不含该商品 → 缺失时回退 0。
@@ -63,5 +72,6 @@ export function useCartTotals({ cart, usableCoupons, selectedUserCouponId, getPr
   return {
     selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview,
     cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice,
+    couponDiscount, activityDiscount, bestPromo, appliedPromo,
   };
 }

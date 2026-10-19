@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /** 后台创建/编辑秒杀场次。时间字段用前端 datetime-local 的 "yyyy-MM-ddTHH:mm" 即可。 */
 public class FlashSaleRequest {
@@ -52,6 +53,21 @@ public class FlashSaleRequest {
     /** 品牌（可选） */
     @Size(max = 100, message = "品牌最多 100 个字符")
     private String brand;
+
+    /** 商品描述（可选，长文本） */
+    @Size(max = 2000, message = "商品描述最多 2000 个字符")
+    private String description;
+
+    /** SKU 编码（可选，留空由后端自动生成） */
+    @Size(max = 64, message = "SKU 最多 64 个字符")
+    private String sku;
+
+    /** 标签（可选，逗号分隔） */
+    @Size(max = 255, message = "标签最多 255 个字符")
+    private String tags;
+
+    /** 多规格 SKU（仅独立新建生效）：与商品管理新增商品对齐，支持规格项 / 规格价 / 规格图 */
+    private List<FlashSaleSkuDTO> skus;
 
     // ==================== 场次本身 ====================
 
@@ -152,6 +168,30 @@ public class FlashSaleRequest {
         this.brand = brand;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getSku() {
+        return sku;
+    }
+
+    public void setSku(String sku) {
+        this.sku = sku;
+    }
+
+    public String getTags() {
+        return tags;
+    }
+
+    public void setTags(String tags) {
+        this.tags = tags;
+    }
+
     public String getName() {
         return name;
     }
@@ -214,5 +254,67 @@ public class FlashSaleRequest {
 
     public void setSortNo(Integer sortNo) {
         this.sortNo = sortNo;
+    }
+
+    public List<FlashSaleSkuDTO> getSkus() {
+        return skus;
+    }
+
+    public void setSkus(List<FlashSaleSkuDTO> skus) {
+        this.skus = skus;
+    }
+
+    /** 独立新建秒杀商品的多规格 SKU 项（与 ProductSku 对齐） */
+    public static class FlashSaleSkuDTO {
+        /** 规格 JSON，如 {"颜色":"红","尺寸":"M"} */
+        private String specJson;
+        /** SKU 编码（可选） */
+        private String skuCode;
+        /** 规格价（可选，留空跟随商品价） */
+        private BigDecimal price;
+        /** 规格原价（可选） */
+        private BigDecimal originalPrice;
+        /** 规格图（可选） */
+        private String image;
+
+        public String getSpecJson() {
+            return specJson;
+        }
+
+        public void setSpecJson(String specJson) {
+            this.specJson = specJson;
+        }
+
+        public String getSkuCode() {
+            return skuCode;
+        }
+
+        public void setSkuCode(String skuCode) {
+            this.skuCode = skuCode;
+        }
+
+        public BigDecimal getPrice() {
+            return price;
+        }
+
+        public void setPrice(BigDecimal price) {
+            this.price = price;
+        }
+
+        public BigDecimal getOriginalPrice() {
+            return originalPrice;
+        }
+
+        public void setOriginalPrice(BigDecimal originalPrice) {
+            this.originalPrice = originalPrice;
+        }
+
+        public String getImage() {
+            return image;
+        }
+
+        public void setImage(String image) {
+            this.image = image;
+        }
     }
 }

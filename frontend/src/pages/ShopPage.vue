@@ -38,7 +38,7 @@
       </div>
       <div class="hcp-list">
         <button
-          v-for="p in hoverCatItems.slice(0, 16)"
+          v-for="p in hoverCatItems"
           :key="p.id"
           type="button"
           class="hcp-item"
@@ -127,13 +127,14 @@
         v-for="sale in flashSales"
         :key="sale.id"
         class="flash-card"
-        :class="{ upcoming: sale.state !== 'RUNNING' }"
+        :class="{ upcoming: sale.state === 'UPCOMING', ended: sale.state === 'ENDED' }"
         @click="openProductDetail({ id: sale.productId })"
       >
+        <div v-if="sale.state === 'ENDED'" class="flash-ended-mask"><span>已结束</span></div>
         <div class="flash-img">
           <img v-if="sale.productCoverUrl" :src="sale.productCoverUrl" :alt="sale.productName" @error="imgFallback($event, sale.productName)"  loading="lazy" decoding="async"/>
           <span v-else>{{ initials(sale.productName) }}</span>
-          <span class="flash-tag">{{ sale.state === 'RUNNING' ? '抢购中' : '即将开始' }}</span>
+          <span class="flash-tag" :class="{ ended: sale.state === 'ENDED' }">{{ sale.state === 'RUNNING' ? '抢购中' : (sale.state === 'ENDED' ? '已结束' : '即将开始') }}</span>
         </div>
         <div class="flash-body">
           <h4>{{ sale.productName }}</h4>
@@ -172,6 +173,41 @@
       </article>
     </div>
   </div>
+  <!-- ⑤ 运营栏目：4 个频道合并成一个标签区块。
+       原先 4 个频道各占一行（🔥热门/🆕新品/🤖猜你喜欢/👀在看），而全库在售商品只有 30 件、
+       楼层已经把它们全展示过一遍 → 同一批商品在首页被反复排列 4 遍，且每行 8 件配 6 列还会留空洞。
+       现在一次只显示一个标签的一行（横滑，见 .channel-row）→ 空洞在结构上不可能出现，页面也短了三行。 -->
+  <div v-if="activeChannelItems.length" class="home-channels">
+    <div class="channel">
+      <div class="channel-head">
+        <div class="channel-tabs">
+          <button
+            v-for="tab in channelTabs"
+            :key="tab.key"
+            class="channel-tab"
+            :class="{ on: tab.key === activeChannelKey }"
+            @click="activeChannelKey = tab.key"
+          >{{ tab.label }}</button>
+        </div>
+        <!-- 候选池不足两屏时按钮不渲染（如「新品上架」全库只有 5 件，换了也还是这 5 件） -->
+        <button v-if="channelRotatable(activeChannelKey)" class="ghost mini" @click="refreshActiveChannel">换一批</button>
+      </div>
+      <div class="channel-row" v-reveal.stagger>
+        <ProductCard
+          v-for="item in activeChannelItems"
+          :key="item.key"
+          :product="item.product"
+          mode="full"
+          :addable="!isAdmin"
+          :is-admin="isAdmin"
+          :badges="true"
+          :extra="item.extra"
+          @open="openProductDetail(item.product)"
+          @add="addToCart"
+        />
+      </div>
+    </div>
+  </div>
 
   <!-- ③ 价格/排序工具条已于 10-01 移除（视觉太挤、与分类楼层信息重复）；筛选只留页头搜索 + 分类 -->
 
@@ -200,7 +236,7 @@
         <strong>会员专区</strong>
         <span class="muted-note">{{ canMemberPrice ? '你已解锁会员价' : '升级后立即解锁会员价' }} · {{ memberPriceProducts.length }} 件</span>
       </div>
-      <div class="product-grid" v-reveal.stagger>
+      <div class="floor-row" v-reveal.stagger>
         <ProductCard v-for="product in memberPriceProducts" :key="'mp' + product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
       </div>
     </div>
@@ -210,52 +246,23 @@
         <span class="fbar"></span>
         <span class="sk-title sk-shimmer"></span>
       </div>
-      <div class="product-grid"><SkeletonGrid :count="8" /></div>
+      <div class="floor-row"><SkeletonGrid :count="6" /></div>
     </div>
-    <div v-for="floor in floors" :key="floor.id" class="floor">
+    <div v-for="floor in renderedFloors" :key="floor.id" class="floor">
       <div class="fhead">
         <span class="fbar"></span>
         <strong>{{ floor.name }}</strong>
         <span class="muted-note">{{ floor.items.length }} 件在售</span>
         <button class="ghost mini" @click="chooseCategory(floor.id)">查看全部 ›</button>
       </div>
-      <div class="product-grid" v-reveal.stagger>
+      <div class="floor-row" v-reveal.stagger>
         <ProductCard v-for="product in floor.items" :key="product.id" :product="product" mode="full" :addable="!isAdmin" :is-admin="isAdmin" :badges="true" @open="openProductDetail" @add="addToCart" />
       </div>
     </div>
     <p v-if="!homeLoading && !floors.length" class="empty-hint">暂无上架商品</p>
-  </div>
-
-  <!-- ⑤ 运营栏目：4 个频道合并成一个标签区块。
-       原先 4 个频道各占一行（🔥热门/🆕新品/🤖猜你喜欢/👀在看），而全库在售商品只有 30 件、
-       楼层已经把它们全展示过一遍 → 同一批商品在首页被反复排列 4 遍，且每行 8 件配 6 列还会留空洞。
-       现在一次只显示一个标签的一行（横滑，见 .channel-row）→ 空洞在结构上不可能出现，页面也短了三行。 -->
-  <div v-if="activeChannelItems.length" class="home-channels">
-    <div class="channel">
-      <div class="channel-head">
-        <div class="channel-tabs">
-          <button
-            v-for="tab in channelTabs"
-            :key="tab.key"
-            class="channel-tab"
-            :class="{ on: tab.key === activeChannelKey }"
-            @click="activeChannelKey = tab.key"
-          >{{ tab.label }}</button>
-        </div>
-        <!-- 候选池不足两屏时按钮不渲染（如「新品上架」全库只有 5 件，换了也还是这 5 件） -->
-        <button v-if="channelRotatable(activeChannelKey)" class="ghost mini" @click="refreshActiveChannel">换一批</button>
-      </div>
-      <div class="channel-row" v-reveal.stagger>
-        <ProductCard
-          v-for="item in activeChannelItems"
-          :key="item.key"
-          :product="item.product"
-          mode="compact"
-          :badges="!!item.badges"
-          :extra="item.extra"
-          @open="openProductDetail(item.product)"
-        />
-      </div>
+    <!-- 楼层懒加载哨兵：滚到它才补渲染下一批楼层 -->
+    <div v-if="hasMoreFloors" ref="floorSentinel" class="floor-sentinel" aria-hidden="true">
+      向下滚动，加载更多类目
     </div>
   </div>
 
@@ -296,7 +303,7 @@ export default {
   setup() {
     const ctx = inject('appCtx');
     const { api, ref, computed, onMounted, watch, categories, filters, products, loadProducts, openProductDetail, chooseCategory,
-      hotProducts, newProducts, guessProducts, dwellRankProducts, rotateChannel, channelRotatable,
+      hotProducts, newProducts, guessProducts, dwellRankProducts, flashSales, rotateChannel, channelRotatable,
       productsLoading, nextTick } = ctx;
 
     // 本页自建状态（不污染 App.vue）
@@ -559,7 +566,23 @@ export default {
     // 头部搜索 / 分类 / 价格 / 排序这些筛选状态现在统一由 App.vue 与 URL query 双向同步
     // （syncShopQuery / applyShopQueryFromRoute），本页不再自己监听 route.query —— 同一份状态两处管必出分歧。
 
+    // 横滑行（秒杀 .flash-row / 四频道 .channel-row）：鼠标滚轮默认只能滚页面，
+    // 用户反馈「滑不了」——把竖向滚轮翻译成横向滚动，到行两端时放行给页面继续滚。
+    // 用事件委托挂 window：flash-row 是 v-if 渲染，直接绑元素会错过挂载时机。
+    function onRowWheel(e) {
+      const target = e.target;
+      const row = target && target.closest ? target.closest('.flash-row, .channel-row') : null;
+      if (!row || row.scrollWidth <= row.clientWidth + 1) return;
+      const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (!delta) return;
+      const maxLeft = row.scrollWidth - row.clientWidth;
+      if ((delta < 0 && row.scrollLeft <= 0) || (delta > 0 && row.scrollLeft >= maxLeft - 1)) return;
+      e.preventDefault();
+      row.scrollLeft += delta;
+    }
+
     onMounted(() => {
+      window.addEventListener('wheel', onRowWheel, { passive: false });
       loadBanners();
       loadActivities();
       loadAllProducts();
@@ -568,9 +591,11 @@ export default {
     });
 
     onUnmounted(() => {
+      window.removeEventListener('wheel', onRowWheel);
       clearTimer();
       if (settleTimer) { clearTimeout(settleTimer); settleTimer = null; }
       clearCatTimers();
+      if (floorObserver) { floorObserver.disconnect(); floorObserver = null; }
     });
 
     // 按真实分类分组的楼层，只保留有商品的分类
@@ -578,9 +603,44 @@ export default {
       .map((category) => ({
         id: category.id,
         name: category.name,
-        items: allProducts.value.filter((p) => String(p.categoryId) === String(category.id)).slice(0, 8),
+        // 楼层是单行横滑（.floor-row），没有"填满两行"的排版约束 → 不再截 8 件，
+        // 有多少在售就列多少，标签 floor.items.length 才是真的（曾出现类目 13 件、标签写 8 件的口径不一）
+        items: allProducts.value.filter((p) => String(p.categoryId) === String(category.id)),
       }))
       .filter((floor) => floor.items.length));
+
+    // 楼层懒渲染：首屏只渲染前 FLOOR_STEP 个楼层，其余等滚动到哨兵再补。
+    // 数据（allProducts）本来就一次性取好了，这里省的是「12 个楼层 + 93 张卡片」的首屏 DOM 与渲染开销：
+    // 首页从约 11 屏压回 4~5 屏，同时保证滚到底仍能看完全部类目（不做分页、不逼用户点「加载更多」）。
+    const FLOOR_STEP = 4;
+    const visibleFloors = ref(FLOOR_STEP);
+    const renderedFloors = computed(() => (floors.value || []).slice(0, visibleFloors.value));
+    const hasMoreFloors = computed(() => (floors.value || []).length > renderedFloors.value.length);
+    const floorSentinel = ref(null);
+    let floorObserver = null;
+
+    function attachFloorObserver() {
+      if (floorObserver) { floorObserver.disconnect(); floorObserver = null; }
+      if (typeof IntersectionObserver === 'undefined') return;
+      const el = floorSentinel.value;
+      if (!el) return;
+      floorObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          visibleFloors.value += FLOOR_STEP;
+        }
+      }, { rootMargin: '300px 0px' });
+      floorObserver.observe(el);
+    }
+
+    // 数据到位后 hasMoreFloors 才为 true，此时哨兵才刚渲染出来 → 等 nextTick 再挂观察器
+    watch(hasMoreFloors, async (more) => {
+      if (!more) {
+        if (floorObserver) { floorObserver.disconnect(); floorObserver = null; }
+        return;
+      }
+      await nextTick();
+      attachFloorObserver();
+    });
 
     // 品牌列表原用于工具条「品牌」筛选，已于 09-20 移除（product.brand 含产地/系列等非品牌脏值）。
 
@@ -662,25 +722,54 @@ export default {
     // 各频道的数据形状不一致（在看榜是 productId/productName/viewCount/avgSeconds 的统计对象），
     // 在这里统一成 ProductCard 要的 { product, extra, badges }，模板里就不用再分叉。
     const activeChannelItems = computed(() => {
-      const plain = (list, badges) => (list || []).map((p) => ({ key: 'p' + p.id, product: p, badges: !!badges, extra: '' }));
+      // 秒杀独立商品（kind=FLASH）只在「限时秒杀」专区出现，绝不混入这四个运营栏目
+      // （哪怕是已结束的秒杀，也不该作为「热门/新品/猜你/在看」推荐给用户）。
+      //
+      // ⚠️ 两道 UEFI 缺一不可（2026-10-15 修）：光用 flashIds 反查是不够的 ——
+      //    /flash-sales 只返回 RUNNING+UPCOMING，**已结束的场次不在列表里**，
+      //    于是「苹果秒杀」结束后照样出现在「大家都在看」（用户实测到就是这个）。
+      //    product.kind 由后端透出，不受场次状态影响，是唯一可靠的判据。
+      const flashIds = new Set((flashSales.value || []).map((f) => Number(f.productId)));
+      const isFlash = (p) => !!p && (p.kind === 'FLASH' || flashIds.has(Number(p.id)));
+      const plain = (list, badges) => (list || [])
+        .filter((p) => !isFlash(p))
+        .map((p) => ({ key: 'p' + p.id, product: p, badges: !!badges, extra: '' }));
       if (activeChannelKey.value === 'new') return plain(newProducts.value);
       if (activeChannelKey.value === 'guess') return plain(guessProducts.value, true);
       if (activeChannelKey.value === 'dwell') {
-        return (dwellRankProducts.value || []).map((d) => ({
-          key: 'd' + d.productId,
-          product: {
-            id: d.productId,
-            name: d.productName,
-            coverUrl: d.coverUrl,
-            price: d.price,
-            originalPrice: d.originalPrice,
-            memberPrice: d.memberPrice,
-            stock: d.stock,
-            unit: d.unit,
-          },
-          badges: false,
-          extra: `浏览 ${d.viewCount} 次 · 均 ${d.avgSeconds}s`,
-        }));
+        return (dwellRankProducts.value || [])
+          .map((d) => {
+            // 停留榜只回传统计字段（缺 sales/isHot/isNew 等），这里从全量商品里把完整对象补全，
+            // 让「大家都在看」卡片的「已售 N / 角标」和其它栏目口径一致。
+            const full = (allProducts.value || []).find((p) => Number(p.id) === Number(d.productId)) || {};
+            return {
+              key: 'd' + d.productId,
+              product: {
+                id: d.productId,
+                // kind 必须带上：dwell 停留榜接口不返回商品类型，而「是否秒杀商品」只能靠它判断
+                kind: full.kind,
+                name: d.productName || full.name,
+                coverUrl: d.coverUrl || full.coverUrl,
+                price: d.price ?? full.price,
+                originalPrice: d.originalPrice ?? full.originalPrice,
+                memberPrice: d.memberPrice ?? full.memberPrice,
+                sales: full.sales,
+                stock: full.stock ?? d.stock,
+                unit: d.unit || full.unit,
+                isHot: full.isHot,
+                isNew: full.isNew,
+                brand: full.brand,
+                subtitle: full.subtitle,
+                lowStockThreshold: full.lowStockThreshold,
+              },
+              badges: true,
+              // 用户反馈：不要在卡片上显示「浏览 N 次 · 均 Ns」（2026-10-16）
+              extra: '',
+            };
+          })
+          // 秒杀商品出榜：必须补上这层 —— 停留榜是「谁被看得多谁上榜」，
+          // 秒杀商品天然浏览量大，结束后会长久霸占这个位置。
+          .filter((item) => !isFlash(item.product));
       }
       return plain(hotProducts.value);
     });
@@ -708,7 +797,7 @@ export default {
       animateOn,
       trackEl,
       onTrackTransitionEnd,
-      floors,
+      floors, renderedFloors, hasMoreFloors, floorSentinel,
       isFiltering,
       activityText,
       catEmoji,

@@ -10,6 +10,14 @@ public class ReturnRequestResponse {
     private Long id;
     private Long orderId;
     private String orderNo;
+    /** 关联的订单行 id（按商品行维度的售后）；null 表示整单售后 */
+    private Long orderItemId;
+    /** 商品行快照：商品名 / 封面 / 数量 / 单价 / 小计 */
+    private String itemProductName;
+    private String itemCoverUrl;
+    private Integer itemQuantity;
+    private BigDecimal itemUnitPrice;
+    private BigDecimal itemSubtotal;
     private String status;
     private String statusLabel;
     private String type;
@@ -36,6 +44,12 @@ public class ReturnRequestResponse {
         resp.setId(r.getId());
         resp.setOrderId(r.getOrderId());
         resp.setOrderNo(orderNo);
+        resp.setOrderItemId(r.getOrderItemId());
+        resp.setItemProductName(r.getItemProductName());
+        resp.setItemCoverUrl(r.getItemCoverUrl());
+        resp.setItemQuantity(r.getItemQuantity());
+        resp.setItemUnitPrice(r.getItemUnitPrice());
+        resp.setItemSubtotal(r.getItemSubtotal());
         resp.setStatus(r.getStatus());
         resp.setStatusLabel(statusLabel(r.getStatus()));
         resp.setType(r.getType());
@@ -117,6 +131,54 @@ public class ReturnRequestResponse {
 
     public void setOrderNo(String orderNo) {
         this.orderNo = orderNo;
+    }
+
+    public Long getOrderItemId() {
+        return orderItemId;
+    }
+
+    public void setOrderItemId(Long orderItemId) {
+        this.orderItemId = orderItemId;
+    }
+
+    public String getItemProductName() {
+        return itemProductName;
+    }
+
+    public void setItemProductName(String itemProductName) {
+        this.itemProductName = itemProductName;
+    }
+
+    public String getItemCoverUrl() {
+        return itemCoverUrl;
+    }
+
+    public void setItemCoverUrl(String itemCoverUrl) {
+        this.itemCoverUrl = itemCoverUrl;
+    }
+
+    public Integer getItemQuantity() {
+        return itemQuantity;
+    }
+
+    public void setItemQuantity(Integer itemQuantity) {
+        this.itemQuantity = itemQuantity;
+    }
+
+    public BigDecimal getItemUnitPrice() {
+        return itemUnitPrice;
+    }
+
+    public void setItemUnitPrice(BigDecimal itemUnitPrice) {
+        this.itemUnitPrice = itemUnitPrice;
+    }
+
+    public BigDecimal getItemSubtotal() {
+        return itemSubtotal;
+    }
+
+    public void setItemSubtotal(BigDecimal itemSubtotal) {
+        this.itemSubtotal = itemSubtotal;
     }
 
     public String getStatus() {

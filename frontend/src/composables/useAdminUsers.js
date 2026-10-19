@@ -10,7 +10,7 @@
 import { computed } from 'vue';
 
 export function useAdminUsers({ api, run, askConfirm, money, formatRole,
-  adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserJumpPage, loadAdminUsers }) {
+  adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUserJumpPage, loadAdminUsers }) {
   const adminUserTotalPages = computed(() => Math.max(1, Math.ceil((adminUsers.total || 0) / (adminUsers.size || 10))));
 
   async function searchAdminUsers() {
@@ -44,6 +44,7 @@ export function useAdminUsers({ api, run, askConfirm, money, formatRole,
     adminUserKeyword.value = '';
     adminUserRole.value = '';
     adminUserStatus.value = '';
+    adminUserMemberLevel.value = '';
     adminUsers.page = 1;
     loadAdminUsers();
   }
@@ -68,9 +69,23 @@ export function useAdminUsers({ api, run, askConfirm, money, formatRole,
 
   }
 
+  // 新增管理员：建一个角色=ADMIN、状态启用的账号。run 出错会抛，这里吞掉返回 false 让弹窗不关。
+  async function createAdmin(form) {
+    try {
+      await run(() => api.post('/admin/users', {
+        username: form.username.trim(),
+        password: form.password,
+        nickname: (form.nickname || '').trim(),
+      }).then(loadAdminUsers), '管理员已创建');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   return {
     adminUserTotalPages,
     searchAdminUsers, changeAdminUserPage, changeAdminUserPageSize, goAdminUserPage,
-    resetAdminUserSearch, toggleUser,
+    resetAdminUserSearch, toggleUser, createAdmin,
   };
 }

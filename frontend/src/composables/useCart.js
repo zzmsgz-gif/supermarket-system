@@ -22,6 +22,11 @@ export function useCart({
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0));
 
+  // 互斥口径：秒杀行不参与活动、不可用券，券门槛只按「非秒杀部分」小计判定（与后端同口径）。
+  const cartNonFlashTotal = computed(() => (cart.items || [])
+    .filter((item) => item.selected !== false && !item.flashSaleId)
+    .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0));
+
   // 注：这里曾另有一份 cartOriginalSave / cartSelectedQty，但它们既没导出也没被引用，
   // 且 cartOriginalSave 调用的 itemOriginalSave 未 import —— 压缩后就是个随机的 "xxx is not a function"
   // 定时炸弹（与 2026-10-06 详情页加购报错的成因同类）。展示口径统一由 useCartTotals 负责，故删除。
@@ -43,12 +48,13 @@ export function useCart({
       fail(`库存不足：${product.name || '该商品'} 仅剩 ${stock} 件，购物车中已有 ${currentQty} 件`, '库存不足');
       return;
     }
-    // 秒杀品是纯折扣通道：名额用完后彻底不能再加购（连原价都不行），只能去原商品按原价买。
+    // 秒杀品是纯折扣通道：名额用完后彻底不能再加购（连原价都不行）—— 独立秒杀商品没有「原商品」可退，
+    // 普通秒杀（挂在原商品上）加购超出名额也会被后端拒绝，所以这里只说"已达上限"，不再引导"去原商品按原价购买"（那条路走不通，属误导）。
     const flashLeft = getFlashLimitOfProduct(product.id);
     if (flashLeft !== null && currentQty + 1 > flashLeft) {
       const fsName = getFlashSaleOfProduct(product.id)?.name || '该秒杀商品';
       const fsLimit = getFlashSaleOfProduct(product.id)?.perUserLimit || flashLeft;
-      fail(`「${fsName}」每人限购 ${fsLimit} 件，已达上限，请去原商品按原价购买`, '超出限购');
+      fail(`「${fsName}」每人限购 ${fsLimit} 件，已达上限，无法再加购`, '超出限购');
       return;
     }
     // 全场名额抢完（不限购场次 myRemainingQuota 为 null，只能看 remainingQuota）
@@ -118,7 +124,7 @@ export function useCart({
       selectedUserCouponId.value = '';
       return;
     }
-    const amount = cartLocalTotal.value;
+    const amount = cartNonFlashTotal.value;
     usableCoupons.value = await api.get(`/coupons/usable?amount=${amount}`);
     // 当前选中的券若因金额变化而不再满足条件，自动取消；随后在仍满足条件、且用户未显式放弃时补选最优券
     if (selectedUserCouponId.value && !usableCoupons.value.some((coupon) => coupon.id === selectedUserCouponId.value)) {
@@ -134,7 +140,7 @@ export function useCart({
 
   // 还差多少金额可用
   function couponShortfall(coupon) {
-    return Math.max(Number(coupon.thresholdAmount || 0) - cartLocalTotal.value, 0);
+    return Math.max(Number(coupon.thresholdAmount || 0) - cartNonFlashTotal.value, 0);
   }
 
   function autoSelectCoupon() {

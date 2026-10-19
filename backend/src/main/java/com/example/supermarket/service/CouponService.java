@@ -134,10 +134,10 @@ public class CouponService {
     public CouponResponse createCoupon(CouponCreateRequest request) {
         if (request.getStartTime() == null || request.getEndTime() == null
                 || !request.getStartTime().isBefore(request.getEndTime())) {
-            throw new BusinessException(400, "Coupon end time must be after start time");
+            throw new BusinessException(400, "优惠券结束时间必须晚于开始时间");
         }
         if (request.getDiscountAmount().compareTo(request.getThresholdAmount()) > 0) {
-            throw new BusinessException(400, "Discount amount cannot exceed threshold amount");
+            throw new BusinessException(400, "优惠金额不能超过使用门槛");
         }
         Coupon coupon = new Coupon();
         coupon.setName(request.getName().trim());
@@ -159,7 +159,7 @@ public class CouponService {
     public CouponResponse updateCouponStatus(Long id, Integer status) {
         Coupon coupon = getActiveCoupon(id);
         if (status == null || (status != 0 && status != 1)) {
-            throw new BusinessException(400, "Invalid coupon status");
+            throw new BusinessException(400, "无效的优惠券状态");
         }
         coupon.setStatus((byte) status.intValue());
         return CouponResponse.from(couponRepository.save(coupon), false);
@@ -247,6 +247,11 @@ public class CouponService {
         // 所以 receivedByCurrentUser 按 claimType 分别取值，
         // claimedToday 只对每日券为 true（前端据此显示「今日已领，明天再来」）。
         return coupons.stream()
+                // 售罄（已领数量 >= 发放总量，且总量有上限）的券不再展示，避免「显示但领不了」的误导（条目6补强）。
+                .filter(coupon -> {
+                    Integer total = coupon.getTotalCount();
+                    return total == null || total <= 0 || coupon.getReceivedCount() < total;
+                })
                 .map(coupon -> {
                     boolean daily = coupon.getClaimType() != null && coupon.getClaimType() == CLAIM_DAILY;
                     if (!daily) {
@@ -263,10 +268,10 @@ public class CouponService {
         Coupon coupon = getActiveCoupon(couponId);
         LocalDateTime now = LocalDateTime.now();
         if (coupon.getStatus() == null || coupon.getStatus() != ENABLED) {
-            throw new BusinessException(409, "Coupon is not available");
+            throw new BusinessException(409, "优惠券已下架，暂不可领取");
         }
         if (coupon.getStartTime().isAfter(now) || coupon.getEndTime().isBefore(now)) {
-            throw new BusinessException(409, "Coupon is not in its valid period");
+            throw new BusinessException(409, "不在优惠券的领取时间内");
         }
         // 领取限制按 claim_type 分支（2026-10-10）：
         //   0 = 每人限领一次（**改动前的行为**，保持不变）
@@ -278,11 +283,11 @@ public class CouponService {
                 throw new BusinessException(409, "今日已领取，明天再来");
             }
         } else if (userCouponRepository.findByUserIdAndCouponId(userId, couponId).isPresent()) {
-            throw new BusinessException(409, "Coupon already received");
+            throw new BusinessException(409, "该券每人限领一次，你已经领取过了");
         }
         int updated = couponRepository.increaseReceivedCount(couponId);
         if (updated == 0) {
-            throw new BusinessException(409, "Coupon is fully claimed");
+            throw new BusinessException(409, "优惠券已被领完，下次早点来");
         }
         UserCoupon userCoupon = new UserCoupon();
         userCoupon.setCouponId(couponId);
@@ -325,6 +330,24 @@ public class CouponService {
                 .toList();
     }
 
+    /**
+     * 预览用券可减金额（不消耗）：券不存在 / 已使用 / 不在领取期 / 未达门槛 均返回 ZERO。
+     * 互斥口径（活动 vs 券二选一）下，先算「若用券能减多少」，再与活动减免比较取较大者；
+     * 仅当券减免大于活动减免时才真正核销（consumeForOrder），否则券原样保留给用户、不浪费。
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal previewDiscount(Long userId, Long userCouponId, BigDecimal orderTotal) {
+        if (userCouponId == null || orderTotal == null) return BigDecimal.ZERO;
+        UserCoupon userCoupon = userCouponRepository.findByIdAndUserId(userCouponId, userId).orElse(null);
+        if (userCoupon == null || !UNUSED.equals(userCoupon.getStatus())) return BigDecimal.ZERO;
+        Coupon coupon = couponRepository.findById(userCoupon.getCouponId()).orElse(null);
+        if (coupon == null) return BigDecimal.ZERO;
+        LocalDateTime now = LocalDateTime.now();
+        if (coupon.getStartTime().isAfter(now) || coupon.getEndTime().isBefore(now)) return BigDecimal.ZERO;
+        if (coupon.getThresholdAmount().compareTo(orderTotal) > 0) return BigDecimal.ZERO;
+        return coupon.getDiscountAmount() != null ? coupon.getDiscountAmount() : BigDecimal.ZERO;
+    }
+
     /** 核销结果：券名快照 + 实际抵扣金额（券名要落到订单上，订单详情才能说清用了哪张券） */
     public record CouponUsage(String couponName, BigDecimal discountAmount) {
     }
@@ -336,13 +359,13 @@ public class CouponService {
         Coupon coupon = getActiveCoupon(userCoupon.getCouponId());
         LocalDateTime now = LocalDateTime.now();
         if (!UNUSED.equals(userCoupon.getStatus())) {
-            throw new BusinessException(409, "Coupon is already used or expired");
+            throw new BusinessException(409, "优惠券已使用或已过期");
         }
         if (coupon.getStartTime().isAfter(now) || coupon.getEndTime().isBefore(now)) {
-            throw new BusinessException(409, "Coupon is not in its valid period");
+            throw new BusinessException(409, "不在优惠券的领取时间内");
         }
         if (coupon.getThresholdAmount().compareTo(orderTotal) > 0) {
-            throw new BusinessException(409, "Order total does not reach the coupon threshold");
+            throw new BusinessException(409, "订单金额未达到该优惠券的使用门槛");
         }
         userCoupon.setStatus(USED);
         userCoupon.setOrderId(orderId);

@@ -2,7 +2,7 @@
 // 优惠券卡片：支持两种形态
 //  - mode="claim" 可领取列表（字段 name / receivedByCurrentUser / receivedCount / totalCount）
 //  - mode="mine"  我的优惠券（字段 couponName / usable / unusableReason）
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { money, formatDate } from '../utils/format.js';
 
 const props = defineProps({
@@ -11,6 +11,20 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['receive']);
+
+// 领取中禁用按钮：连点两次会并发打同一个接口，服务层检查竞态放行后
+// 仍可能撞数据库唯一键（2026-10-12 用户反馈过 "Data conflict"）。
+// 本地先拦一道，比什么都靠谱。
+const claiming = ref(false);
+async function onClaim() {
+  if (claiming.value || props.coupon.receivedByCurrentUser) return;
+  claiming.value = true;
+  try {
+    await emit('receive', props.coupon.id);
+  } finally {
+    claiming.value = false;
+  }
+}
 
 const name = computed(() => props.coupon.name || props.coupon.couponName || '优惠券');
 const endTimeLabel = computed(() => formatDate(props.coupon.endTime));
@@ -76,10 +90,10 @@ const isClaim = computed(() => props.mode === 'claim');
     </div>
     <button
       class="coupon-action"
-      :disabled="coupon.receivedByCurrentUser"
-      @click="emit('receive', coupon.id)"
+      :disabled="coupon.receivedByCurrentUser || claiming"
+      @click="onClaim"
     >
-      {{ claimLabel }}
+      {{ claiming ? '领取中…' : claimLabel }}
     </button>
   </div>
 

@@ -2,6 +2,7 @@ package com.example.supermarket.controller;
 
 import com.example.supermarket.common.ApiResponse;
 import com.example.supermarket.common.PageResponse;
+import com.example.supermarket.dto.AdminUserCreateRequest;
 import com.example.supermarket.dto.AdminUserResponse;
 import com.example.supermarket.dto.AdminUserUpdateRequest;
 import com.example.supermarket.dto.UserRoleRequest;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,9 +42,15 @@ public class AdminUserController {
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) Byte status
+            @RequestParam(required = false) Byte status,
+            @RequestParam(required = false) Integer memberLevel
     ) {
-        return ApiResponse.ok(adminUserService.listUsers(page, size, keyword, role, status));
+        return ApiResponse.ok(adminUserService.listUsers(page, size, keyword, role, status, memberLevel));
+    }
+
+    @PostMapping
+    public ApiResponse<AdminUserResponse> createAdmin(@Valid @RequestBody AdminUserCreateRequest request) {
+        return ApiResponse.ok(adminUserService.createAdmin(request));
     }
 
     @GetMapping("/{id}")

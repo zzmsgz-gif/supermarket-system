@@ -30,11 +30,12 @@ export function useQuickBuy({
     const qty = Number(detailQuantity.value || 1);
     if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法加入购物车`); return; }
     if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
-    // 秒杀品是纯折扣通道：名额用完后彻底不能加购（连原价都不行），只能去原商品按原价买。
+    // 秒杀品是纯折扣通道：名额用完后彻底不能加购（连原价都不行）—— 独立秒杀商品没有「原商品」可退，
+    // 普通秒杀（挂在原商品上）加购超出名额也会被后端拒绝，所以这里只说"已达上限"，不再引导"去原商品按原价购买"（那条路走不通，属误导）。
     const sale = getFlashSaleOfProduct(productDetail.data?.id);
     const left = getFlashLimitOfProduct(productDetail.data?.id);
     if (sale && left !== null && qty > left) {
-      fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
+      fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，无法再加购`, '超出限购');
       return;
     }
     // 全场名额抢完也要拦（不限购场次 left 为 null，只能看 remainingQuota）
@@ -127,11 +128,12 @@ export function useQuickBuy({
     const qty = Number(detailQuantity.value || 1);
     if (stock <= 0) { fail(`${productDetail.data?.name || '该商品'} 已售罄，暂时无法购买`); return; }
     if (qty > stock) { fail(`库存不足：仅剩 ${stock} 件，您选择了 ${qty} 件`, '库存不足'); return; }
-    // 秒杀品是纯折扣通道：名额用完后彻底不能下单（连原价都不行），只能去原商品按原价买。
+    // 秒杀品是纯折扣通道：名额用完后彻底不能下单（连原价都不行）—— 独立秒杀商品没有「原商品」可退，
+    // 普通秒杀（挂在原商品上）下单超出名额也会被后端拒绝，所以这里只说"已达上限"，不再引导"去原商品按原价购买"（那条路走不通，属误导）。
     const sale = getFlashSaleOfProduct(productDetail.data?.id);
     const left = getFlashLimitOfProduct(productDetail.data?.id);
     if (sale && left !== null && qty > left) {
-      fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，请去原商品按原价购买`, '超出限购');
+      fail(`「${sale.name || '该秒杀商品'}」每人限购 ${sale.perUserLimit || left} 件，已达上限，无法再加购`, '超出限购');
       return;
     }
     if (sale && sale.remainingQuota !== null && sale.remainingQuota !== undefined

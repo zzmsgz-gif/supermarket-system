@@ -264,6 +264,7 @@ CREATE TABLE order_item (
     product_price DECIMAL(10, 2) NOT NULL COMMENT 'Price snapshot',
     original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '下单时划线价快照，仅用于展示已省金额',
     flash_sale_id BIGINT DEFAULT NULL COMMENT '命中的秒杀场次 id（取消/超时/退款时回退名额用）',
+    member_source VARCHAR(10) DEFAULT NULL COMMENT '会员让利来源快照: member=商品会员价 tier=等级折扣 NULL=无(含秒杀成交)',
     quantity INT NOT NULL COMMENT 'Purchased quantity',
     subtotal_amount DECIMAL(10, 2) NOT NULL COMMENT 'Item subtotal',
     PRIMARY KEY (id),
@@ -411,7 +412,10 @@ CREATE TABLE user_coupon (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_user_coupon_user_coupon (user_id, coupon_id),
+    -- 2026-10-12：原为 (user_id, coupon_id)，与每日可领券（claim_type=1，当天 0 点重置）冲突：
+    -- 次日再领时 INSERT 撞唯一键报 "Data conflict"。改为「同一天」唯一 —— 同日重复提交仍拦，跨天可再领。
+    -- 每人限领一次券（claim_type=0）由服务层 findByUserIdAndCouponId 拦截，不依赖此键。
+    UNIQUE KEY uk_user_coupon_user_coupon_day (user_id, coupon_id, (DATE(received_at))),
     KEY idx_user_coupon_user_status (user_id, status),
     CONSTRAINT fk_user_coupon_coupon FOREIGN KEY (coupon_id) REFERENCES coupon (id),
     CONSTRAINT fk_user_coupon_user FOREIGN KEY (user_id) REFERENCES sys_user (id),
@@ -748,3 +752,14 @@ CREATE TABLE member_day (
     UNIQUE KEY uk_member_day_date (member_date),
     KEY idx_member_day_enabled (enabled, member_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='会员日（指定日期消费积分翻倍）';
+
+-- 通用 K/V 系统配置表：首页节日氛围开关 festive_theme（daily/midautumn/none）等后台可配项。
+-- 设计上「按 key 读写」比「按 id」自然，配置项极少，故用 config_key 作主键。
+CREATE TABLE system_config (
+    config_key  VARCHAR(60)  NOT NULL COMMENT '配置项 key（主键）',
+    config_value VARCHAR(512) NULL     COMMENT '配置值',
+    description  VARCHAR(255) NULL     COMMENT '描述/说明',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (config_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通用系统配置（K/V）';

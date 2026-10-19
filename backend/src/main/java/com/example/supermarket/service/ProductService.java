@@ -114,20 +114,25 @@ public class ProductService {
         return detail;
     }
 
+    // 首页「热门推荐」：排除秒杀独立商品（kind=FLASH）。
+    // 2026-10-15 修：原先查 findByStatusAndDeletedAndIsHot，没有任何 kind 条件 —— 秒杀品一旦被标 hot
+    // 就出现在首页热门推荐里；而秒杀结束后前端那层 flashIds 兜底也会失效（/flash-sales 只返回
+    // RUNNING+UPCOMING），结果就是「已结束的秒杀商品长期占着首页推荐位」。
     @Cacheable(cacheNames = "hotProducts")
     @Transactional(readOnly = true)
     public List<ProductSummaryResponse> listHot(int limit) {
-        return productRepository.findByStatusAndDeletedAndIsHot(
-                        ON_SALE, NOT_DELETED, (byte) 1,
+        return productRepository.findHotExcludeFlash(
+                        ON_SALE, NOT_DELETED, (byte) 1, Product.KIND_NORMAL,
                         PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "sales")))
                 .stream().map(ProductSummaryResponse::from).toList();
     }
 
+    // 首页「新品上架」：同上，排除 kind=FLASH。
     @Cacheable(cacheNames = "newProducts")
     @Transactional(readOnly = true)
     public List<ProductSummaryResponse> listNew(int limit) {
-        return productRepository.findByStatusAndDeletedAndIsNew(
-                        ON_SALE, NOT_DELETED, (byte) 1,
+        return productRepository.findNewExcludeFlash(
+                        ON_SALE, NOT_DELETED, (byte) 1, Product.KIND_NORMAL,
                         PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt")))
                 .stream().map(ProductSummaryResponse::from).toList();
     }
@@ -170,7 +175,7 @@ public class ProductService {
                         tagWeight.merge(t, 1, Integer::sum);
                     }
                 }
-                List<Product> candidates = productRepository.findByStatusAndDeletedAndKind(
+                List<Product> candidates = productRepository.findNormalGoods(
                         ON_SALE, NOT_DELETED, Product.KIND_NORMAL,
                         PageRequest.of(0, 200, Sort.by(Sort.Direction.DESC, "sales")));
                 List<Product> scored = candidates.stream()
@@ -188,10 +193,12 @@ public class ProductService {
         }
         // 兜底：热门 + 新品
         List<Product> fallback = new ArrayList<>();
-        fallback.addAll(productRepository.findByStatusAndDeletedAndIsHot(
-                ON_SALE, NOT_DELETED, (byte) 1, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "sales"))));
-        fallback.addAll(productRepository.findByStatusAndDeletedAndIsNew(
-                ON_SALE, NOT_DELETED, (byte) 1, PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))));
+        fallback.addAll(productRepository.findHotExcludeFlash(
+                ON_SALE, NOT_DELETED, (byte) 1, Product.KIND_NORMAL,
+                PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "sales"))));
+        fallback.addAll(productRepository.findNewExcludeFlash(
+                ON_SALE, NOT_DELETED, (byte) 1, Product.KIND_NORMAL,
+                PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"))));
         LinkedHashMap<Long, Product> dedup = new LinkedHashMap<>();
         for (Product p : fallback) {
             dedup.putIfAbsent(p.getId(), p);

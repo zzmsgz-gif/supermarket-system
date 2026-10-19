@@ -21,12 +21,25 @@
       <div v-for="r in rows" :key="r.id" class="rp-row">
         <div class="rpr-head">
           <span :class="['tag', statusCls(r.status)]">{{ r.statusLabel }}</span>
-          <strong>退款 ¥{{ money(r.refundAmount) }}</strong>
+          <strong>退款 {{ money(r.refundAmount) }}</strong>
           <small v-if="r.freightBorneBy" class="rpr-freight">{{ r.freightLabel }}</small>
         </div>
 
         <!-- 下一步提示：直接算好给用户看，不让他猜 -->
         <p class="rpr-next">{{ r.nextStep }}</p>
+
+        <!-- 商品行信息（2026-10-15 按商品行并行售后）：逐行售后单带商品快照；整单售后没有则隐藏 -->
+        <div v-if="r.itemProductName" class="rpr-item">
+          <img v-if="r.itemCoverUrl" :src="r.itemCoverUrl" class="rpr-item-img" alt="商品图片" loading="lazy" decoding="async" />
+          <div class="rpr-item-info">
+            <div class="rpr-item-name">{{ r.itemProductName }}</div>
+            <div class="rpr-item-meta">
+              <span>{{ money(r.itemUnitPrice) }}</span>
+              <span>× {{ r.itemQuantity }}</span>
+              <span class="subtotal">{{ money(r.itemSubtotal) }}</span>
+            </div>
+          </div>
+        </div>
 
         <div class="rpr-meta">
           <span v-if="r.orderNo" class="rpr-order" @click="goOrder(r.orderId)">订单 {{ r.orderNo }}</span>
@@ -56,9 +69,10 @@
           <small>{{ formatDate(r.shippedBackAt) }}</small>
         </div>
 
-        <!-- 驳回：给申诉出口 -->
+        <!-- 驳回：给申诉出口 + 重新申请（驳回不是终态，可修正后再次发起） -->
         <div v-if="r.status === 'REJECTED'" class="rp-reject">
           <button class="ghost sm" type="button" @click="contactSupport">联系客服申诉</button>
+          <button class="primary sm" type="button" @click="goOrder(r.orderId)">重新申请售后</button>
         </div>
       </div>
 

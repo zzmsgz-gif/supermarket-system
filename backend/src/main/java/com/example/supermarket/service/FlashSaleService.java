@@ -250,6 +250,8 @@ public class FlashSaleService {
         Product savedFlash = productRepository.saveAndFlush(flashProduct);
         if (source != null) {
             cloneFlashSkus(source.getId(), savedFlash.getId());
+        } else if (request.getSkus() != null && !request.getSkus().isEmpty()) {
+            createStandaloneSkus(savedFlash.getId(), request.getSkus());
         }
 
         FlashSale sale = new FlashSale();
@@ -402,6 +404,18 @@ public class FlashSaleService {
         }
     }
 
+    /** 回退某订单「某一行」占用的秒杀名额（按商品行退款时调用，只退这一行的名额，不影响其它行） */
+    @Transactional
+    public void releaseQuotaForOrderItem(Long orderId, Long orderItemId) {
+        OrderItem item = orderItemRepository.findById(orderItemId).orElse(null);
+        if (item == null || item.getOrderId() == null || !item.getOrderId().equals(orderId)) {
+            return;
+        }
+        if (item.getFlashSaleId() != null && item.getQuantity() != null) {
+            flashSaleRepository.releaseQuota(item.getFlashSaleId(), item.getQuantity());
+        }
+    }
+
     // ==================== 内部 ====================
 
     private Map<Long, Product> productsOf(Collection<Long> productIds) {
@@ -509,9 +523,12 @@ public class FlashSaleService {
                         ? request.getName().trim() : "限时秒杀商品");
         Product p = new Product();
         p.setCategoryId(request.getCategoryId());
-        p.setSku("FS-" + (System.nanoTime() % 100000000L));
+        // SKU：表单填了就用表单值（管理员可控），没填再自动生成，避免每件都塞无意义机器码
+        p.setSku(request.getSku() != null && !request.getSku().isBlank()
+                ? request.getSku().trim() : "FS-" + (System.nanoTime() % 100000000L));
         p.setName(productName);
         p.setSubtitle(request.getSubtitle());
+        p.setDescription(request.getDescription());
         p.setCoverUrl(request.getCoverUrl());
         p.setPrice(request.getPrice());
         p.setOriginalPrice(request.getOriginalPrice());
@@ -520,6 +537,7 @@ public class FlashSaleService {
         p.setUnit(request.getUnit() == null || request.getUnit().isBlank() ? "件" : request.getUnit().trim());
         p.setStatus(ON_SALE);
         p.setBrand(request.getBrand());
+        p.setTags(request.getTags());
         p.setLowStockThreshold(0);
         p.setSales(0);
         p.setIsHot((byte) 0);
@@ -541,6 +559,24 @@ public class FlashSaleService {
             t.setOriginalPrice(s.getOriginalPrice());
             t.setImage(s.getImage());
             t.setSortNo(s.getSortNo());
+            t.setDeleted(NOT_DELETED);
+            skuRepository.save(t);
+        }
+    }
+
+    /** 独立新建秒杀商品时，把表单里的多规格 SKU 落库（与商品管理新增商品对齐）。 */
+    private void createStandaloneSkus(Long productId, List<FlashSaleRequest.FlashSaleSkuDTO> skus) {
+        int i = 0;
+        for (FlashSaleRequest.FlashSaleSkuDTO s : skus) {
+            if (s == null) continue;
+            ProductSku t = new ProductSku();
+            t.setProductId(productId);
+            t.setSpecJson(s.getSpecJson());
+            t.setSkuCode(s.getSkuCode());
+            t.setPrice(s.getPrice());
+            t.setOriginalPrice(s.getOriginalPrice());
+            t.setImage(s.getImage());
+            t.setSortNo(i++);
             t.setDeleted(NOT_DELETED);
             skuRepository.save(t);
         }

@@ -27,13 +27,29 @@ public class WalletTransactionResponse {
     private Integer direction;
     /** 展示用文案，如「订单支付」「退款到账」「账户充值」 */
     private String typeLabel;
+    /**
+     * 支付方式标签（2026-10-13 用户要求「金额明细得标注哪种支付方式」）：
+     * 订单支付按 payment_record.channel 映射（微信支付/支付宝/余额支付），
+     * 充值/退款这类不经过支付渠道的流水由 type 推（余额充值/退款至余额）。
+     * 由后端算好下发，前端不自己猜渠道。
+     */
+    private String channelLabel;
+    /**
+     * 是否外部渠道流水（微信/支付宝）：这类支付不扣余额、退款原路返回，
+     * **不计入**金额明细的累计收支（只作记录展示）。前端据此打「不计入」标。
+     */
+    private Boolean external;
     private LocalDateTime createdAt;
 
     public static WalletTransactionResponse from(WalletTransaction transaction) {
-        return from(transaction, null);
+        return from(transaction, null, null);
     }
 
     public static WalletTransactionResponse from(WalletTransaction transaction, String orderNo) {
+        return from(transaction, orderNo, null);
+    }
+
+    public static WalletTransactionResponse from(WalletTransaction transaction, String orderNo, String channel) {
         WalletTransactionResponse response = new WalletTransactionResponse();
         response.setId(transaction.getId());
         response.setTransactionNo(transaction.getTransactionNo());
@@ -49,7 +65,30 @@ public class WalletTransactionResponse {
         response.setOrderNo(orderNo);
         response.setDirection(directionOf(transaction.getType()));
         response.setTypeLabel(labelOf(transaction.getType()));
+        response.setChannelLabel(channelLabelOf(transaction.getType(), channel));
+        response.setExternal(isExternalChannel(channel));
         return response;
+    }
+
+    /** 渠道码 → 中文标签。未知/缺失按类型推合理默认，不显示 null。
+     *
+     * <p>2026-10-14 记账口径修正：退款按**原渠道**标注 —— 外部渠道(微信/支付宝)退款
+     * 显示「已退回微信 / 已退回支付宝」且不进累计收支；余额退款才显示「退款至余额」。 */
+    public static String channelLabelOf(String type, String channel) {
+        boolean refund = "REFUND".equals(type);
+        if ("WECHAT".equals(channel)) return refund ? "已退回微信" : "微信支付";
+        if ("ALIPAY".equals(channel)) return refund ? "已退回支付宝" : "支付宝";
+        if ("BALANCE".equals(channel)) return refund ? "退款至余额" : "余额支付";
+        if ("RECHARGE".equals(type)) return "余额充值";
+        if (refund) return "退款至余额";
+        // PAYMENT 但没有渠道记录（极早期订单）——按余额支付兜底：
+        // 那批订单本来就是走钱包扣款的，标错比留空好。
+        return "PAYMENT".equals(type) ? "余额支付" : "";
+    }
+
+    /** 外部渠道（不走钱包余额的模拟支付）：其支付/退款都只作记录，不计入累计收支。 */
+    public static boolean isExternalChannel(String channel) {
+        return "WECHAT".equals(channel) || "ALIPAY".equals(channel);
     }
 
     /**
@@ -97,6 +136,22 @@ public class WalletTransactionResponse {
 
     public void setTypeLabel(String typeLabel) {
         this.typeLabel = typeLabel;
+    }
+
+    public String getChannelLabel() {
+        return channelLabel;
+    }
+
+    public void setChannelLabel(String channelLabel) {
+        this.channelLabel = channelLabel;
+    }
+
+    public Boolean getExternal() {
+        return external;
+    }
+
+    public void setExternal(Boolean external) {
+        this.external = external;
     }
 
     public Long getId() {

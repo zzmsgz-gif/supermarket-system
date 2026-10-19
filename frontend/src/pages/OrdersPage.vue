@@ -1,5 +1,15 @@
 <template>
 <section class="data-panel">
+        <div class="order-tabs">
+          <button
+            v-for="t in statusTabs"
+            :key="t.key"
+            type="button"
+            class="order-tab"
+            :class="{ on: orders.statusFilter === t.key }"
+            @click="selectOrderTab(t.key)"
+          >{{ t.label }}</button>
+        </div>
         <empty-state
           v-if="!orders.items?.length"
           icon="receipt"
@@ -50,24 +60,19 @@
                  订单详情里同样有入口，两条路都不会让人进入「退出后就找不到付款页」的死角。 -->
             <button v-if="order.status === 'PENDING_PAYMENT'" @click="navigate('pay', { id: order.id })">去付款</button>
             <button v-if="order.status === 'SHIPPED'" @click="confirmReceipt(order.id)">确认收货</button>
-            <!-- 售后入口：仅「已收货(COMPLETED)」可申请。
-                 原先 PAID/SHIPPED 都能申请，与常理相反 —— 货还没发就能退单，
-                 而真收到货有问题反而没处申诉。条件与后端 applyRefund 一致（2026-10-07 改）。
-                 未发货想退用「取消订单」，那条路径不受影响。 -->
+            <!-- 2026-10-15 按商品行并行售后：整单「申请退款/售后」按钮跳订单详情
+                 （详情页才有逐商品行入口，同一订单不同商品可各自并行发起售后）。
+                 2026-10-16 带 intent=refund：落地详情页后自动展开退款表单并定位，
+                 不再让用户「列表点一次 → 详情页滚到底再点一次」。 -->
             <button
-              v-if="order.status === 'COMPLETED' && order.refundStatus !== 'APPLYING' && order.refundStatus !== 'APPROVED'"
+              v-if="(order.status === 'PAID' || order.status === 'SHIPPED' || order.status === 'COMPLETED') && (order.refundStatus === 'NONE' || order.refundStatus === 'REJECTED')"
               class="ghost"
-              @click="openRefundForm(order.id)"
-            >申请售后</button>
+              @click="openOrderDetail(order, { intent: 'refund' })"
+            >{{ order.status === 'COMPLETED' ? '申请售后' : '申请退款' }}</button>
             <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
             <button v-if="order.status === 'COMPLETED' && canReview(order)" class="ghost" @click="openReviewForm(order)">评价</button>
             <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->
             <button v-if="order.status !== 'PENDING_PAYMENT'" class="ghost" @click="reorder(order)">再来一单</button>
-          </div>
-          <div v-if="refundForm.orderId === order.id" class="row-extra">
-            <input v-model="refundForm.reason" placeholder="请填写退款原因" />
-            <button @click="submitRefund(order.id)">提交申请</button>
-            <button class="ghost" @click="refundForm.orderId = null">取消</button>
           </div>
           <div v-if="reviewForm.orderId === order.id" class="row-extra review-grid">
             <!-- 一笔订单含多个商品：每个未评价的商品各一个独立评价表单（评分/内容/图片互不影响） -->
@@ -113,9 +118,26 @@ export default {
       appCtx.loadOrdersPage(page);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
+    // 条目12：订单状态筛选 tab。后端 /orders 已支持 status 参数；
+    // 售后（AFTER_SALE）是虚拟分类 —— 后端按 refundStatus != NONE 命中，
+    // 这类订单的 order.status 可能是 PAID/SHIPPED/COMPLETED，无法用单一值表达。
+    const statusTabs = [
+      { key: '', label: '全部' },
+      { key: 'PENDING_PAYMENT', label: '待付款' },
+      { key: 'PAID', label: '待发货' },
+      { key: 'SHIPPED', label: '待收货' },
+      { key: 'COMPLETED', label: '已完成' },
+      { key: 'AFTER_SALE', label: '售后' },
+    ];
+    function selectOrderTab(key) {
+      if (appCtx.orders.statusFilter === key) return;
+      appCtx.orders.statusFilter = key;
+      appCtx.loadOrders(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     // 订单里还有「未评价」的商品时才显示「评价」按钮（已全评完的订单不再显示）
     const canReview = (order) => (order.items || []).some((it) => !appCtx.reviewedItemMap[it.id]);
-    return { ...appCtx, orderSavedTotal, onOrderPage, canReview };
+    return { ...appCtx, orderSavedTotal, onOrderPage, canReview, statusTabs, selectOrderTab };
   }
 };
 </script>

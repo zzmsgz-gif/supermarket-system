@@ -120,6 +120,15 @@ public class AdminReviewService {
         return toResponse(saved);
     }
 
+    /** 物理删除评价（管理员删除违规/不实评价）。
+     *  ⚠️ 与「隐藏」不同：隐藏保留评价、订单仍算已评价；删除会彻底移除，
+     *  原评价用户可对同一订单项重新评价。仅在管理员确认删除时使用。 */
+    @Transactional
+    public void delete(Long id) {
+        ProductReview review = getReview(id);
+        reviewRepository.delete(review);
+    }
+
     private ProductReview getReview(Long id) {
         return reviewRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Review not found"));

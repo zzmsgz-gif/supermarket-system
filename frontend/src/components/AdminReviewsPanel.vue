@@ -16,21 +16,33 @@ const props = defineProps({
   // 评价数据与加载动作来自 useAdminReviews（父级装配），不在 adminCtx 里
   adminReviews: { type: Object, required: true },
   adminReviewSummary: { type: Object, required: true },
-  adminReviewRating: { type: Object, required: true },
-  adminReviewReplied: { type: Object, required: true },
-  adminReviewKeyword: { type: Object, required: true },
   loadAdminReviews: { type: Function, required: true },
   loadAdminReviewUnreplied: { type: Function, required: true },
   searchAdminReviews: { type: Function, required: true },
   changeAdminReviewPage: { type: Function, required: true },
+  goAdminReviewPage: { type: Function, required: true },
   saveReviewReply: { type: Function, required: true },
   toggleReviewHidden: { type: Function, required: true },
+  deleteReview: { type: Function, required: true },
   adminReviewTotalPages: { type: Number, required: true },
   // 回复草稿（按评价 id 存）也来自 useAdminReviews
   reviewReplyDraft: { type: Object, required: true },
 });
-const { adminReviews, adminReviewSummary, adminReviewRating, adminReviewReplied, adminReviewKeyword, loadAdminReviews, loadAdminReviewUnreplied, reviewReplyDraft } = toRefs(props);
-const { searchAdminReviews, changeAdminReviewPage, saveReviewReply, toggleReviewHidden, adminReviewTotalPages } = props;
+// ⚠️ 三个筛选控件必须走 defineModel（原生 select/input 的 v-model 写只读 prop 会
+//    **静默失败**：选了星级/状态、输入关键词都回不到父组件，searchAdminReviews 永远拿空值，
+//    表现为「筛选像没实现」。2026-10-13 生产事故：用户报「全部星级/全部状态/搜索没实现」。
+//    与 AdminOrdersPanel 的 adminOrderKeyword 同一修法（见该文件 28-38 行注释）。
+const adminReviewRating = defineModel('adminReviewRating', { type: String, required: true });
+const adminReviewReplied = defineModel('adminReviewReplied', { type: String, required: true });
+const adminReviewKeyword = defineModel('adminReviewKeyword', { type: String, required: true });
+// 跳页输入框的值：AdminPager 没传 jumpPage 就不渲染「跳至 N 页」模块（简版 vs 完整版的开关）
+const adminReviewJumpPage = defineModel('adminReviewJumpPage', { type: Number, required: true });
+// ⚠️ adminReviewTotalPages 必须走 toRefs(props)：裸解构 props 拿到的是**一次性快照**，
+//    父组件数据加载后 total 从 0 变 1612，面板里这个值还停在 1 →
+//    AdminPager 的 v-if="totalPages > 1" 永远 false，翻页器不渲染（2026-10-13 生产事故）。
+//    函数类 prop（search/change/save…）不会变，留裸解构无妨。
+const { adminReviews, adminReviewSummary, loadAdminReviews, loadAdminReviewUnreplied, reviewReplyDraft, adminReviewTotalPages } = toRefs(props);
+const { searchAdminReviews, changeAdminReviewPage, goAdminReviewPage, saveReviewReply, toggleReviewHidden, deleteReview } = props;
 </script>
 
 <template>
@@ -102,10 +114,11 @@ const { searchAdminReviews, changeAdminReviewPage, saveReviewReply, toggleReview
           <button @click="saveReviewReply(r)">{{ r.replyContent ? '更新回复' : '回复' }}</button>
           <button v-if="r.replyContent" class="ghost" @click="reviewReplyDraft[r.id] = ''; saveReviewReply(r)">撤回</button>
           <button class="ghost" @click="toggleReviewHidden(r)">{{ r.hidden ? '恢复展示' : '隐藏' }}</button>
+          <button class="ghost danger" @click="deleteReview(r)">删除</button>
         </div>
       </div>
     </div>
 
-    <AdminPager :page="adminReviews.page" :total-pages="adminReviewTotalPages" @change="changeAdminReviewPage" />
+    <AdminPager :page="adminReviews.page" :total-pages="adminReviewTotalPages" v-model:jump-page="adminReviewJumpPage" @change="changeAdminReviewPage" @jump="goAdminReviewPage" />
   </div>
 </template>

@@ -28,7 +28,7 @@
            标了 * 却不校验，等于骗用户 —— 见 validate() 里的对应规则。 -->
       <label class="pf-row">
         <span><i class="req">*</i>昵称</span>
-        <input v-model.trim="form.nickname" maxlength="40" placeholder="给自己起个名字" />
+        <input v-model.trim="form.nickname" maxlength="12" placeholder="给自己起个名字（中文 ≤6 字 / 英文 ≤12 字母）" />
       </label>
 
       <label class="pf-row">
@@ -113,6 +113,7 @@
 <script>
 import { inject, ref, reactive, computed, onMounted, watch } from 'vue';
 import { checkPhone, checkEmail } from '../utils/validate.js';
+import { nicknameColumns, NICKNAME_MAX_COLUMNS, NICKNAME_TOO_WIDE } from '../utils/format.js';
 import { api } from '../api/client';
 
 /**
@@ -294,6 +295,8 @@ export default {
      */
     function validate() {
       if (!form.nickname || !form.nickname.trim()) return '请填写昵称';
+      // 按视觉宽度限制（与后端 TextWidth 同一套）：中文 6 字 = 英文 12 字母 = 12 列
+      if (nicknameColumns(form.nickname.trim()) > NICKNAME_MAX_COLUMNS) return NICKNAME_TOO_WIDE;
       // 手机号规则统一取 utils/validate.js（和地址页、注册、后端 @Pattern 同一条）
       const phoneErr = checkPhone(form.phone);
       if (phoneErr) return phoneErr;

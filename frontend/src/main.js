@@ -12,11 +12,12 @@ import Pager from './components/Pager.vue';
 import SkeletonGrid from './components/SkeletonGrid.vue';
 import FestiveDecor from './components/FestiveDecor.vue';
 import { reveal } from './directives/reveal';
-import { applyFestiveTheme } from './festive';
+import { applyFestiveTheme, fetchFestiveTheme } from './festive';
 import './styles.css';
 
-// 节日氛围：给 <html> 打 data-festive 标记（换/撤节日只改 ./festive.js 里那个常量）
+// 节日氛围：先按默认 daily 打标记（避免刷新瞬间闪一下写死态），再异步从后台拉取实际配置覆盖
 applyFestiveTheme();
+fetchFestiveTheme();
 
 const app = createApp(App);
 app.use(pinia);

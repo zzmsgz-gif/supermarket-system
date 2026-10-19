@@ -6,7 +6,7 @@
       <!-- 左上角标横排：原先 省X/热/新/会员 四个都 absolute 在 top:8/left:8 同一坐标，
            同现时互相叠盖只露出最后一张；包进 badge-row 用 flex 横排错开。 -->
       <div v-if="badges" class="badge-row">
-        <span v-if="discountSave(memberView ? memberView.original : product.originalPrice, memberView ? memberView.price : product.price) >= 1" class="corner-badge">省{{ money(discountSave(memberView ? memberView.original : product.originalPrice, memberView ? memberView.price : product.price)) }}</span>
+        <span v-if="saveVsSale >= 1" class="corner-badge">省{{ money(saveVsSale) }}</span>
         <span v-if="product.isHot" class="corner-badge hot">热</span>
         <span v-if="product.isNew" class="corner-badge new">新</span>
         <span v-if="memberPrice" class="corner-badge vip">会员价</span>
@@ -16,8 +16,8 @@
       <!-- 售罄遮罩（2026-10-10）：图片盖一层半透明 +「已售罄」角标。
            光靠底部那行小字「已售 N」不够醒目 —— 用户扫列表时最容易漏掉的
            恰恰是「这个根本买不了」。遮罩让不可买的商品在一眼扫过时就被排除。 -->
-      <div v-if="soldOut" class="soldout-mask">
-        <span class="soldout-tag">已售罄</span>
+      <div v-if="soldOut || flashEnded" class="soldout-mask">
+        <span class="soldout-tag">{{ flashEnded ? '已结束' : '已售罄' }}</span>
       </div>
       <button
         v-if="!isAdmin"
@@ -44,9 +44,9 @@
             <span class="sale-price">{{ money(product.price) }}</span>
           </template>
           <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
-          <span v-if="memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
-          <span v-else-if="memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
-          <span v-else-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
+          <span v-if="!flashPrice && memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
+          <span v-else-if="!flashPrice && memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
+          <span v-else-if="!flashPrice && memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
         </div>
         <!-- 右下角圆形「＋」加购（生鲜电商主流做法）：替代旧的双通栏按钮，卡片更轻盈。
              整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
@@ -68,19 +68,30 @@
         <span v-if="ratingInfo" class="rating-brief"><i>★</i>{{ ratingInfo.avg.toFixed(1) }}<em>({{ ratingInfo.count }})</em></span>
       </div>
     </div>
-    <div class="price-line" v-else>
-      <div class="price-main">
-        <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || memberView?.price || product.price) }}</strong>
-        <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
-        <template v-else-if="memberView">
-          <span class="sale-price">{{ money(product.price) }}</span>
-        </template>
-        <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
-        <span v-if="memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
-        <span v-else-if="memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
-        <span v-else-if="memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
+    <template v-else>
+      <div class="price-line">
+        <div class="price-main">
+          <strong :class="{ 'flash-now': flashPrice }">{{ money(flashPrice || memberView?.price || product.price) }}</strong>
+          <span v-if="flashPrice" class="origin-price">{{ money(product.price) }}</span>
+          <template v-else-if="memberView">
+            <span class="sale-price">{{ money(product.price) }}</span>
+          </template>
+          <span v-else-if="Number(product.originalPrice) > Number(product.price)" class="origin-price">{{ money(product.originalPrice) }}</span>
+          <span v-if="!flashPrice && memberView && memberView.source === 'member'" class="member-price-tag">会员价 {{ money(memberView.price) }}</span>
+          <span v-else-if="!flashPrice && memberView && memberView.source === 'tier'" class="member-price-tag">{{ shortTier(memberView.name) }} {{ (memberView.rate * 10).toFixed(1) }}折</span>
+          <span v-else-if="!flashPrice && memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
+        </div>
       </div>
-    </div>
+      <!-- 2026-10-14：紧凑卡（首页四运营栏目）也补上「已售 N / 仅剩 N」+ ★评分，
+           与搜索结果/分类楼层的 full 卡口径一致。评分<3 条仍不展示（ratingInfo 为 null）。 -->
+      <div class="meta-line">
+        <small v-if="lowStock || soldCountText" :class="{ 'low-stock': lowStock }">
+          <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="soldCountText"> · </template></template>
+          <template v-if="soldCountText">{{ soldCountText }}</template>
+        </small>
+        <span v-if="ratingInfo" class="rating-brief"><i>★</i>{{ ratingInfo.avg.toFixed(1) }}<em>({{ ratingInfo.count }})</em></span>
+      </div>
+    </template>
   </article>
 </template>
 
@@ -186,6 +197,19 @@ const flashSale = computed(() => {
   return list.find((f) => Number(f.productId) === Number(props.product.id) && f.state === 'RUNNING') || null;
 });
 
+// 已结束的秒杀（在收藏夹里仍可能出现）：盖一层「已结束」遮罩（与售罄同款），
+// 让用户一眼知道这波秒杀已过期、不可再买。
+//
+// ⚠️ 判定必须看 **商品自身是不是秒杀品 + 现在还有没有在跑的场次**，
+//    不能去 flashSales 列表里找 state === 'ENDED' 的场次 —— /flash-sales（listPublic）
+//    只返回 RUNNING + UPCOMING，已结束的场根本不在列表里，那样写遮罩永远不会出现（2026-10-15 修）。
+//    product.kind === 'FLASH' 由后端 ProductSummaryResponse 透出。
+const flashEnded = computed(() => {
+  if (props.product.kind !== 'FLASH') return null;   // 普通商品不参与
+  if (flashSale.value) return null;                  // 还有在跑的场次 → 按秒杀正常展示
+  return { ended: true };
+});
+
 // 秒杀价：只有当它低于「售价与会员价的较低者」时才算数 —— 与后端取 min() 的口径一致
 const flashPrice = computed(() => {
   const fp = Number((flashSale.value && flashSale.value.flashPrice) || 0);
@@ -244,6 +268,17 @@ const memberPrice = computed(() => {
 const memberView = computed(() => (appCtx && typeof appCtx.productMemberView === 'function'
   ? appCtx.productMemberView(props.product)
   : null));
+
+// 实付价（与后端 unitPriceFor 取 min 的口径一致）：秒杀价 > 会员视图价 > 售价
+const payablePrice = computed(() => Number(flashPrice.value || memberView.value?.price || props.product.price || 0));
+// 「省¥X」胶囊 = **售价 − 实付**，不是吊牌价 − 实付（2026-10-12 用户反馈）：
+// 吊牌价是运营自己标的参考价，拿它算"省多少"等于把虚高的一部分也算成让利，
+// 用户拿结算页一对照就对不上 —— 与 10-06「划线价基准=售价、金额明细可核对」同一条口径。
+// 秒杀品同理：省的是 product.price（原售价）− flashPrice，会员折扣标此时不显示（秒杀价已是最低价）。
+const saveVsSale = computed(() => {
+  const sale = Number(props.product.price || 0);
+  return sale > payablePrice.value ? sale - payablePrice.value : 0;
+});
 
 // 收藏状态：直接复用 appCtx（favoriteIds 变化时自动重算），点击即切换
 const favorited = computed(() => (appCtx && typeof appCtx.isFavorite === 'function'

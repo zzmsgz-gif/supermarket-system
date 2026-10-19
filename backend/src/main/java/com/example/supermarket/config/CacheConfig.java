@@ -29,7 +29,7 @@ public class CacheConfig {
     private static final java.util.Set<String> CACHE_NAMES = java.util.Set.of(
             "categories", "banners", "announcements", "activities",
             "hotSearches", "stores", "deliverySlots", "legalDocs", "memberDay",
-            "productDetail", "hotProducts", "newProducts");
+            "productDetail", "hotProducts", "newProducts", "systemConfig");
 
     @Bean
     public CacheManager cacheManager(

@@ -10,7 +10,6 @@ import AdminPager from './AdminPager.vue';
 
 const props = defineProps({
   adminOrders: { type: Object, required: true },
-  adminOrderStatus: { type: String, required: true },
   adminOrderTotalPages: { type: Number, required: true },
   shipForm: { type: Object, required: true },
   searchAdminOrders: { type: Function, required: true },
@@ -32,28 +31,51 @@ const props = defineProps({
 //    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
 const adminOrderJumpPage = defineModel('adminOrderJumpPage', { type: Number, required: true });
 const adminOrderKeyword = defineModel('adminOrderKeyword', { type: String, required: true });
-const { adminOrders, adminOrderStatus, adminOrderTotalPages, shipForm, searchAdminOrders, changeAdminOrderPage, changeAdminOrderPageSize, goAdminOrderPage, resetAdminOrderSearch, openShipForm, adminOrderReady, submitShip, completeAdminOrder, cancelAdminOrder, openOrderDetail } = toRefs(props);
+// 2026-10-12 把订单状态从 <select> 下拉改成 tab：状态筛选是高频操作，
+// tab 比下拉更直观；同时用 defineModel 修复「下拉选了但筛选不生效」的隐患
+// （原 <select v-model> 写的是只读 prop，选中值根本回不到 adminOrderStatus，
+//  searchAdminOrders 永远拿不到所选状态）。
+const adminOrderStatus = defineModel('adminOrderStatus', { type: String, required: true });
+const { adminOrders, adminOrderTotalPages, shipForm, searchAdminOrders, changeAdminOrderPage, changeAdminOrderPageSize, goAdminOrderPage, resetAdminOrderSearch, openShipForm, adminOrderReady, submitShip, completeAdminOrder, cancelAdminOrder, openOrderDetail } = toRefs(props);
+
+// 订单状态 tab：与后端 orders.status 枚举一一对应。
+const adminOrderStatusTabs = [
+  { key: '', label: '全部' },
+  { key: 'PENDING_PAYMENT', label: '待付款' },
+  { key: 'PAID', label: '待发货' },
+  { key: 'SHIPPED', label: '待收货' },
+  { key: 'COMPLETED', label: '已完成' },
+  { key: 'CANCELED', label: '已取消' },
+  { key: 'CLOSED', label: '已关闭' },
+];
+function selectAdminOrderStatus(key) {
+  adminOrderStatus.value = key;
+  // ⚠️ searchAdminOrders 来自 toRefs(props) 的解构 —— 它是一个 Ref 包着的函数，
+  // 直接 searchAdminOrders() 会抛 TypeError（点击被吞、tab 高亮但不发请求）。
+  // 必须先 .value() 拿到真正的函数再调用（2026-10-12 用户反馈「点了 tab 不分类」的根因）。
+  searchAdminOrders.value();
+}
 </script>
 
 <template>
   <div class="data-panel">
     <div class="toolbar">
       <AdminSearchBox v-model="adminOrderKeyword" placeholder="按订单号搜索" @search="searchAdminOrders" />
-      <select v-model="adminOrderStatus" class="filter-select" @change="searchAdminOrders">
-        <option value="">全部状态</option>
-        <option value="PENDING_PAYMENT">待付款</option>
-        <option value="PAID">待发货</option>
-        <option value="SHIPPED">待收货</option>
-        <option value="COMPLETED">已完成</option>
-        <!-- ⚠️ 这里是 CANCELED（一个 L），与后端 AdminOrderService.ALLOWED_STATUSES / orders 表
-             CHECK 约束完全一致。曾写成 CANCELLED（两个 L），后端校验直接抛 400
-             Invalid order status —— 选「已取消」筛选项一行都查不出来（2026-10-07 修）。 -->
-        <option value="CANCELED">已取消</option>
-        <option value="CLOSED">已关闭</option>
-      </select>
       <AdminPageSize v-model="adminOrders.size" @change="changeAdminOrderPageSize" />
       <button class="ghost" @click="resetAdminOrderSearch">重置</button>
       <span class="result-count">共 {{ adminOrders.total }} 笔订单</span>
+    </div>
+
+    <!-- 2026-10-12 订单状态 tab（替代原 <select> 下拉） -->
+    <div class="order-tabs">
+      <button
+        v-for="t in adminOrderStatusTabs"
+        :key="t.key"
+        type="button"
+        class="order-tab"
+        :class="{ on: adminOrderStatus === t.key }"
+        @click="selectAdminOrderStatus(t.key)"
+      >{{ t.label }}</button>
     </div>
 
     <div v-if="!adminOrders.items?.length" class="empty">暂无订单</div>

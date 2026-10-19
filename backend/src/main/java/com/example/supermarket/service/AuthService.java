@@ -10,6 +10,7 @@ import com.example.supermarket.entity.SysUser;
 import com.example.supermarket.entity.UserMessage;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.repository.SysUserRepository;
+import com.example.supermarket.util.TextWidth;
 import com.example.supermarket.security.CurrentUser;
 import com.example.supermarket.security.JwtService;
 import com.example.supermarket.service.CouponService;
@@ -73,6 +74,9 @@ public class AuthService {
             throw new BusinessException(409, "邮箱已被注册");
         }
 
+        // 昵称按视觉宽度限制（中文 6 字 = 英文 12 字母 = 12 列），见 TextWidth
+        TextWidth.assertNicknameWidth(request.getNickname());
+
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -135,6 +139,8 @@ public class AuthService {
     public UserResponse updateProfile(CurrentUser currentUser, ProfileUpdateRequest request) {
         SysUser user = currentUser.getUser();
         if (StringUtils.hasText(request.getNickname())) {
+            // 与注册同一套宽度规则，别让用户在资料页绕过限制
+            TextWidth.assertNicknameWidth(request.getNickname());
             user.setNickname(request.getNickname().trim());
         }
         if (request.getAvatarUrl() != null) {

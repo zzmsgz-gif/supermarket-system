@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.util.Map;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -67,5 +68,12 @@ public class AdminReviewController {
     ) {
         boolean hidden = body.get("hidden") != null && Boolean.parseBoolean(String.valueOf(body.get("hidden")));
         return ApiResponse.ok(adminReviewService.setHidden(id, hidden));
+    }
+
+    /** 物理删除评价（管理员删除违规/不实评价）。删除后该评价从后台与商品详情页彻底移除。 */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        adminReviewService.delete(id);
+        return ApiResponse.ok(null);
     }
 }

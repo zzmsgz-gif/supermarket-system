@@ -248,7 +248,9 @@ def main():
         bm = rng0.randint(1, 12)
         bd = rng0.randint(1, 28)
         birthday = f"{by}-{bm:02d}-{bd:02d}"
-        new_user_rows.append((uid, f"shopper_{uid}", pw_hash, nick, phone, email, gender,
+        new_user_rows.append((uid, f"shopper_{uid}", pw_hash, nick,
+                              f"/seed-avatars/av-{uid % 20 + 1:02d}.jpg",
+                              phone, email, gender,
                               birthday, "USER", 1, 0, 0, 0, 0, 0,
                               fmt(rand_dt(rng0, start_dt, end_dt - timedelta(days=30))), fmt(end_dt), 0))
         user_stats[uid] = dict(balance=0, points=0, total_spent=0, member_level=0, nickname=nick)
@@ -654,7 +656,7 @@ def main():
             colsql = ",".join(cols)
             cur.executemany(f"INSERT INTO `{table}` ({colsql}) VALUES ({ph})", rows)
 
-        bulk("sys_user", ["id","username","password_hash","nickname","phone","email","gender",
+        bulk("sys_user", ["id","username","password_hash","nickname","avatar_url","phone","email","gender",
                           "birthday","role","status","balance","must_change_password","points",
                           "member_level","total_spent","created_at","updated_at","deleted"], new_user_rows)
         bulk("orders", ["id","order_no","user_id","total_amount","freight_amount","discount_amount",
