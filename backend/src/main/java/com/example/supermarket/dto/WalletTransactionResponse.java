@@ -39,6 +39,11 @@ public class WalletTransactionResponse {
      * **不计入**金额明细的累计收支（只作记录展示）。前端据此打「不计入」标。
      */
     private Boolean external;
+    /**
+     * 退款流水专用：退款时已花掉、等价扣回的发放积分对应的金额（元）。
+     * 仅退款且发生积分扣回时有值；「原应退金额 = amount + pointsDeducted」，差额即此处（2026-10-22 #713）。
+     */
+    private BigDecimal pointsDeducted;
     private LocalDateTime createdAt;
 
     public static WalletTransactionResponse from(WalletTransaction transaction) {
@@ -67,6 +72,7 @@ public class WalletTransactionResponse {
         response.setTypeLabel(labelOf(transaction.getType()));
         response.setChannelLabel(channelLabelOf(transaction.getType(), channel));
         response.setExternal(isExternalChannel(channel));
+        response.setPointsDeducted(transaction.getPointsDeducted());
         return response;
     }
 
@@ -152,6 +158,14 @@ public class WalletTransactionResponse {
 
     public void setExternal(Boolean external) {
         this.external = external;
+    }
+
+    public BigDecimal getPointsDeducted() {
+        return pointsDeducted;
+    }
+
+    public void setPointsDeducted(BigDecimal pointsDeducted) {
+        this.pointsDeducted = pointsDeducted;
     }
 
     public Long getId() {

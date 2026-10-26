@@ -44,6 +44,15 @@ public class WalletTransaction {
     @Column(length = 255)
     private String remark;
 
+    /**
+     * 退款流水专用：退款时已花掉、等价扣回的发放积分对应的金额（元）。
+     * 仅当发生「积分防薅」扣回时有值；普通退款为 null。
+     * 含义：用户先前花掉的、本次退款无法从冻结池收回的发放积分，按 100分=¥1 折算成现金缺口，
+     * 从退款净额里扣掉。因此「原应退金额 = amount + pointsDeducted」，差额即此处。
+     */
+    @Column(name = "points_deducted", precision = 10, scale = 2)
+    private BigDecimal pointsDeducted;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false, columnDefinition = "datetime NOT NULL DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 
@@ -125,6 +134,14 @@ public class WalletTransaction {
 
     public void setRemark(String remark) {
         this.remark = remark;
+    }
+
+    public BigDecimal getPointsDeducted() {
+        return pointsDeducted;
+    }
+
+    public void setPointsDeducted(BigDecimal pointsDeducted) {
+        this.pointsDeducted = pointsDeducted;
     }
 
     public LocalDateTime getCreatedAt() {

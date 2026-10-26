@@ -406,8 +406,39 @@ public class CouponService {
         });
     }
 
+    /**
+     * 退款逆向：整单全额退款且订单已关闭（CLOSED）时，把下单时核销的券恢复为可用（与 restoreIfUnpaid 对称）。
+     *
+     * <p>⚠️ 仅「整单全额退、订单 CLOSED」才恢复券；部分退款（订单仍 OPEN / PARTIAL）不动券 ——
+     * 因为券是按**整单**优惠核销的，退一件不能把整张券还回去，否则券会被反复薅。
+     * 调用方需保证在 {@code order.status == CLOSED} 之后再调本方法（本类不二次判状态，避免与订单落库顺序打架）。
+     */
+    @Transactional
+    public void restoreForOrder(OrderEntity order) {
+        if (order.getUserCouponId() == null || !"CLOSED".equals(order.getStatus())) {
+            return;
+        }
+        userCouponRepository.findById(order.getUserCouponId()).ifPresent(userCoupon -> {
+            if (USED.equals(userCoupon.getStatus())
+                    && order.getId().equals(userCoupon.getOrderId())) {
+                userCoupon.setStatus(UNUSED);
+                userCoupon.setOrderId(null);
+                userCoupon.setUsedAt(null);
+                userCouponRepository.save(userCoupon);
+            }
+        });
+    }
+
     private List<UserCouponResponse> toResponses(List<UserCoupon> userCoupons) {
         if (userCoupons.isEmpty()) {
+            return List.of();
+        }
+        // #3 已使用且使用时间超过 1 天的券从「我的优惠券」隐藏（cleanup 调度仍按配置天数额外物理清理）。
+        LocalDateTime usedCutoff = LocalDateTime.now().minusDays(1);
+        List<UserCoupon> visible = userCoupons.stream()
+                .filter(uc -> !(USED.equals(uc.getStatus()) && uc.getUsedAt() != null && uc.getUsedAt().isBefore(usedCutoff)))
+                .toList();
+        if (visible.isEmpty()) {
             return List.of();
         }
         Map<Long, Coupon> couponMap = couponRepository.findAllById(
@@ -415,7 +446,7 @@ public class CouponService {
                 )
                 .stream()
                 .collect(Collectors.toMap(Coupon::getId, Function.identity(), (left, right) -> left));
-        return userCoupons.stream()
+        return visible.stream()
                 .map(userCoupon -> UserCouponResponse.from(userCoupon,
                         couponMap.getOrDefault(userCoupon.getCouponId(), placeholderCoupon(userCoupon))))
                 .toList();

@@ -22,13 +22,14 @@ public class ReturnRequestResponse {
     private String statusLabel;
     private String type;
     private BigDecimal refundAmount;
+    /** 方案D-C：申请时冻结的发放积分额（分）。在途态让用户在「我的售后」看到本单被锁了多少积分 */
+    private Long frozenPoints;
+    /** 方案D-B：退款时已花掉、被现金等价扣回的发放积分额（分）。0=无扣回 */
+    private Long pointsDeducted;
     private String reason;
     private String remark;
     /** 是否需要寄回 */
     private Boolean needReturn;
-    /** 运费责任方：SELLER / BUYER */
-    private String freightBorneBy;
-    private String freightLabel;
     private String expressCompany;
     private String trackingNo;
     private String adminRemark;
@@ -54,11 +55,11 @@ public class ReturnRequestResponse {
         resp.setStatusLabel(statusLabel(r.getStatus()));
         resp.setType(r.getType());
         resp.setRefundAmount(r.getRefundAmount());
+        resp.setFrozenPoints(r.getFrozenPoints());
+        resp.setPointsDeducted(r.getPointsDeducted());
         resp.setReason(r.getReason());
         resp.setRemark(r.getRemark());
         resp.setNeedReturn(r.getNeedReturn());
-        resp.setFreightBorneBy(r.getFreightBorneBy());
-        resp.setFreightLabel(freightLabel(r.getFreightBorneBy()));
         resp.setExpressCompany(r.getExpressCompany());
         resp.setTrackingNo(r.getTrackingNo());
         resp.setAdminRemark(r.getAdminRemark());
@@ -82,13 +83,6 @@ public class ReturnRequestResponse {
             case "REJECTED" -> "已驳回";
             default -> status;
         };
-    }
-
-    private static String freightLabel(String borneBy) {
-        if (borneBy == null) {
-            return "待商家判定";
-        }
-        return "SELLER".equals(borneBy) ? "运费商家承担" : "运费用户承担";
     }
 
     /**
@@ -213,6 +207,22 @@ public class ReturnRequestResponse {
         this.refundAmount = refundAmount;
     }
 
+    public Long getFrozenPoints() {
+        return frozenPoints;
+    }
+
+    public void setFrozenPoints(Long frozenPoints) {
+        this.frozenPoints = frozenPoints;
+    }
+
+    public Long getPointsDeducted() {
+        return pointsDeducted;
+    }
+
+    public void setPointsDeducted(Long pointsDeducted) {
+        this.pointsDeducted = pointsDeducted;
+    }
+
     public String getReason() {
         return reason;
     }
@@ -235,22 +245,6 @@ public class ReturnRequestResponse {
 
     public void setNeedReturn(Boolean needReturn) {
         this.needReturn = needReturn;
-    }
-
-    public String getFreightBorneBy() {
-        return freightBorneBy;
-    }
-
-    public void setFreightBorneBy(String freightBorneBy) {
-        this.freightBorneBy = freightBorneBy;
-    }
-
-    public String getFreightLabel() {
-        return freightLabel;
-    }
-
-    public void setFreightLabel(String freightLabel) {
-        this.freightLabel = freightLabel;
     }
 
     public String getExpressCompany() {

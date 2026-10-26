@@ -54,6 +54,9 @@
       action-text="去逛逛"
       @action="navigate('shop')"
     />
+    <div v-else-if="favorites.loading" class="product-grid">
+      <skeleton-grid :count="8" />
+    </div>
     <div v-else class="product-grid">
       <ProductCard
         v-for="fav in favorites.items"

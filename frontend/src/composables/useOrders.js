@@ -190,22 +190,24 @@ export function useOrders({
     if (isOrderNavLocked()) return;
     setOrderNavLock(true);
     try {
-      orderDetail.data = null;
-      orderDetail.error = '';
-      orderDetail.loading = true;
+      const url = isAdmin.value ? `/admin/orders/${order.id}` : `/orders/${order.id}`;
+      try {
+        // 先取数、填好 orderDetail.data 再跳转 —— 这样 OrderDetailPage 挂载时 data 已就绪，
+        // 不再闪一下骨架屏，也不会「挂载后又拉一次」出现双请求（#715）。
+        // OrderDetailPage.onMounted 守卫会在预填 id 与路由 id 一致时跳过重拉，安全。
+        orderDetail.data = await api.get(url);
+        orderDetail.error = '';
+      } catch (err) {
+        orderDetail.data = null;
+        orderDetail.error = err?.message || '订单详情加载失败';
+      } finally {
+        orderDetail.loading = false;
+      }
       router.push({
         name: 'orderDetail',
         params: { id: order.id },
         query: opts.intent === 'refund' ? { refund: '1' } : undefined,
       });
-      try {
-        const url = isAdmin.value ? `/admin/orders/${order.id}` : `/orders/${order.id}`;
-        orderDetail.data = await api.get(url);
-      } catch (err) {
-        orderDetail.error = err?.message || '订单详情加载失败';
-      } finally {
-        orderDetail.loading = false;
-      }
     } finally {
       setOrderNavLock(false);
     }

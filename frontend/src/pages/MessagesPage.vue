@@ -11,8 +11,14 @@
     <button v-if="messageUnread > 0" type="button" class="read-all-btn" @click="markMessagesRead">全部已读（{{ messageUnread }}）</button>
   </div>
 
+  <skeleton-list
+    v-if="messages.loading && !messages.items.length"
+    :count="5"
+    :avatar="true"
+    :lines="2"
+  />
   <empty-state
-    v-if="!messages.items.length && !messages.loading"
+    v-else-if="!messages.items.length"
     icon="bell"
     text="暂时没有消息，订单动态、会员升级和优惠都会在这里通知你"
     action-text="去逛逛"

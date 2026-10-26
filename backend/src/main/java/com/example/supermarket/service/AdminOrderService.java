@@ -15,6 +15,7 @@ import com.example.supermarket.repository.OrderItemRepository;
 import com.example.supermarket.repository.OrderRepository;
 import com.example.supermarket.repository.PaymentRecordRepository;
 import com.example.supermarket.repository.ProductRepository;
+import com.example.supermarket.repository.ReturnRequestRepository;
 import com.example.supermarket.repository.StockLogRepository;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
@@ -60,6 +61,9 @@ public class AdminOrderService {
     );
     private static final Set<String> ALLOWED_REFUND_STATUSES = Set.of("NONE", REFUND_APPLYING, REFUND_APPROVED, REFUND_REJECTED);
 
+    // 在途退款/售后状态（与 ReturnRequestService.OPEN_STATUSES 对应）：发货前若存在则拦截。
+    private static final List<String> OPEN_RETURN_STATUSES = List.of("APPLYING", "WAITING_SHIP", "SHIPPED_BACK");
+
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final ProductRepository productRepository;
@@ -69,6 +73,7 @@ public class AdminOrderService {
     private final CouponService couponService;
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
+    private final ReturnRequestRepository returnRequestRepository;
 
     public AdminOrderService(
             OrderRepository orderRepository,
@@ -79,7 +84,8 @@ public class AdminOrderService {
             WalletService walletService,
             CouponService couponService,
             MessageService messageService,
-            FlashSaleService flashSaleService
+            FlashSaleService flashSaleService,
+            ReturnRequestRepository returnRequestRepository
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -90,6 +96,7 @@ public class AdminOrderService {
         this.couponService = couponService;
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
+        this.returnRequestRepository = returnRequestRepository;
     }
 
     @Transactional(readOnly = true)
@@ -126,6 +133,8 @@ public class AdminOrderService {
         if (!PAID.equals(order.getStatus())) {
             throw new BusinessException(409, "Only paid orders can be shipped");
         }
+        // #8 发货前提：该订单当前不能有进行中的退款/售后申请，否则先处理退款再发货。
+        assertNoOpenReturn(order.getId());
         if (OrderEntity.FULFILLMENT_PICKUP.equals(order.getFulfillmentType())) {
             throw new BusinessException(409, "门店自提订单没有物流，请用「备货完成」");
         }
@@ -150,6 +159,8 @@ public class AdminOrderService {
         if (!PAID.equals(order.getStatus())) {
             throw new BusinessException(409, "Only paid orders can be marked ready");
         }
+        // #8 备货完成前提：该订单当前不能有进行中的退款/售后申请。
+        assertNoOpenReturn(order.getId());
         if (!OrderEntity.FULFILLMENT_PICKUP.equals(order.getFulfillmentType())) {
             throw new BusinessException(409, "只有门店自提订单才能标记「备货完成」");
         }
@@ -230,6 +241,16 @@ public class AdminOrderService {
     private OrderEntity getExistingOrder(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+    }
+
+    /**
+     * #8 发货/备货完成前置校验：订单存在任一在途退款/售后（APPLYING / WAITING_SHIP / SHIPPED_BACK）时拦截。
+     * 避免商家在用户已申请退款的情况下仍把货发出，造成「钱货两空」的扯皮。
+     */
+    private void assertNoOpenReturn(Long orderId) {
+        if (returnRequestRepository.findByOrderIdAndStatusIn(orderId, OPEN_RETURN_STATUSES).isPresent()) {
+            throw new BusinessException(409, "该订单存在进行中的退款/售后申请，请先处理完再发货");
+        }
     }
 
     private void refundPaymentRecord(PaymentRecord record) {

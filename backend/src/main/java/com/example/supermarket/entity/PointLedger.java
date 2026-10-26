@@ -12,11 +12,13 @@ import java.time.LocalDateTime;
 @Table(name = "point_ledger")
 public class PointLedger {
 
-    /** 积分变动类型：消费获取 / 下单抵扣 / 退款回退 / 后台调整 */
+    /** 积分变动类型：消费获取 / 下单抵扣 / 退款回退（抵扣返还）/ 后台调整 / 退款回收（发放积分收回） */
     public static final String TYPE_EARN = "EARN";
     public static final String TYPE_REDEEM = "REDEEM";
     public static final String TYPE_REFUND = "REFUND";
     public static final String TYPE_ADJUST = "ADJUST";
+    /** 退款时回收「已发放」积分（与 EARN 对称，方向相反）。幂等防重用，区别于 EARN。 */
+    public static final String TYPE_EARN_REVERSE = "EARN_REVERSE";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

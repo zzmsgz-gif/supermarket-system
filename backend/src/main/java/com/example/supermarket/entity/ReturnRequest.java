@@ -31,14 +31,8 @@ import java.time.LocalDateTime;
  *                                                    └──商家驳回──────&gt; REJECTED（用户可申诉）
  * </pre>
  *
- * <p><b>运费责任</b>（{@link #freightBorneBy}）：
- * <ul>
- *   <li>{@code SELLER} 商家承担 —— 质量问题 / 错发 / 损坏，商家本就该赔</li>
- *   <li>{@code BUYER} 用户承担 —— 七天无理由的「不想要了」</li>
- *   <li>商家判责时选定；{@code BUYER} 时用户寄回，可要求用户上传凭证</li>
- * </ul>
- * 判定责任**发生在商家审核那一步**（管理员在审核弹窗里选），
- * 而不是让用户自己声明 —— 否则用户会全部选「质量问题」骗取运费。
+ * <p><b>运费</b>：本项目不区分运费承担方（freightBorneBy 已废弃移除），
+ * 退货运费统一按平台规则处理，不再由商家在审核时单独判定。
  */
 @Entity
 @Table(name = "return_request", indexes = {
@@ -101,6 +95,21 @@ public class ReturnRequest {
     @Column(name = "refund_amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal refundAmount;
 
+    /**
+     * 本单在 apply 时冻结的发放积分额（方案D-C）。
+     * 驳回/取消时按此额释放；退款回收时作为冻结池回收对账基准。
+     */
+    @Column(name = "frozen_points", nullable = false)
+    private Long frozenPoints = 0L;
+
+    /**
+     * 方案D-B：退款时已花掉、无法从冻结池回收、被现金退款等价扣回的发放积分额（分）。
+     * 申请前已花掉、C 的冻结来不及挡下的那部分 → 这里记其「积分额」，前端按 100积分=¥1 显示「已花积分等价扣回」。
+     * 0 表示没有被扣回（申请时积分都还在、或本单无发放积分）。
+     */
+    @Column(name = "points_deducted", nullable = false)
+    private Long pointsDeducted = 0L;
+
     /** 用户填的原因 */
     @Column(length = 255)
     private String reason;
@@ -112,10 +121,6 @@ public class ReturnRequest {
     /** 商家是否要求寄回。质量问题等一律 false —— 让用户来回寄是体验灾难 */
     @Column(name = "need_return", nullable = false)
     private Boolean needReturn;
-
-    /** 运费责任方：SELLER / BUYER，商家审核时定 */
-    @Column(name = "freight_borne_by", length = 10)
-    private String freightBorneBy;
 
     /** 用户寄回时填的快递公司 */
     @Column(name = "express_company", length = 40)
@@ -241,6 +246,22 @@ public class ReturnRequest {
         this.refundAmount = refundAmount;
     }
 
+    public Long getFrozenPoints() {
+        return frozenPoints;
+    }
+
+    public void setFrozenPoints(Long frozenPoints) {
+        this.frozenPoints = frozenPoints;
+    }
+
+    public Long getPointsDeducted() {
+        return pointsDeducted;
+    }
+
+    public void setPointsDeducted(Long pointsDeducted) {
+        this.pointsDeducted = pointsDeducted;
+    }
+
     public String getReason() {
         return reason;
     }
@@ -263,14 +284,6 @@ public class ReturnRequest {
 
     public void setNeedReturn(Boolean needReturn) {
         this.needReturn = needReturn;
-    }
-
-    public String getFreightBorneBy() {
-        return freightBorneBy;
-    }
-
-    public void setFreightBorneBy(String freightBorneBy) {
-        this.freightBorneBy = freightBorneBy;
     }
 
     public String getExpressCompany() {

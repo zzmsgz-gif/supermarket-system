@@ -193,7 +193,7 @@ CREATE TABLE `orders` (
   `remark` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Buyer remark',
   `ship_company` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Express company',
   `ship_no` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Express tracking number',
-  `refund_status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NONE' COMMENT 'NONE, APPLYING, APPROVED, REJECTED',
+  `refund_status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NONE' COMMENT 'NONE, APPLYING, APPROVED, REJECTED, WAITING_SHIP, SHIPPED_BACK, PARTIAL',
   `refund_reason` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Buyer refund reason',
   `refund_remark` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Admin review remark',
   `refunded_at` datetime DEFAULT NULL COMMENT 'Refund finished time',
@@ -218,7 +218,7 @@ CREATE TABLE `orders` (
   CONSTRAINT `fk_orders_user_coupon` FOREIGN KEY (`user_coupon_id`) REFERENCES `user_coupon` (`id`),
   CONSTRAINT `chk_orders_amounts` CHECK (((`total_amount` >= 0) and (`freight_amount` >= 0) and (`discount_amount` >= 0) and (`pay_amount` >= 0))),
   CONSTRAINT `chk_orders_payment_status` CHECK ((`payment_status` in (_utf8mb4'UNPAID',_utf8mb4'PAID',_utf8mb4'REFUNDED'))),
-  CONSTRAINT `chk_orders_refund_status` CHECK ((`refund_status` in (_utf8mb4'NONE',_utf8mb4'APPLYING',_utf8mb4'APPROVED',_utf8mb4'REJECTED'))),
+  CONSTRAINT `chk_orders_refund_status` CHECK ((`refund_status` in (_utf8mb4'NONE',_utf8mb4'APPLYING',_utf8mb4'APPROVED',_utf8mb4'REJECTED',_utf8mb4'WAITING_SHIP',_utf8mb4'SHIPPED_BACK',_utf8mb4'PARTIAL'))),
   CONSTRAINT `chk_orders_status` CHECK ((`status` in (_utf8mb4'PENDING_PAYMENT',_utf8mb4'PAID',_utf8mb4'SHIPPED',_utf8mb4'COMPLETED',_utf8mb4'CANCELED',_utf8mb4'CLOSED')))
 ) ENGINE=InnoDB AUTO_INCREMENT=69 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Orders';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -723,6 +723,7 @@ CREATE TABLE `wallet_transaction` (
   `balance_after` decimal(10,2) NOT NULL COMMENT 'Balance after transaction',
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SUCCESS' COMMENT 'SUCCESS, FAILED',
   `remark` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `points_deducted` decimal(10,2) DEFAULT NULL COMMENT 'Refund only: cash equivalent of already-spent points deducted (yuan)',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_wallet_transaction_no` (`transaction_no`),

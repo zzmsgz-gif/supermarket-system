@@ -34,6 +34,23 @@ export function useStores({ getCartLocalTotal }) {
     return subtotal >= EXPRESS_FREE_THRESHOLD ? 0 : EXPRESS_FREIGHT;
   });
 
+  // 购物车「满 ¥99 免运费」进度（点1）：与 expressFreight 同口径（按商品小计判门槛，不含运费），
+  // 但这里是给购物车页做**独立进度提示**，不依赖履约方式（快递才收运费，但凑单提示对所有人都有意义）。
+  // 与 cartActivityProgress（满减进度）是两条互不相关的门槛，必须分开显示，否则用户分不清「满99减X」和「满99免邮」。
+  const cartFreightProgress = computed(() => {
+    const subtotal = typeof getCartLocalTotal === 'function' ? getCartLocalTotal() : 0;
+    if (subtotal <= 0) return null;
+    const reachedTop = subtotal >= EXPRESS_FREE_THRESHOLD;
+    return {
+      threshold: EXPRESS_FREE_THRESHOLD,
+      freight: EXPRESS_FREIGHT,
+      gap: Math.max(EXPRESS_FREE_THRESHOLD - subtotal, 0),
+      amount: subtotal,
+      percent: Math.min(100, Math.round((subtotal / EXPRESS_FREE_THRESHOLD) * 100)),
+      reachedTop,
+    };
+  });
+
   // 生效门店：显式选过就用选的，否则回落到第一家营业门店（与 activeStoreId 保持一致）
   const selectedStore = computed(() => {
     const id = Number(fulfillment.storeId) || (stores.value.length ? Number(stores.value[0].id) : 0);
@@ -76,7 +93,7 @@ export function useStores({ getCartLocalTotal }) {
   return {
     stores, deliverySlots, fulfillment,
     EXPRESS_FREE_THRESHOLD, EXPRESS_FREIGHT,
-    isPickup, isExpress, expressFreight, selectedStore, activeStoreId,
+    isPickup, isExpress, expressFreight, cartFreightProgress, selectedStore, activeStoreId,
     loadStores, loadDeliverySlots,
     selectFulfillment, selectStore, resetFulfillment,
   };

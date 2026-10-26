@@ -41,6 +41,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -477,9 +478,15 @@ public class OrderService {
         return response;
     }
 
-    /** 为命中秒杀的订单行占用名额（每人限购 + 名额原子扣减的校验都在 FlashSaleService 里） */
+    /**
+     * 为命中秒杀的订单行占用名额（每人限购 + 名额原子扣减的校验都在 FlashSaleService 里）。
+     * 按 flashSaleId 升序处理、并把同一场次多规格行累计成一次 reserveQuota，双重目的：
+     *  1) 锁顺序一致，避免同一订单含多个不同秒杀场次时与另一订单反向加锁而死锁；
+     *  2) 同一场次多行（不同规格）合并为一次占用，数量累计正确（否则会被拆成多次、各带小数量）。
+     */
     private void reserveFlashQuotas(Long orderId, Long userId, List<OrderItem> items,
                                     Map<Long, FlashSale> flashSales) {
+        Map<Long, FlashSale> bySaleId = new LinkedHashMap<>();
         for (OrderItem item : items) {
             if (item.getFlashSaleId() == null) {
                 continue;
@@ -487,8 +494,17 @@ public class OrderService {
             // flashSaleId 就是上面 flashSales 里取出来的那一个，直接复用避免多查一次库
             FlashSale sale = flashSales.get(item.getProductId());
             if (sale != null && sale.getId().equals(item.getFlashSaleId())) {
-                flashSaleService.reserveQuota(userId, orderId, sale, item.getQuantity());
+                bySaleId.putIfAbsent(sale.getId(), sale);
             }
+        }
+        List<FlashSale> ordered = new ArrayList<>(bySaleId.values());
+        ordered.sort(Comparator.comparing(FlashSale::getId));
+        for (FlashSale sale : ordered) {
+            int qty = items.stream()
+                    .filter(i -> sale.getId().equals(i.getFlashSaleId()))
+                    .mapToInt(i -> i.getQuantity() == null ? 0 : i.getQuantity())
+                    .sum();
+            flashSaleService.reserveQuota(userId, orderId, sale, qty);
         }
     }
 

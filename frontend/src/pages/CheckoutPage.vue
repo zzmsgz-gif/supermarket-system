@@ -162,13 +162,21 @@
           </p>
         </div>
 
+        <div class="checkout-block">
+          <h3>订单备注（选填）</h3>
+          <textarea v-model="remark" class="remark-input" maxlength="200" rows="3"
+            placeholder="给商家留言，例如：工作日送达、放门口、不要香菜等（最多 200 字）"></textarea>
+        </div>
+
         <div class="checkout-summary">
           <div class="row"><span>配送方式</span><strong>{{ isPickup
             ? '门店自提 · ' + (selectedStore ? selectedStore.name : '待选择门店')
             : isExpress
               ? '快递配送 · 第三方物流'
               : '同城即时配送 · ' + (fulfillment.slot || '尽快送达') }}</strong></div>
-          <div class="row"><span>商品金额</span><strong>{{ money(cartLocalTotal) }}</strong></div>
+          <div class="row"><span>普通商品小计</span><strong>{{ money(cartNonFlashTotal) }}</strong></div>
+          <div v-if="cartFlashTotal > 0" class="row"><span>秒杀商品小计（不参与活动 / 不可用券）</span><strong>{{ money(cartFlashTotal) }}</strong></div>
+          <div class="row"><span>商品金额（合计）</span><strong>{{ money(cartLocalTotal) }}</strong></div>
           <div v-if="appliedPromo" class="row">
             <span>{{ appliedPromo.type === 'coupon' ? '优惠券' : ('活动优惠（' + (appliedPromo.name || '') + '）') }}</span>
             <strong class="minus">- {{ money(appliedPromo.amount) }}</strong>
@@ -190,7 +198,7 @@
             <label class="points-toggle">
               <input type="checkbox" v-model="usePoints" :disabled="memberPreview.maxRedeemPoints <= 0 || memberPreview.userPoints <= 0" />
               <span>使用积分抵扣</span>
-              <small v-if="memberPreview.maxRedeemPoints > 0 && memberPreview.userPoints > 0">可用 {{ memberPreview.userPoints }} 分</small>
+              <small v-if="memberPreview.maxRedeemPoints > 0 && memberPreview.userPoints > 0">可用 {{ memberPreview.userPoints }} 分<template v-if="memberPreview.frozenPoints > 0">（另有 {{ memberPreview.frozenPoints }} 分售后审核中，通过时按规则扣回）</template></small>
               <small v-else>当前无可用积分</small>
             </label>
             <div class="points-panel" v-if="usePoints && memberPreview.maxRedeemPoints > 0">

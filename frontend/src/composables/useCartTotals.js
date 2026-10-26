@@ -27,6 +27,16 @@ export function useCartTotals({ cart, usableCoupons, selectedUserCouponId, getPr
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0)));
 
+  // 非秒杀部分小计（同成交价口径）：满减活动/优惠券与秒杀互斥，门槛只按这部分判。
+  // 满减进度条（useActivity）与凑单推荐（useUpsell）都用它做基数，绝不能拿含秒杀的 cartLocalTotal。
+  const cartNonFlashTotal = computed(() => round2((cart.items || [])
+    .filter((item) => item.selected !== false && !item.flashSaleId)
+    .reduce((sum, item) => sum + Number(item.productPrice || 0) * Number(item.quantity || 0), 0)));
+
+  // 秒杀部分小计 = 商品金额 − 非秒杀小计。秒杀走独立折扣通道，不参与活动/券（后端同口径），
+  // 购物车与结算页要把它单列出来并注明「不参与活动/券」，让用户看清总额怎么来的（#11）。
+  const cartFlashTotal = computed(() => round2(cartLocalTotal.value - cartNonFlashTotal.value));
+
   // 划线价（吊牌价）相对现价的优惠合计：仅统计已勾选商品，纯展示用、不计入应付
   const cartOriginalSave = computed(() => (cart.items || [])
     .filter((item) => item.selected !== false)
@@ -57,6 +67,14 @@ export function useCartTotals({ cart, usableCoupons, selectedUserCouponId, getPr
     .filter((item) => item.selected !== false)
     .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
 
+  // 已勾选的非秒杀件数 / 秒杀件数（结算明细展示用，配合上面的小计拆解）
+  const cartNonFlashQty = computed(() => (cart.items || [])
+    .filter((item) => item.selected !== false && !item.flashSaleId)
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
+  const cartFlashQty = computed(() => (cart.items || [])
+    .filter((item) => item.selected !== false && item.flashSaleId)
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0));
+
   // 实际抵扣掉的金额合计：只算生效的那一档（活动优惠 或 优惠券 二者取一，互斥不叠加）
   const cartTotalSaved = computed(() => bestPromo.value);
 
@@ -70,8 +88,8 @@ export function useCartTotals({ cart, usableCoupons, selectedUserCouponId, getPr
   function catalogBasePrice(id) { return productBasePriceMap.value[Number(id)] || 0; }
 
   return {
-    selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview,
-    cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice,
+    selectedCoupon, cartLocalTotal, cartNonFlashTotal, cartFlashTotal, cartOriginalSave, orderPayPreview,
+    cartSelectedQty, cartNonFlashQty, cartFlashQty, cartTotalSaved, productBasePriceMap, catalogBasePrice,
     couponDiscount, activityDiscount, bestPromo, appliedPromo,
   };
 }

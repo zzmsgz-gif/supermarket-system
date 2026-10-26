@@ -19,13 +19,6 @@ public class ReturnReviewRequest {
      */
     private Boolean needReturn;
 
-    /**
-     * 运费责任方：SELLER / BUYER。
-     * <p>needReturn=true 时必填（SELLER=商家出回程运费，BUYER=用户自己承担）。
-     */
-    @Size(max = 10)
-    private String freightBorneBy;
-
     public Boolean getApproved() {
         return approved;
     }
@@ -48,13 +41,5 @@ public class ReturnReviewRequest {
 
     public void setNeedReturn(Boolean needReturn) {
         this.needReturn = needReturn;
-    }
-
-    public String getFreightBorneBy() {
-        return freightBorneBy;
-    }
-
-    public void setFreightBorneBy(String freightBorneBy) {
-        this.freightBorneBy = freightBorneBy;
     }
 }

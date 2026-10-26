@@ -37,6 +37,10 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>名额用带条件的 UPDATE 原子扣减</b>（{@link FlashSaleRepository#reserveQuota}），
  *       不能写成"先查剩余再改"，否则并发下会超卖。取消/超时/退款按
  *       {@code order_item.flash_sale_id} 回退。</li>
+ *   <li><b>每人限购靠"锁秒杀行 + 串行化"保护</b>（{@link FlashSaleRepository#lockRow}）：
+ *       reserveQuota 先 {@code SELECT ... FOR UPDATE} 锁住本场次那一行，使同一秒杀的并发下单
+ *       串行化，之后才做"每人已购件数"的只读校验，否则 READ_COMMITTED 下并发事务互相看不到
+ *       对方未提交的 order_item，会同时判定未超限额、绕过每人限购。</li>
  * </ol>
  */
 @Service
@@ -379,6 +383,10 @@ public class FlashSaleService {
      */
     @Transactional
     public void reserveQuota(Long userId, Long orderId, FlashSale sale, int quantity) {
+        // 悲观锁本场次：让同一秒杀的并发购买串行化，关掉"每人限购"在并发下的绕过漏洞。
+        // 必须在下面的"每人限购"只读校验【之前】加锁 —— 否则两笔并发单都读不到对方未提交的
+        // order_item，会同时判定"未超限额"，导致同一用户买到超过 per_user_limit 件。
+        flashSaleRepository.lockRow(sale.getId());
         Integer limit = sale.getPerUserLimit();
         if (limit != null && limit > 0) {
             long bought = orderItemRepository.sumFlashQuantityByUser(

@@ -5,7 +5,11 @@
     </div>
 
     <!-- 加载 / 异常 -->
-    <div v-if="loading" class="pay-loading">正在加载订单…</div>
+    <div v-if="loading" class="sk-stack" aria-hidden="true">
+      <skeleton-lines :lines="3" :title="true" />
+      <skeleton-list :count="1" :thumb="true" :lines="2" :tail="true" />
+      <skeleton-lines :lines="2" />
+    </div>
     <div v-else-if="loadError" class="pay-error">
       <p>{{ loadError }}</p>
       <button class="ghost" @click="navigate('orders')">返回我的订单</button>

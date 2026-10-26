@@ -26,8 +26,8 @@ public class MemberService {
     private static final byte NOT_DELETED = 0;
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     private static final int MAX_PAGE_SIZE = 100;
-    /** 100 积分 = 1 元 */
-    private static final BigDecimal POINTS_PER_YUAN = BigDecimal.valueOf(100);
+    /** 100 积分 = 1 元（方案D-B 现金扣回换算也用它，故 public static） */
+    public static final BigDecimal POINTS_PER_YUAN = BigDecimal.valueOf(100);
     /** 积分抵扣最多占（优惠后）应付金额的比例 */
     private static final BigDecimal MAX_REDEEM_RATIO = new BigDecimal("0.5");
 
@@ -187,10 +187,16 @@ public class MemberService {
         long moneyCapPoints = moneyCap == null ? 0
                 : moneyCap.multiply(POINTS_PER_YUAN).setScale(0, RoundingMode.FLOOR).longValue();
         SysUser user = lockUser(userId);
-        long usable = Math.min(Math.min(want, moneyCapPoints), user.getPoints());
+        // 2026-10-24 口径调整：冻结分不再锁抵扣。可用积分 = 当前余额。
+        // 冻结池仅作退款回收对账用：售后通过时 recoverForRefund 先收冻结池，
+        // 积分已被花掉的部分自动从退款现金中等价扣回（1积分=1/100元），系统不亏。
+        // 此前「可用 = 余额 − 冻结」会把冻结后仍有余款的用户可用分清零、抵扣被禁。
+        long available = Math.max(0L, user.getPoints());
+        long usable = Math.min(Math.min(want, moneyCapPoints), available);
         if (usable <= 0) {
             return 0L;
         }
+        // 抵扣只消耗「可用」部分，冻结池不动（冻结的积分仍被保留，用于退款回收对账）
         user.setPoints(user.getPoints() - usable);
         userRepository.save(user);
         saveLedger(user.getId(), PointLedger.TYPE_REDEEM, usable, user.getPoints(), orderId, "下单积分抵扣");
@@ -210,6 +216,150 @@ public class MemberService {
             userRepository.save(user);
             saveLedger(user.getId(), PointLedger.TYPE_REFUND, back, user.getPoints(), orderId, "取消订单回退积分");
         });
+    }
+
+    /**
+     * 退款逆向（点3「全逆向」）：按**非秒杀退款占比** {@code ratio} 同时做三件事 ——
+     * <ol>
+     *   <li>返还下单时抵扣的积分（TYPE_REDEEM → TYPE_REFUND），按占比算；</li>
+     *   <li>回收支付后发放的积分（TYPE_EARN → TYPE_EARN_REVERSE），按占比算；</li>
+     *   <li>回退累计消费与会员等级（沉默重算，不弹降级通知），按占比算。</li>
+     * </ol>
+     *
+     * <p><b>为什么按「非秒杀占比」</b>：秒杀行是纯折扣通道、与券/积分/活动互斥（口径 B），
+     * 不参与积分发放与抵扣，退款时自然也不能动那部分。ratio = 本次退的非秒杀小计 / 整单非秒杀小计。
+     * 纯秒杀退款（ratio = 0）直接跳过，券/积分都不参与。
+     *
+     * <p><b>幂等</b>：以 {@code TYPE_REFUND} 或 {@code TYPE_EARN_REVERSE} 是否已存在同一订单为防重闸门，
+     * 与 cancelOrder 里的 refundRedeem（整单退、全额返还）互不冲突（退货单不会先走取消路径）。
+     *
+     * @param payAmount 订单实付（含运费），用于按比例回退累计消费；可空（空则不回退累计消费）
+     * @param ratio     非秒杀退款占比，[0,1]；<=0 视为无需逆向
+     */
+    /**
+     * 方案D-C：申请退款即冻结该订单按 ratio 应收回的发放积分。
+     * 冻结上限 = 当前可用积分（已花掉的部分无法冻结，退款时由 recoverForRefund 的现金扣回兜底），
+     * 故冻结绝不会超过「未花掉的发放积分」，也不会让积分变负。
+     *
+     * @return 实际冻结的积分额（写入 return_request.frozen_points，供驳回释放 / 退款回收对账）
+     */
+    @Transactional
+    public long freezeForReturn(Long userId, Long orderId, BigDecimal ratio) {
+        if (ratio == null || ratio.compareTo(ZERO) <= 0) {
+            return 0L;
+        }
+        SysUser user = lockUser(userId);
+        long rec = ledgerRepository.findByRefOrderIdAndType(orderId, PointLedger.TYPE_EARN)
+                .map(e -> new BigDecimal(e.getAmount()).multiply(ratio)
+                        .setScale(0, RoundingMode.FLOOR).longValue())
+                .orElse(0L);
+        if (rec <= 0) {
+            return 0L;
+        }
+        long frozen = user.getFrozenPoints() == null ? 0L : user.getFrozenPoints();
+        long available = Math.max(0L, user.getPoints() - frozen);   // 只能冻结「未花掉」的发放积分
+        long freeze = Math.min(rec, available);
+        if (freeze > 0) {
+            user.setFrozenPoints(frozen + freeze);
+            userRepository.save(user);
+        }
+        return freeze;
+    }
+
+    /** 方案D-C：驳回/取消退款时释放本单冻结的积分（至多释放本单冻结额，绝不让冻结变负）。 */
+    @Transactional
+    public void releaseFreeze(Long userId, Long amount) {
+        if (amount == null || amount <= 0) {
+            return;
+        }
+        SysUser user = lockUser(userId);
+        long frozen = user.getFrozenPoints() == null ? 0L : user.getFrozenPoints();
+        long release = Math.min(amount, frozen);
+        user.setFrozenPoints(frozen - release);
+        userRepository.save(user);
+    }
+
+    /**
+     * 退款逆向（方案D「全逆向 + 冻结回收」）：按**非秒杀占比** {@code ratio} 同时做三件事 ——
+     * <ol>
+     *   <li>返还下单时抵扣的积分（TYPE_REDEEM → TYPE_REFUND），按占比算；</li>
+     *   <li>回收支付后发放的积分（TYPE_EARN → TYPE_EARN_REVERSE）：<b>优先从冻结池回收</b>，
+     *       冻结不足（用户申请退款前已花掉）的部分计为 {@code shortfall}，由调用方从现金退款等价扣回（方案D-B）；</li>
+     *   <li>回退累计消费与会员等级（沉默重算）。</li>
+     * </ol>
+     *
+     * <p><b>与旧 reversePointsOnRefund 的差别</b>：旧实现只把「回收额」用 Math.min(rec, 当前余额) 钳到 0，
+     * 相当于对「先花掉再退单」睁一只眼（套利口子）。本方法把无法从冻结池回收的发放积分精确量化为
+     * {@code shortfall} 返回，让退款链路把这部分等价现金扣回，商家零风险。
+     *
+     * <p><b>幂等</b>：以 {@code TYPE_REFUND} 是否已存在同一订单为防重闸门（与旧实现一致）。
+     *
+     * @param payAmount   订单实付（含运费），用于按比例回退累计消费；可空
+     * @param ratio       非秒杀退款占比，[0,1]；<=0 视为无需逆向
+     * @param frozenReturn 本单在 apply 时冻结的积分额（return_request.frozen_points）
+     * @return 现金扣回所需的积分缺口（已花掉、无法回收的发放积分，单位：分），0 表示无需扣回
+     */
+    @Transactional
+    public long recoverForRefund(Long userId, Long orderId, BigDecimal payAmount, BigDecimal ratio, Long frozenReturn) {
+        if (ratio == null || ratio.compareTo(ZERO) <= 0) {
+            return 0L;
+        }
+        // ⚠️ 不做「订单级」防重：退款项是按商品行并行的（同一订单可有多笔独立售后），
+        // 每笔售后只对本行占比做一次逆向，流水可叠加。调用方（ReturnRequestService.refundForReturn）
+        // 保证每个售后单只会走到这里一次（审核/确认收货都有终态守卫），无需在此二次判重。
+        SysUser user = lockUser(userId);
+        long fRet = frozenReturn == null ? 0L : frozenReturn;
+        long shortfall = 0L;
+
+        // 1) 抵扣积分按占比返还（与冻结无关，原样返还用户）
+        ledgerRepository.findByRefOrderIdAndType(orderId, PointLedger.TYPE_REDEEM).ifPresent(redeem -> {
+            long back = new BigDecimal(redeem.getAmount()).multiply(ratio)
+                    .setScale(0, RoundingMode.FLOOR).longValue();
+            if (back > 0) {
+                user.setPoints(user.getPoints() + back);
+                saveLedger(user.getId(), PointLedger.TYPE_REFUND, back, user.getPoints(), orderId, "退款返还抵扣积分");
+            }
+        });
+
+        // 2) 发放积分按占比回收：优先从冻结池回收，冻结不足（已花掉）的部分计 shortfall
+        PointLedger earn = ledgerRepository.findByRefOrderIdAndType(orderId, PointLedger.TYPE_EARN).orElse(null);
+        if (earn != null) {
+            long rec = new BigDecimal(earn.getAmount()).multiply(ratio)
+                    .setScale(0, RoundingMode.FLOOR).longValue();
+            if (rec > 0) {
+                long curFrozen = user.getFrozenPoints() == null ? 0L : user.getFrozenPoints();
+                long fromFrozen = Math.min(rec, fRet);                 // 从冻结池能收回的（申请后才花，被 C 挡下）
+                long newFrozen = curFrozen - fromFrozen;               // 释放本单冻结（>=0）
+                user.setFrozenPoints(newFrozen);
+                long remaining = rec - fromFrozen;                     // 还需从余额收的
+                long actual = 0L;
+                if (remaining > 0) {
+                    // 余额里「未冻结」部分 = 总积分 − 本单冻结池(fromFrozen)。
+                    // ⚠️ 不可用 points − newFrozen：points 仍包含 fromFrozen 这部分，
+                    // 否则 actual 会与 fromFrozen 叠加超过真实余额 → 积分变负（严重 bug）。
+                    long nonFrozen = Math.max(0L, user.getPoints() - fromFrozen);
+                    actual = Math.min(remaining, nonFrozen);           // 余额里还没花的才收得回
+                }
+                long removed = fromFrozen + actual;                    // 本次实际从积分余额收回的总数
+                if (removed > 0) {
+                    long newPoints = user.getPoints() - removed;
+                    user.setPoints(newPoints);
+                    saveLedger(user.getId(), PointLedger.TYPE_EARN_REVERSE, removed, newPoints, orderId, "退款回收发放积分");
+                }
+                shortfall = remaining - actual;   // 已花掉、收不回的发放积分 → 交调用方现金扣回（方案D-B）
+            }
+        }
+
+        // 3) 累计消费与会员等级按占比回退（沉默重算：不发降级通知，避免打扰；等级本就是累计消费的函数）
+        if (payAmount != null && payAmount.compareTo(ZERO) > 0) {
+            BigDecimal spentBack = payAmount.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal spent = user.getTotalSpent() == null ? ZERO : user.getTotalSpent();
+            spent = spent.subtract(spentBack).max(ZERO);
+            user.setTotalSpent(spent);
+            user.setMemberLevel(levelForSpent(spent));
+        }
+        userRepository.save(user);
+        return shortfall;
     }
 
     /** 支付成功后发放积分 + 累计消费升级（幂等：同一订单仅发放一次） */
@@ -263,7 +413,14 @@ public class MemberService {
         TierInfo info = tierInfo(user.getMemberLevel());
         BigDecimal progress = progressToNext(user.getMemberLevel(), user.getTotalSpent());
         Map<String, Object> result = new HashMap<>();
-        result.put("points", user.getPoints());
+        long points = user.getPoints() == null ? 0L : user.getPoints();
+        long frozen = user.getFrozenPoints() == null ? 0L : user.getFrozenPoints();
+        // 2026-10-24 口径调整：可用积分 = 当前余额（冻结不再锁抵扣）。
+        // 冻结分如实透出仅作提示：关联订单售后通过时按规则扣回，
+        // 积分不足部分从退款现金中等价扣回（见 ReturnRequestService.recoverForRefund）。
+        result.put("points", points);
+        result.put("frozenPoints", frozen);
+        result.put("availablePoints", points);
         result.put("memberLevel", user.getMemberLevel());
         result.put("levelName", info.name());
         result.put("totalSpent", user.getTotalSpent());

@@ -109,7 +109,12 @@ export function useMemberPoints({
     const payBeforePoints = Math.max(amountAfterPromo, 0);
     const maxRedeemValue = round2(payBeforePoints * 0.5);
     const maxRedeemPoints = Math.floor(maxRedeemValue * 100);
-    const userPoints = Number(session.user?.points || 0);
+    // 2026-10-24 口径调整：可用积分 = 当前余额，冻结分不再锁抵扣。
+    // 冻结池仅作售后回收对账：售后通过时先收冻结池，积分已花掉的部分从退款现金中等价扣回。
+    // 此前「可用 = 余额 − 冻结」把冻结后仍有余款的用户可用分清零，出现「有积分却抵扣不了」。
+    const userPointsRaw = Number(session.user?.points || 0);
+    const frozenPoints = Number(session.user?.frozenPoints || 0);
+    const userPoints = Math.max(0, userPointsRaw);
     let pointsUsed = 0;
     if (usePoints.value && userPoints > 0 && maxRedeemPoints > 0) {
       const want = Number(pointsToUse.value) > 0 ? Number(pointsToUse.value) : userPoints;
@@ -120,7 +125,7 @@ export function useMemberPoints({
     // 与后端 OrderService 同口径，保证「商品金额 + 运费 − 券 − 活动 − 积分 = 应付」成立
     const freight = expressFreight.value;
     const finalPay = Math.max(round2(payBeforePoints - pointsValue), 0) + freight;
-    return { amountAfterPromo, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, pointsUsed, pointsValue, freight, finalPay };
+    return { amountAfterPromo, payBeforePoints, maxRedeemValue, maxRedeemPoints, userPoints, frozenPoints, pointsUsed, pointsValue, freight, finalPay };
   });
 
   const balanceSufficient = computed(() => Number(wallet.balance || 0) >= memberPreview.value.finalPay);

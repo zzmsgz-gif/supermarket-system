@@ -1916,6 +1916,13 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 .tag.muted { background: #f4f1ed; color: var(--muted); }
 .tag.amber { background: #fff3e0; color: #046a4a; }
 .tag.info { background: #e8f1fd; color: #2f74d0; }
+/* 点7/点8：订单列表退款/售后状态条（显眼化 + 驳回可感知） */
+.refund-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 8px 0 4px; padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+.refund-banner .rb-title { font-weight: 700; font-size: 14px; }
+.refund-banner .rb-sub { opacity: .92; }
+.refund-applying, .refund-partial { background: #fff3e0; color: #c8651b; border: 1px solid #f0c98a; }
+.refund-approved { background: #e7f6f0; color: var(--success); border: 1px solid #aee3cf; }
+.refund-rejected { background: #fdeae6; color: var(--danger); border: 1px solid #f1b4aa; }
 
 .order-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .order-head .order-amount { margin-left: auto; font-weight: 600; color: var(--ink); }
@@ -2955,6 +2962,14 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 /* ===== 结算确认页 ===== */
 .checkout-block { padding: 14px 0; border-bottom: 1px dashed #d7efe6; }
 .checkout-block:last-of-type { border-bottom: none; }
+/* 订单备注（选填）：点2 新增的用户可填留言框，沿用结算页其它输入的视觉 */
+.remark-input {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px;
+  padding: 10px 12px; border: 1px solid #e0e6e3; border-radius: 8px;
+  font: inherit; color: var(--ink); background: #fff; outline: none;
+}
+.remark-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(250,141,31,.12); }
+.remark-hint { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
 .addr-card { padding: 12px 14px; border: 1px solid #e8ecea; border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
 /* 选中的地址卡片：品牌色描边 + 浅底 + 投影，与未选中（纯白）拉开差距（2026-10-12 优化） */
 .addr-card.selected { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 6px 16px rgba(250,141,31,.15); }
@@ -4147,6 +4162,16 @@ button.mini.danger:hover {
   font-weight: 600;
   color: var(--ink, #0f1721);
 }
+/* 订单详情商品行的「秒杀·不参与满减/券」标签（2026-10-22）：跟在名字后、小字号 */
+.order-item-flash-tag {
+  display: inline-block;
+  vertical-align: 1px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 .order-item-spec {
   font-size: 12px;
   color: var(--muted, #5a6673);
@@ -4330,6 +4355,23 @@ button.mini.danger:hover {
   font-size: 12px;
   color: var(--muted, #5a6673);
 }
+.refund-deduct-note {
+  color: #c0392b;
+  background: #fff4f4;
+  border: 1px solid #f3c9c9;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.refund-deduct-note .rd-sub { color: var(--muted, #5a6673); }
+/* 退款后抵扣积分返还到账户余额的说明：是「分回来了」的好消息，用中性/正向提示，别用红色警告框 */
+.refund-return-note {
+  color: #1f7a3d;
+  background: #f1faf3;
+  border: 1px solid #cfe9d6;
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.frozen-row { color: #c0392b; }
 .order-item-meta .original-price {
   margin-right: 6px;
   color: var(--muted, #5a6673);
@@ -4962,6 +5004,34 @@ button.mini.danger:hover {
 .cu-price { color: var(--danger); font-weight: 700; }
 .cu-add { color: var(--brand-deep); font-weight: 800; }
 
+/* 点1：满减进度(绿) 与 免邮进度(蓝) 视觉分离 —— 同结构不同色系，一眼区分两件事 */
+.cart-progress.freight {
+  border-style: solid;
+  border-color: #cfe0f3;
+  background: linear-gradient(180deg, #fbfdff, #eef4fb);
+}
+.cart-progress.freight .cp-text .cp-gap { color: #2f6bd8; }
+.cart-progress.freight .cart-progress .ghost { color: #2f6bd8; border-color: #bcd2f0; }
+.cart-progress.freight .cp-track { background: #dde9f7; }
+.cart-progress.freight .cp-track i { background: linear-gradient(90deg, #4a8bf0, #2f6bd8); }
+/* 免邮条上的「去凑单」按钮改用蓝调 */
+.cart-progress.freight > .cp-top > .ghost { color: #2f6bd8; border-color: #bcd2f0; background: #fff; }
+.cart-progress.freight > .cp-top > .ghost:hover { background: #eef4fb; }
+
+/* 凑单推荐：从进度框里拆出来，做成独立区块，与上方两张进度卡视觉分层 */
+.cart-upsell-block {
+  margin: 12px 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.cart-upsell-block .cu-label { font-weight: 600; color: var(--ink); }
+
 /* ===== 后台「评价管理」（看 / 回 / 藏）===== */
 .review-admin-list { display: flex; flex-direction: column; gap: 10px; }
 .review-admin-row {
@@ -5269,6 +5339,79 @@ button.mini.danger:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .sk-shimmer { animation: none; background: #eef3f1; }
+}
+
+/* ④ 通用骨架：文本 / 详情块（SkeletonLines）。
+     头像圆形、标题条、多行文本，可单独组合，用于详情页/弹层/纯文本区块的首屏。 */
+.sk-block { padding: 4px 0; }
+.sk-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex: none;
+  margin-bottom: 10px;
+}
+
+/* ⑤ 通用骨架：列表行（SkeletonList）。
+      一行 = 缩略图(或圆形头像) + 多行文本 + 可选尾部块。 */
+.sk-list { display: flex; flex-direction: column; }
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.sk-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  flex: none;
+}
+.sk-row-lines {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+/* 行内文本条改用 gap 控制间距，覆盖 .sk-line 默认的 margin-top */
+.sk-row-lines .sk-line { margin-top: 0; }
+.sk-tail {
+  width: 56px;
+  height: 18px;
+  border-radius: 6px;
+  flex: none;
+}
+
+/* ⑥ 详情页骨架布局：左图右文两栏，移动端自动堆叠 */
+.pd-skeleton {
+  display: grid;
+  grid-template-columns: minmax(0, 420px) 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.pd-sk-gallery {
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+}
+.pd-sk-info { padding-top: 6px; }
+
+/* ⑦ 订单详情骨架：纵向分块（头部 / 商品行 / 金额） */
+.od-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+/* 通用纵向分块容器：把多个骨架组件竖向排开、留间距 */
+.sk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+@media (max-width: 768px) {
+  .pd-skeleton { grid-template-columns: 1fr; gap: 18px; }
+  .pd-sk-gallery { max-width: 340px; }
 }
 
 /* ② 飞入购物车的幽灵元素（见 App.vue flyToCart）：fixed 挂在 <body> 上，
@@ -5825,6 +5968,21 @@ a.brand-link { text-decoration: none; color: inherit; }
   line-height: 1.6;
 }
 .rpr-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
+.rpr-refund { color: var(--brand-deep); }
+.rpr-frozen {
+  margin-top: 8px; font-size: 13px; color: #9a3b3b;
+  background: #fff4f4; border: 1px solid #f3c9c9; border-radius: 8px; padding: 7px 10px;
+}
+.rpr-frozen b { color: #c0392b; }
+.rpr-deduct {
+  margin-top: 8px; border: 1px dashed #e2cf9a; border-radius: 10px; padding: 8px 12px;
+  background: #fffdf6; font-size: 14px;
+}
+.rpr-deduct-row { display: flex; justify-content: space-between; padding: 3px 0; color: var(--ink); }
+.rpr-deduct-row.minus { color: #c0392b; }
+.rpr-deduct-row.total {
+  border-top: 1px solid #ecdfc0; margin-top: 4px; padding-top: 6px; font-weight: 800; color: var(--brand-deep);
+}
 .rpr-order { color: var(--brand); cursor: pointer; }
 .rpr-order:hover { text-decoration: underline; }
 
@@ -6243,3 +6401,140 @@ a.brand-link { text-decoration: none; color: inherit; }
 /* 后台评价管理「删除」按钮（AdminReviewsPanel，#542）：破坏性操作，红色描边警示 */
 button.ghost.danger { color: var(--danger); border-color: var(--danger); }
 button.ghost.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* ===== 2026-10-21 反馈项样式 ===== */
+/* #2 购物车满减/免邮进度条下方的透明化说明：秒杀不计入满减、运费含秒杀 */
+.cart-progress .cp-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.cart-progress.freight .cp-note { color: #2f6fb0; }
+
+/* #4 秒杀商品「不参与满减/券」提示 */
+.flash-excl-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #c0392b;
+  font-weight: 600;
+}
+/* 商品卡紧凑/完整模式的秒杀提示缩小、不抢主信息 */
+.product-card .flash-excl-hint {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* #7 订单详情页寄回表单 */
+.shipback-form {
+  margin: 6px 0 2px;
+  padding: 10px;
+  background: #f6faff;
+  border: 1px solid #d6e6fb;
+  border-radius: 8px;
+}
+.shipback-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.shipback-fields input {
+  flex: 1 1 140px;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+.shipback-form .rb-good { color: var(--brand); }
+.shipback-form .rb-warn { color: #c0392b; }
+
+/* 订单列表卡片内嵌寄回表单（2026-10-22）：复用 .shipback-form，只补容器与小字 */
+.card-shipback { margin: 2px 0 2px; }
+.card-shipback .shipback-form { margin: 4px 0; }
+.card-shipback-hint { font-size: 12px; opacity: .75; padding: 2px 0; }
+.card-shipback-hint .order-no-link { cursor: pointer; }
+.card-ship-item {
+  flex: 0 0 auto;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #666;
+}
+
+/* #7 订单列表/详情退款状态条：新增「已寄回」蓝条 */
+.refund-banner.refund-shipped { background: #e7f1fb; color: #2f6fb0; }
+
+/* ==========================================================================
+   移动端适配集中层（2026-10-23，任务 #707）
+   约定：下方 ≤900 / ≤560 的零散层已覆盖头部堆叠、分类面板、product-grid、account-menu 等。
+   本层只补三类真缺口：
+     ① 全局横向溢出防护（任何内部 fixed / min-width 都不该把整页撑出横向滚动条）
+     ② 详情 / 结算 / 订单在手机上单列、录入区单列
+     ③ 主操作按钮在手机上全宽、拇指好点
+   统一断点：平板 ≤768、手机 ≤480。
+   ========================================================================== */
+
+/* ① 横向溢出防护
+   ⚠️ 用 clip 而非 hidden：clip 不建立滚动容器，不会破坏 position:sticky 的站头
+      和 position:fixed 的浮层（hidden 在部分引擎下会把 body 变成滚动容器，
+      进而让 sticky 失稳）。不支持 clip 的旧引擎退回 hidden。 */
+html { overflow-x: clip; }
+body { overflow-x: clip; }
+@supports not (overflow-x: clip) {
+  html { overflow-x: hidden; }
+  body { overflow-x: hidden; }
+}
+
+/* ② 平板 ≤768：详情单列、结算/订单录入单列、主按钮全宽 */
+@media (max-width: 768px) {
+  /* 商品详情：图在上、信息在下，单列更顺手（骨架 .pd-skeleton 已在 768 处单列） */
+  .detail-grid { grid-template-columns: 1fr; gap: 16px; }
+  .detail-image { max-width: 440px; width: 100%; margin: 0 auto; }
+  .detail-info h2 { font-size: 21px; }
+
+  /* 结算页操作区：竖排 + 主按钮占满，避免两个按钮在窄屏挤成一行点不准 */
+  .checkout-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .checkout-actions .primary,
+  .checkout-actions .btn-solid { width: 100%; min-height: 44px; }
+
+  /* 详情页加购/立即购买：两按钮并排均分，比各自定宽更稳 */
+  .detail-buy { gap: 10px; }
+  .detail-buy > button { flex: 1 1 auto; min-width: 0; }
+
+  /* 订单摘要键值对：窄屏两列太挤，改单列更清晰 */
+  .order-summary { grid-template-columns: 1fr; gap: 8px 0; }
+
+  /* 后台表单底部操作：竖排全宽，手机上不再因按钮并排溢出 */
+  .admin-form-foot { flex-direction: column; align-items: stretch; }
+  .admin-form-foot button { width: 100%; min-height: 42px; }
+}
+
+/* ③ 手机 ≤480：收紧间距 / 字号，搜索框更紧凑，列表操作可换行不挤压 */
+@media (max-width: 480px) {
+  .content { padding: 16px 12px 40px; }
+  .topbar { margin-bottom: 12px; }
+  .topbar h1 { font-size: 18px; }
+
+  /* 头部品牌区：手机上收小一号，站名保持一行不折行（375 实测「超市购物系统」会被挤成两行） */
+  .brand { gap: 8px; }
+  .brand-logo { width: 36px; height: 36px; border-radius: 11px; }
+  .brand strong { font-size: 16px; white-space: nowrap; }
+  .brand small { font-size: 10px; margin-top: 2px; }
+  .cart-pill { padding: 0 12px; font-size: 12.5px; }
+
+  .header-search { height: 40px; }
+  .header-search input { font-size: 15px; }   /* 防 iOS 聚焦时自动放大 */
+
+  .product-grid { gap: 8px; }
+  .product-card { padding: 8px; }
+  .product-card h3 { font-size: 13.5px; }
+
+  .detail-info h2 { font-size: 19px; }
+  .order-row { font-size: 13px; }
+
+  /* 订单/售后卡片右侧操作：极窄屏改横排可换行，避免竖向窄条压字 */
+  .order-item { flex-wrap: wrap; }
+  .order-item-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
+}

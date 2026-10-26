@@ -38,8 +38,24 @@ export function useChannels() {
     return out;
   }
 
+  // 点5：首页运营栏目顺序每次进首页打乱，不要总是那个排序。
+  // 4 个端点都是稳定的 top-N（带 @Cacheable / 固定排序），所以后端返回顺序每次相同。
+  // 这里在「入池」时做一次纯随机洗牌（Fisher-Yates），让热门/新品/猜你/在看的展示顺序每次进首页都不一样。
+  // 洗牌只发生在加载时（loadHomeChannels 仅在 App 初始化跑一次），浏览中切 tab / 点「换一批」都不会再乱跳；
+  // 真正重新进首页（刷新或重开）才会换序 —— 正好对应用户「每次登录进首页顺序不同」的诉求。
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
   async function loadChannel(key, url) {
-    try { channelPool[key] = (await api.get(url)) || []; } catch { channelPool[key] = []; }
+    let list = [];
+    try { list = (await api.get(url)) || []; } catch { list = []; }
+    // 先洗牌再入池：保证「换一批」环形切片是在随机基序上转，而不是在后端固定 top-N 上转
+    channelPool[key] = shuffleInPlace(list.slice());
     channelCursor[key] = 0;
     channelRefs[key].value = channelPage(key);
   }

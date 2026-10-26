@@ -104,12 +104,13 @@ export function formatPaymentStatus(status) {
 export function formatRefundStatus(status) {
   // 2026-10-15 按商品行并行售后：订单仅当全部商品行退完才 APPROVED，
   // 仍有在途或无在途但有已退部分时保持 APPLYING / PARTIAL（部分退款）。
-  const statusMap = { NONE: '-', APPLYING: '退款审核中', PARTIAL: '部分退款', APPROVED: '退款成功', REJECTED: '退款被拒绝' };
+  // #7 新增 WAITING_SHIP/SHIPPED_BACK：商家让用户寄回时，订单态要能表达「待寄回/已寄回」。
+  const statusMap = { NONE: '-', APPLYING: '退款审核中', WAITING_SHIP: '待寄回', SHIPPED_BACK: '已寄回', PARTIAL: '部分退款', APPROVED: '退款成功', REJECTED: '退款被拒绝' };
   return statusMap[status] || status || '-';
 }
 
 export function refundStatusTag(status) {
-  const tagMap = { APPLYING: 'warn', PARTIAL: 'warn', APPROVED: 'ok', REJECTED: 'muted' };
+  const tagMap = { APPLYING: 'warn', WAITING_SHIP: 'warn', SHIPPED_BACK: 'info', PARTIAL: 'warn', APPROVED: 'ok', REJECTED: 'muted' };
   return tagMap[status] || 'muted';
 }
 

@@ -10,8 +10,15 @@
             @click="selectOrderTab(t.key)"
           >{{ t.label }}</button>
         </div>
+        <skeleton-list
+          v-if="orders.loading && !orders.items?.length"
+          :count="4"
+          :thumb="true"
+          :lines="3"
+          :tail="true"
+        />
         <empty-state
-          v-if="!orders.items?.length"
+          v-else-if="!orders.items?.length"
           icon="receipt"
           text="暂无订单，下单后可在这里跟踪发货和售后"
           action-text="去逛逛"
@@ -51,9 +58,45 @@
             <small v-if="order.shipNo" class="ship-line">
               <span class="ship-flag">已发货</span>{{ order.shipCompany }} {{ order.shipNo }}
             </small>
-            <small v-if="order.refundStatus && order.refundStatus !== 'NONE'" class="tag-warn">
-              {{ formatRefundStatus(order.refundStatus) }}<template v-if="order.refundReason"> · {{ order.refundReason }}</template><template v-if="order.refundRemark"> · 处理意见：{{ order.refundRemark }}</template>
-            </small>
+            <!-- 点7/点8：退款/售后状态显眼化 + 驳回可感知。
+                 原先只是一行小字 tag-warn，用户根本注意不到「审核中/成功/被驳回」。
+                 现在按状态给一张整宽彩色条：审核中(橙)/部分退款(橙)/退款成功(绿)/被驳回(红，并显式给出理由)。 -->
+            <template v-if="order.refundStatus && order.refundStatus !== 'NONE'">
+              <div :class="['refund-banner', refundBannerCls(order.refundStatus)]">
+                <span class="rb-title">{{ formatRefundStatus(order.refundStatus) }}</span>
+                <span v-if="order.refundStatus === 'REJECTED'" class="rb-sub">驳回理由：{{ order.refundRemark || order.refundReason || '未说明' }}</span>
+                <span v-else-if="order.refundReason" class="rb-sub">原因：{{ order.refundReason }}</span>
+                <span v-if="order.refundRemark && order.refundStatus !== 'REJECTED'" class="rb-sub">处理意见：{{ order.refundRemark }}</span>
+              </div>
+              <!-- 2026-10-22 用户反馈：待寄回还要点进订单详情才能填快递单，路径太深。
+                   现在直接在卡片里内嵌「快递公司+运单号 → 提交寄回」表单（与详情页同款）。
+                   按商品行并行售后可有多条待寄回，各给一条表单、带商品名区分；
+                   提交成功后刷新列表，状态条自动翻成「已寄回」。 -->
+              <div v-if="order.refundStatus === 'WAITING_SHIP'" class="card-shipback">
+                <div v-if="shipBackInfo(order.id).loading" class="card-shipback-hint">正在加载售后信息…</div>
+                <template v-else-if="shipBackInfo(order.id).waiting.length">
+                  <form
+                    v-for="r in shipBackInfo(order.id).waiting"
+                    :key="'card-ship-' + r.id"
+                    class="shipback-form"
+                    @submit.prevent="submitShipBackCard(order.id, r)"
+                  >
+                    <div class="shipback-fields">
+                      <span v-if="shipBackInfo(order.id).waiting.length > 1" class="card-ship-item" :title="r.itemProductName || ''">{{ r.itemProductName || '商品' }}</span>
+                      <input v-model.trim="shipInputFor(r.id).company" placeholder="快递公司（如顺丰、中通）" maxlength="40" />
+                      <input v-model.trim="shipInputFor(r.id).trackingNo" placeholder="运单号" maxlength="64" />
+                      <!-- 2026-10-22 修「点完没反应」：原先空输入时按钮 disabled，但 .primary.sm
+                           没有 disabled 视觉样式，用户看着可点、点了静默无效。
+                           现在按钮恒可点，缺字段时在提交函数里 fail 弹明确提示；提交中才禁用+换文案。 -->
+                      <button type="submit" class="primary sm" :disabled="shipSubmitting[r.id]">
+                        {{ shipSubmitting[r.id] ? '提交中…' : '提交寄回' }}
+                      </button>
+                    </div>
+                  </form>
+                </template>
+                <div v-else-if="shipBackInfo(order.id).error" class="card-shipback-hint">未能加载售后信息，<a href="javascript:;" class="order-no-link" @click="openOrderDetail(order)">到订单详情提交寄回</a></div>
+              </div>
+            </template>
           </div>
           <div class="row-actions">
             <!-- 付款一律先进收银台（/pay/:id）看一眼倒计时再决定，不再这里直接扣款。
@@ -68,7 +111,7 @@
               v-if="(order.status === 'PAID' || order.status === 'SHIPPED' || order.status === 'COMPLETED') && (order.refundStatus === 'NONE' || order.refundStatus === 'REJECTED')"
               class="ghost"
               @click="openOrderDetail(order, { intent: 'refund' })"
-            >{{ order.status === 'COMPLETED' ? '申请售后' : '申请退款' }}</button>
+            >{{ (order.refundStatus === 'REJECTED' ? '重新' : '') + (order.status === 'COMPLETED' ? '申请售后' : '申请退款') }}</button>
             <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
             <button v-if="order.status === 'COMPLETED' && canReview(order)" class="ghost" @click="openReviewForm(order)">评价</button>
             <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->
@@ -108,7 +151,7 @@
 </template>
 
 <script>
-import { inject } from 'vue';
+import { inject, reactive, watch } from 'vue';
 import { orderSavedTotal } from '../utils/format';
 export default {
   name: 'OrdersPage',
@@ -137,7 +180,83 @@ export default {
     }
     // 订单里还有「未评价」的商品时才显示「评价」按钮（已全评完的订单不再显示）
     const canReview = (order) => (order.items || []).some((it) => !appCtx.reviewedItemMap[it.id]);
-    return { ...appCtx, orderSavedTotal, onOrderPage, canReview, statusTabs, selectOrderTab };
+    // 点7/点8：退款状态条配色（审核中/待寄回/部分退款 橙、已寄回 蓝、成功 绿、被驳回 红）
+    const refundBannerCls = (status) => ({
+      APPLYING: 'refund-applying', WAITING_SHIP: 'refund-applying', PARTIAL: 'refund-partial',
+      SHIPPED_BACK: 'refund-shipped', APPROVED: 'refund-approved', REJECTED: 'refund-rejected',
+    }[status] || 'refund-applying');
+    // ===== 2026-10-22 卡片内嵌寄回表单 =====
+    // 订单列表 DTO 不带售后单 id，这里对 refundStatus=WAITING_SHIP 的订单按需
+    // 调 GET /returns/order/{id} 取「待寄回」售后单（通常 0~2 条，量小可接受）。
+    const shipBackMap = reactive({});      // orderId -> { loading, loaded, error, waiting: [...] }
+    const shipInputs = reactive({});       // returnId -> { company, trackingNo }
+    const shipSubmitting = reactive({});   // returnId -> boolean
+    function shipBackInfo(orderId) {
+      if (!shipBackMap[orderId]) shipBackMap[orderId] = { loading: false, loaded: false, error: false, waiting: [] };
+      return shipBackMap[orderId];
+    }
+    function shipInputFor(returnId) {
+      if (!shipInputs[returnId]) shipInputs[returnId] = { company: '', trackingNo: '' };
+      return shipInputs[returnId];
+    }
+    async function ensureShipBack(orderId) {
+      const info = shipBackInfo(orderId);
+      if (info.loading || info.loaded) return;
+      info.loading = true;
+      try {
+        const res = await appCtx.api.get(`/returns/order/${orderId}`);
+        const list = Array.isArray(res) ? res : (res?.items || []);
+        info.waiting = list.filter((r) => r.status === 'WAITING_SHIP');
+        info.loaded = true;
+        info.error = false;
+      } catch (e) {
+        info.waiting = [];   // 失败时卡片显示「到订单详情提交寄回」兜底
+        info.loaded = true;
+        info.error = true;
+      } finally {
+        info.loading = false;
+      }
+    }
+    watch(() => appCtx.orders.items, (items) => {
+      (items || []).forEach((o) => {
+        if (o.refundStatus === 'WAITING_SHIP') ensureShipBack(o.id);
+      });
+    }, { immediate: true });
+    async function submitShipBackCard(orderId, r) {
+      const f = shipInputFor(r.id);
+      if (shipSubmitting[r.id]) return;
+      // 空字段不再用 disabled 静默拦（按钮看不出禁用态，用户点了以为坏了）——
+      // 改为点了就给明确提示。
+      if (!f.company || !f.trackingNo) {
+        appCtx.fail?.(!f.company && !f.trackingNo
+          ? '请先填写快递公司和运单号'
+          : (!f.company ? '请先填写快递公司' : '请先填写运单号'));
+        return;
+      }
+      shipSubmitting[r.id] = true;
+      try {
+        await appCtx.api.post(`/returns/${r.id}/ship-back`, {
+          expressCompany: f.company,
+          trackingNo: f.trackingNo,
+        });
+        appCtx.flash?.('寄回信息已提交，商家确认收到后会为你退款');
+        f.company = '';
+        f.trackingNo = '';
+        // 本地先行移除该售后单（已变 SHIPPED_BACK，表单应立即消失），
+        // ⚠️ 刷新订单列表必须用 loadOrdersPage(当前页) —— loadOrders(false) 是「追加下一页」，
+        //    不会刷新当前页的 refundStatus，状态条会一直卡在「待寄回」。
+        const info = shipBackInfo(orderId);
+        info.waiting = info.waiting.filter((x) => x.id !== r.id);
+        info.loaded = true;
+        info.error = false;
+        await appCtx.loadOrdersPage(appCtx.orders.page || 1);
+      } catch (e) {
+        appCtx.fail?.(e?.message || '提交失败');
+      } finally {
+        shipSubmitting[r.id] = false;
+      }
+    }
+    return { ...appCtx, orderSavedTotal, onOrderPage, canReview, statusTabs, selectOrderTab, refundBannerCls, shipBackInfo, shipInputFor, shipSubmitting, submitShipBackCard };
   }
 };
 </script>

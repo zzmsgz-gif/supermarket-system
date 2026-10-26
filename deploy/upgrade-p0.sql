@@ -10,7 +10,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 ALTER TABLE orders
     ADD COLUMN ship_company VARCHAR(50) DEFAULT NULL COMMENT 'Express company' AFTER remark,
     ADD COLUMN ship_no VARCHAR(64) DEFAULT NULL COMMENT 'Express tracking number' AFTER ship_company,
-    ADD COLUMN refund_status VARCHAR(20) NOT NULL DEFAULT 'NONE' COMMENT 'NONE, APPLYING, APPROVED, REJECTED' AFTER ship_no,
+    ADD COLUMN refund_status VARCHAR(20) NOT NULL DEFAULT 'NONE' COMMENT 'NONE, APPLYING, APPROVED, REJECTED, WAITING_SHIP, SHIPPED_BACK, PARTIAL' AFTER ship_no,
     ADD COLUMN refund_reason VARCHAR(255) DEFAULT NULL COMMENT 'Buyer refund reason' AFTER refund_status,
     ADD COLUMN refund_remark VARCHAR(255) DEFAULT NULL COMMENT 'Admin review remark' AFTER refund_reason,
     ADD COLUMN refunded_at DATETIME DEFAULT NULL COMMENT 'Refund finished time' AFTER refund_remark,

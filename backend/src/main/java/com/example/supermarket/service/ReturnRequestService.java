@@ -17,6 +17,7 @@ import com.example.supermarket.repository.ProductRepository;
 import com.example.supermarket.repository.PaymentRecordRepository;
 import com.example.supermarket.repository.ReturnRequestRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 原实现是「申请 → 商家同意 → 直接退款」，等于商家只要同意就得无条件退货款，
  * 这个口子开着，平台会被薅。
  *
- * <p><b>运费分责任</b>（用户已确认的方案）：由**商家在审核时判定**，不让用户自报 ——
- * 否则用户会全选「质量问题」骗取运费。
- * <ul>
- *   <li>{@code SELLER} 质量问题 / 错发 / 损坏 —— 且**一律不要求寄回**（几十块钱来回寄件不现实）</li>
- *   <li>{@code BUYER} 七天无理由「不想要了」—— 需寄回，用户自己承担运费</li>
- * </ul>
+ * <p><b>运费</b>：本项目不再区分运费承担方（freightBorneBy 已废弃移除），
+ * 退货运费统一按平台规则处理，不单独判定。
  *
  * <p><b>与 orders.refund_status 的关系</b>：orders 上那个三态字段是给订单列表快速筛选用 的，
  * 这里同步维护一份（APPLYING / APPROVED / REJECTED 三个值不变），
@@ -54,9 +51,6 @@ public class ReturnRequestService {
     public static final String STATUS_APPROVED = "APPROVED";
     public static final String STATUS_REJECTED = "REJECTED";
 
-    public static final String FREIGHT_SELLER = "SELLER";
-    public static final String FREIGHT_BUYER = "BUYER";
-
     private static final List<String> OPEN_STATUSES =
             List.of(STATUS_APPLYING, STATUS_WAITING_SHIP, STATUS_SHIPPED_BACK);
 
@@ -68,6 +62,8 @@ public class ReturnRequestService {
     private final WalletService walletService;
     private final MessageService msgService;
     private final FlashSaleService flashSaleService;
+    private final CouponService couponService;
+    private final MemberService memberService;
 
     public ReturnRequestService(ProductRepository productRepository,
                                 ReturnRequestRepository returnRepository,
@@ -76,7 +72,9 @@ public class ReturnRequestService {
                                 PaymentRecordRepository paymentRecordRepository,
                                 WalletService walletService,
                                                 MessageService msgService,
-                                FlashSaleService flashSaleService) {
+                                FlashSaleService flashSaleService,
+                                CouponService couponService,
+                                MemberService memberService) {
         this.productRepository = productRepository;
         this.returnRepository = returnRepository;
         this.orderRepository = orderRepository;
@@ -85,6 +83,8 @@ public class ReturnRequestService {
         this.walletService = walletService;
         this.msgService = msgService;
         this.flashSaleService = flashSaleService;
+        this.couponService = couponService;
+        this.memberService = memberService;
     }
 
     // ==================== 用户端 ====================
@@ -157,6 +157,15 @@ public class ReturnRequestService {
             r.setRemark(req.getRemark());
         }
 
+        // 方案D(C)：申请即冻结该订单按占比应收回的发放积分，堵「先花再退」套利。
+        // 冻结额写入 return_request.frozen_points，驳回时按此额释放；退款时作为冻结池回收对账基准。
+        BigDecimal freezeRatio = (r.getOrderItemId() != null)
+                ? nonFlashRatio(order, orderItemRepository.findByOrderIdOrderByIdAsc(order.getId()).stream()
+                        .filter(it -> r.getOrderItemId().equals(it.getId())).toList())
+                : wholeOrderNonFlashRatio(order);
+        long frozen = memberService.freezeForReturn(userId, order.getId(), freezeRatio);
+        r.setFrozenPoints(frozen);
+
         ReturnRequest saved = returnRepository.save(r);
 
         // orders 上的三态同步一份，供订单列表按售后状态筛选。
@@ -164,6 +173,8 @@ public class ReturnRequestService {
         if ("NONE".equals(order.getRefundStatus()) || "REJECTED".equals(order.getRefundStatus())) {
             order.setRefundStatus("APPLYING");
             order.setRefundReason(req.getReason());
+            // #6 重新申请时清空上一次驳回理由，避免订单详情页/订单列表残留旧驳回信息。
+            order.setRefundRemark(null);
             orderRepository.save(order);
         }
 
@@ -188,6 +199,9 @@ public class ReturnRequestService {
         ReturnRequest saved = returnRepository.save(r);
 
         OrderEntity order = orderRepository.findById(r.getOrderId()).orElseThrow();
+        // #7 订单侧同步置「已寄回」，保持订单售后态与售后单一致。
+        order.setRefundStatus(STATUS_SHIPPED_BACK);
+        orderRepository.save(order);
         msgService.push(userId, UserMessage.TYPE_ORDER, "退货包裹已寄出",
                 "商家确认收到后会为你退款。运单号：" + req.getTrackingNo(),
                 "orderDetail", String.valueOf(order.getId()), "RETURN:SHIPPED:" + saved.getId());
@@ -233,7 +247,6 @@ public class ReturnRequestService {
      *
      * <p>是否寄回由<b>管理员在审核弹窗里手动选择</b>为准（前端透传 {@code needReturn}）；
      * 若管理员未显式选择，则按订单状态自动兜底（PAID 免寄回，其余需寄回）。
-     * 退货运费责任方（SELLER / BUYER）同样可由管理员在弹窗里指定，缺省为 BUYER。
      *
      * <p>⚠️ 分支 3 是本条需求的核心：原先审核通过就直接退钱，等于「同意 = 白给」，
      * 商家毫无风控手段。
@@ -257,6 +270,8 @@ public class ReturnRequestService {
             r.setStatus(STATUS_REJECTED);
             r.setAdminRemark(req.getRemark());
             returnRepository.save(r);
+            // 方案D(C)：驳回即释放本单冻结的积分，余额复原
+            memberService.releaseFreeze(order.getUserId(), r.getFrozenPoints());
             order.setRefundStatus("REJECTED");
             order.setRefundRemark(req.getRemark());
             orderRepository.save(order);
@@ -268,9 +283,8 @@ public class ReturnRequestService {
 
         // 是否需要用户寄回：优先采用管理员在审核弹窗里的手动选择；
         // 若管理员未显式选择（needReturn 为 null），再按订单状态自动兜底：
-        // · 未收到货（已付款未发货 PAID / 已发货但未签收 SHIPPED）—— 视为未收到货，退款即可、无需寄回，
-        //   退货运费由商家承担（SELLER），用户不承担运费；
-        // · 已收货确认（COMPLETED）—— 退货退款，需用户先寄回（运费默认用户自理，商家可改判）。
+        // · 未收到货（已付款未发货 PAID / 已发货但未签收 SHIPPED）—— 视为未收到货，退款即可、无需寄回；
+        // · 已收货确认（COMPLETED）—— 退货退款，需用户先寄回。
         // 这样商家既能「一键按状态处理」，也能对单个订单临机改判（如已发货的质量问题判不退件）。
         Boolean manualNeedReturn = req.getNeedReturn();
         boolean needReturn = (manualNeedReturn != null)
@@ -282,7 +296,6 @@ public class ReturnRequestService {
         if (!needReturn) {
             // 未收到货：不必寄回，直接放款
             r.setNeedReturn(false);
-            r.setFreightBorneBy(FREIGHT_SELLER);
             r.setStatus(STATUS_APPROVED);
             r.setCompletedAt(LocalDateTime.now());
             returnRepository.save(r);
@@ -294,21 +307,15 @@ public class ReturnRequestService {
         }
 
         // 需寄回：先不放款，等用户寄 + 商家确认收货。
-        // 退货运费默认由用户承担（七天无理由退货运费自理）；商家可在备注里说明愿承担，
-        // 或前端仍可选填 freightBorneBy 覆盖（SELLER / BUYER 二选一）。
-        String borne = (req.getFreightBorneBy() != null && !req.getFreightBorneBy().isBlank())
-                ? req.getFreightBorneBy() : FREIGHT_BUYER;
-        if (!FREIGHT_SELLER.equals(borne) && !FREIGHT_BUYER.equals(borne)) {
-            throw new BusinessException(400, "运费承担方只能是 SELLER 或 BUYER。");
-        }
         r.setNeedReturn(true);
-        r.setFreightBorneBy(borne);
         r.setStatus(STATUS_WAITING_SHIP);
         returnRepository.save(r);
+        // #7 订单侧同步置「待寄回」：之前漏了这步，导致订单列表/详情仍显示「审核中」。
+        order.setRefundStatus(STATUS_WAITING_SHIP);
+        orderRepository.save(order);
 
         msgService.push(order.getUserId(), UserMessage.TYPE_ORDER, "售后申请已通过，请寄回商品",
-                (FREIGHT_SELLER.equals(borne) ? "退货运费由商家承担。" : "退货运费需你自行承担。")
-                        + "请填写快递公司与运单号，商家确认收到后即退款。",
+                "请填写快递公司与运单号，商家确认收到后即退款。",
                 "orderDetail", String.valueOf(order.getId()), "RETURN:WAITSHIP:" + r.getId());
 
         return ReturnRequestResponse.from(r, order.getOrderNo());
@@ -383,15 +390,24 @@ public class ReturnRequestService {
     private void refundForReturn(OrderEntity order, ReturnRequest r) {
         if (r.getOrderItemId() != null) {
             OrderItem item = orderItemRepository.findById(r.getOrderItemId()).orElse(null);
-            refundItem(order, item);
+            refundItem(order, item, r);
         } else {
-            refundWholeOrder(order);
+            refundWholeOrder(order, r);
         }
     }
 
     /** 整单退款（兼容存量整单售后单：orderItemId 为空时走这条） */
-    private void refundWholeOrder(OrderEntity order) {
-        walletService.refundOrder(order.getUserId(), order.getId(), order.getPayAmount(), "Refund approved");
+    private void refundWholeOrder(OrderEntity order, ReturnRequest r) {
+        // 方案D：先回收积分、算出现金扣回缺口（已花掉、无法从冻结池收回的发放积分 → 等价扣现金）
+        long shortfallPts = memberService.recoverForRefund(order.getUserId(), order.getId(),
+                order.getPayAmount(), wholeOrderNonFlashRatio(order), r.getFrozenPoints());
+        BigDecimal shortfallYuan = BigDecimal.valueOf(shortfallPts)
+                .divide(MemberService.POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
+        BigDecimal cashRefund = order.getPayAmount().subtract(shortfallYuan).max(BigDecimal.ZERO);
+        r.setRefundAmount(cashRefund);   // 实际到账净额（已扣积分缺口），供消息/记录一致
+        r.setPointsDeducted(shortfallPts);   // 持久化方案D-B 的积分缺口，供前端金额明细展示「已花积分等价扣回」
+        returnRepository.save(r);
+        walletService.refundOrder(order.getUserId(), order.getId(), cashRefund, "Refund approved", shortfallYuan);
         paymentRecordRepository.findByOrderId(order.getId()).ifPresent(rec -> {
             // PaymentRecord 没有 refundedAt 字段，状态位才是唯一标记（与 AdminOrderService 同口径）
             rec.setStatus("REFUNDED");
@@ -415,6 +431,8 @@ public class ReturnRequestService {
         order.setStatus("CLOSED");
         order.setRefundedAt(LocalDateTime.now());
         orderRepository.save(order);
+        // 券恢复（仅整单关闭时才还，部分退不动券）
+        couponService.restoreForOrder(order);
     }
 
     /**
@@ -422,12 +440,20 @@ public class ReturnRequestService {
      * 订单仅在「全部商品行都退完」时才置终态 CLOSED + refundStatus=APPROVED；
      * 否则仅保持 / 升级订单的售后态（APPLYING 在途 / PARTIAL 已退部分且无在途），订单本身不关闭。
      */
-    private void refundItem(OrderEntity order, OrderItem item) {
+    private void refundItem(OrderEntity order, OrderItem item, ReturnRequest r) {
         if (item == null) {
             return;
         }
-        BigDecimal amount = item.getSubtotalAmount();
-        walletService.refundOrder(order.getUserId(), order.getId(), amount, "Refund approved (item)");
+        // 方案D：先回收积分、算出现金扣回缺口（已花掉、无法从冻结池收回的发放积分 → 等价扣现金）
+        long shortfallPts = memberService.recoverForRefund(order.getUserId(), order.getId(),
+                order.getPayAmount(), nonFlashRatio(order, List.of(item)), r.getFrozenPoints());
+        BigDecimal shortfallYuan = BigDecimal.valueOf(shortfallPts)
+                .divide(MemberService.POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
+        BigDecimal cashRefund = item.getSubtotalAmount().subtract(shortfallYuan).max(BigDecimal.ZERO);
+        r.setRefundAmount(cashRefund);   // 实际到账净额（已扣积分缺口），供消息/记录一致
+        r.setPointsDeducted(shortfallPts);   // 持久化方案D-B 的积分缺口，供前端金额明细展示「已花积分等价扣回」
+        returnRepository.save(r);
+        walletService.refundOrder(order.getUserId(), order.getId(), cashRefund, "Refund approved (item)", shortfallYuan);
         paymentRecordRepository.findByOrderId(order.getId()).ifPresent(rec -> {
             rec.setStatus("REFUNDED");
             paymentRecordRepository.save(rec);
@@ -442,6 +468,8 @@ public class ReturnRequestService {
         item.setRefunded(true);
         orderItemRepository.save(item);
         recomputeOrderRefundStatus(order);
+        // 券恢复（仅整单关闭时才还，部分退不动券）
+        couponService.restoreForOrder(order);
     }
 
     /**
@@ -467,6 +495,36 @@ public class ReturnRequestService {
             order.setRefundStatus("NONE");
         }
         orderRepository.save(order);
+    }
+
+    /** 整单退的非秒杀占比：退的是全部行，故非秒杀占比=1（除非整单都是秒杀 → base=0 → 0） */
+    private BigDecimal wholeOrderNonFlashRatio(OrderEntity order) {
+        return nonFlashRatio(order, orderItemRepository.findByOrderIdOrderByIdAsc(order.getId()));
+    }
+
+    /**
+     * 非秒杀退款占比 = 本次退款的非秒杀小计 / 整单非秒杀小计。
+     * 秒杀行（flashSaleId != null）是纯折扣通道、不参与券/积分（互斥口径 B），退款时也不计入。
+     * ratio ∈ [0,1]；纯秒杀退款（base=0 或 本行是秒杀）返回 0，调用方据此跳过逆向。
+     */
+    private BigDecimal nonFlashRatio(OrderEntity order, List<OrderItem> refundedItems) {
+        BigDecimal base = nonFlashSubtotal(order);
+        if (base.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal part = refundedItems.stream()
+                .filter(it -> it.getFlashSaleId() == null && it.getProductId() != null)
+                .map(OrderItem::getSubtotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return part.divide(base, 6, RoundingMode.HALF_UP).min(BigDecimal.ONE);
+    }
+
+    /** 整单非秒杀小计（剔除秒杀行与脏数据行） */
+    private BigDecimal nonFlashSubtotal(OrderEntity order) {
+        return orderItemRepository.findByOrderIdOrderByIdAsc(order.getId()).stream()
+                .filter(it -> it.getFlashSaleId() == null && it.getProductId() != null)
+                .map(OrderItem::getSubtotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private ReturnRequest ownedBy(Long userId, Long returnId) {

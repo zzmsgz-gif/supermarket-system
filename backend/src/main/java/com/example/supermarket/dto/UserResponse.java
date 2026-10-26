@@ -15,6 +15,7 @@ public class UserResponse {
     private String role;
     private BigDecimal balance;
     private Long points;
+    private Long frozenPoints;
     private Integer memberLevel;
     private BigDecimal totalSpent;
     private String avatarUrl;
@@ -36,6 +37,7 @@ public class UserResponse {
         response.setRole(user.getRole());
         response.setBalance(user.getBalance());
         response.setPoints(user.getPoints());
+        response.setFrozenPoints(user.getFrozenPoints() == null ? 0L : user.getFrozenPoints());
         response.setMemberLevel(user.getMemberLevel());
         response.setTotalSpent(user.getTotalSpent());
         response.setAvatarUrl(user.getAvatarUrl());
@@ -121,6 +123,14 @@ public class UserResponse {
 
     public void setPoints(Long points) {
         this.points = points;
+    }
+
+    public Long getFrozenPoints() {
+        return frozenPoints;
+    }
+
+    public void setFrozenPoints(Long frozenPoints) {
+        this.frozenPoints = frozenPoints;
     }
 
     public Integer getMemberLevel() {

@@ -71,7 +71,7 @@ public class WalletService {
         if (amount.compareTo(ZERO) <= 0) {
             throw new BusinessException(400, "Recharge amount must be greater than 0");
         }
-        credit(userId, null, amount, TYPE_RECHARGE, "User recharge");
+        credit(userId, null, amount, TYPE_RECHARGE, "User recharge", null);
         return getWallet(userId);
     }
 
@@ -176,7 +176,7 @@ public class WalletService {
         BigDecimal after = before.subtract(normalizedAmount);
         user.setBalance(after);
         userRepository.save(user);
-        transactionRepository.save(buildTransaction(userId, orderId, TYPE_PAYMENT, normalizedAmount, before, after, "Order payment"));
+        transactionRepository.save(buildTransaction(userId, orderId, TYPE_PAYMENT, normalizedAmount, before, after, "Order payment", null));
     }
 
     /**
@@ -192,11 +192,20 @@ public class WalletService {
         }
         SysUser user = lockUser(userId);
         BigDecimal balance = normalizeAmount(user.getBalance());
-        transactionRepository.save(buildTransaction(userId, orderId, TYPE_PAYMENT, normalizedAmount, balance, balance, "Order payment (simulated channel)"));
+        transactionRepository.save(buildTransaction(userId, orderId, TYPE_PAYMENT, normalizedAmount, balance, balance, "Order payment (simulated channel)", null));
     }
 
     @Transactional
     public void refundOrder(Long userId, Long orderId, BigDecimal amount, String remark) {
+        refundOrder(userId, orderId, amount, remark, null);
+    }
+
+    /**
+     * 退款入账。pointsDeducted 为「退款时已花掉、等价扣回的发放积分」对应的金额（元，仅退款且发生积分扣回时有值），
+     * 透传到 REFUND 钱包流水，供「金额明细」展示「已花积分等价扣回」—— 原应退 = amount + pointsDeducted（2026-10-22 #713）。
+     */
+    @Transactional
+    public void refundOrder(Long userId, Long orderId, BigDecimal amount, String remark, BigDecimal pointsDeducted) {
         BigDecimal normalizedAmount = normalizeAmount(amount);
         if (normalizedAmount.compareTo(ZERO) <= 0) {
             return;
@@ -211,9 +220,9 @@ public class WalletService {
             SysUser user = lockUser(userId);
             BigDecimal balance = normalizeAmount(user.getBalance());
             transactionRepository.save(buildTransaction(userId, orderId, TYPE_REFUND,
-                    normalizedAmount, balance, balance, remark));
+                    normalizedAmount, balance, balance, remark, pointsDeducted));
         } else {
-            credit(userId, orderId, normalizedAmount, TYPE_REFUND, remark);
+            credit(userId, orderId, normalizedAmount, TYPE_REFUND, remark, pointsDeducted);
         }
     }
 
@@ -228,16 +237,16 @@ public class WalletService {
         if (normalizedAmount.compareTo(ZERO) <= 0) {
             return;
         }
-        credit(userId, null, normalizedAmount, TYPE_RECHARGE, "充值订单到账");
+        credit(userId, null, normalizedAmount, TYPE_RECHARGE, "充值订单到账", null);
     }
 
-    private void credit(Long userId, Long orderId, BigDecimal amount, String type, String remark) {
+    private void credit(Long userId, Long orderId, BigDecimal amount, String type, String remark, BigDecimal pointsDeducted) {
         SysUser user = lockUser(userId);
         BigDecimal before = normalizeAmount(user.getBalance());
         BigDecimal after = before.add(amount);
         user.setBalance(after);
         userRepository.save(user);
-        transactionRepository.save(buildTransaction(userId, orderId, type, amount, before, after, remark));
+        transactionRepository.save(buildTransaction(userId, orderId, type, amount, before, after, remark, pointsDeducted));
     }
 
     private SysUser lockUser(Long userId) {
@@ -262,7 +271,8 @@ public class WalletService {
             BigDecimal amount,
             BigDecimal balanceBefore,
             BigDecimal balanceAfter,
-            String remark
+            String remark,
+            BigDecimal pointsDeducted
     ) {
         WalletTransaction transaction = new WalletTransaction();
         transaction.setTransactionNo(generateTransactionNo());
@@ -274,6 +284,7 @@ public class WalletService {
         transaction.setBalanceAfter(balanceAfter);
         transaction.setStatus(STATUS_SUCCESS);
         transaction.setRemark(remark);
+        transaction.setPointsDeducted(pointsDeducted);
         return transaction;
     }
 

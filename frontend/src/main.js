@@ -10,6 +10,8 @@ import ImageUpload from './components/ImageUpload.vue';
 import EmptyState from './components/EmptyState.vue';
 import Pager from './components/Pager.vue';
 import SkeletonGrid from './components/SkeletonGrid.vue';
+import SkeletonLines from './components/SkeletonLines.vue';
+import SkeletonList from './components/SkeletonList.vue';
 import FestiveDecor from './components/FestiveDecor.vue';
 import { reveal } from './directives/reveal';
 import { applyFestiveTheme, fetchFestiveTheme } from './festive';
@@ -38,6 +40,8 @@ app.component('ImageUpload', ImageUpload);
 app.component('EmptyState', EmptyState);
 app.component('Pager', Pager);
 app.component('SkeletonGrid', SkeletonGrid);   // 商品骨架屏（多根节点，直接铺在 .product-grid 里）
+app.component('SkeletonLines', SkeletonLines); // 文本/详情块骨架屏
+app.component('SkeletonList', SkeletonList);   // 列表行骨架屏（订单/收藏/消息/积分等）
 app.component('FestiveDecor', FestiveDecor);   // 节日装饰层（内部按开关自行 v-if）
 
 app.mount('#app');

@@ -1,8 +1,9 @@
 <script setup>
 import { toRefs, onMounted } from 'vue';
 // 后台「售后管理」面板（2026-10-14 扶正 return_request 新链路）。
-// 数据来自 /admin/return-requests；审核动作（同意/驳回，是否寄回+运费由管理员在弹窗手动选择）、
+// 数据来自 /admin/return-requests；审核动作（同意/驳回，是否寄回由管理员在弹窗手动选择）、
 // 「确认收货并退款」由父级 useAdminRefunds 装配，经 props 注入。
+// 2026-10-22 移除「运费承担方」概念（freightBorneBy 全站删除）。
 //
 // ⚠️ props 必须与 AdminPanel.vue 实际传入逐字对齐，漏一个=运行时 undefined=白屏。
 import { formatDate, money } from '../utils/format';
@@ -71,7 +72,7 @@ onMounted(() => {
       暂无售后申请。用户在订单（已发货 / 已收货）点「申请退款 / 申请售后」后会出现在这里。
     </div>
     <div v-else class="table-wrap">
-      <table class="admin-table">
+      <table class="admin-table refunds-table">
         <thead>
           <tr>
             <th>售后单</th>
@@ -81,7 +82,7 @@ onMounted(() => {
             <th>类型</th>
             <th>退款金额</th>
             <th>申请原因</th>
-            <th>运费</th>
+            <th>快递公司</th>
             <th>运单号</th>
             <th>申请时间</th>
             <th class="col-action">操作</th>
@@ -107,8 +108,8 @@ onMounted(() => {
               <td><span :class="['tag', returnStatusCls(r.status)]">{{ r.statusLabel || r.status }}</span></td>
               <td><span :class="['tag', returnTypeCls(r.type)]">{{ returnTypeLabel(r.type) }}</span></td>
               <td><span class="cell-strong">{{ money(r.refundAmount) }}</span></td>
-              <td>{{ r.reason || '未填写' }}</td>
-              <td>{{ r.freightBorneBy ? r.freightLabel : '待判定' }}</td>
+              <td class="cell-reason" :title="r.reason || ''">{{ r.reason || '未填写' }}</td>
+              <td>{{ r.expressCompany || '-' }}</td>
               <td>{{ r.trackingNo || '-' }}</td>
               <td>{{ formatDate(r.createdAt) }}</td>
               <td class="col-action">
@@ -134,13 +135,6 @@ onMounted(() => {
                         <option value="no">否，免寄回直接退</option>
                       </select>
                     </label>
-                    <label v-if="refundReviewForm.needReturnMode !== 'no'" class="extra-inline">
-                      运费承担方
-                      <select v-model="refundReviewForm.freightBorneBy">
-                        <option value="BUYER">用户承担</option>
-                        <option value="SELLER">商家承担</option>
-                      </select>
-                    </label>
                   </template>
                   <input v-model="refundReviewForm.remark" :placeholder="refundReviewForm.approved ? '处理意见（选填）' : '驳回理由（必填）'" />
                   <button :disabled="reviewSubmitDisabled()" @click="submitRefundReview(r.id)">提交</button>
@@ -157,6 +151,33 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 2026-10-21 用户反馈：列全挤在一起（「不想要了」「整单」被压成竖排，
+   申请时间断成两行，页面越窄越乱）。三步治理：
+   ① 表格给最小宽度 1180px —— 窄屏时 .table-wrap 横向滚动，而不是把每列挤碎；
+   ② 数据单元格 nowrap —— 订单号/金额/时间/快递/运单号/操作按钮不再竖排换行；
+   ③ 申请原因列单独限宽 180px + 省略号，长理由悬浮 title 看全文（cell-reason）。 */
+.refunds-table {
+  min-width: 1180px;
+}
+.refunds-table td {
+  white-space: nowrap;
+}
+/* 商品列：图文单元格本身自带省略，保持可换行的排版余地 */
+.refunds-table td.rp-item-cell,
+.refunds-table td:nth-child(3) {
+  white-space: normal;
+}
+.refunds-table td.cell-reason {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 操作按钮组：保持一行排开（同意退款 / 驳回 并排），不纵向堆叠 */
+.refunds-table .row-actions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .extra-inline {
   display: inline-flex;
   align-items: center;

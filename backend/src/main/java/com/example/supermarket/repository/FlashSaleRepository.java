@@ -69,4 +69,13 @@ public interface FlashSaleRepository extends JpaRepository<FlashSale, Long> {
     @Query("update FlashSale f set f.soldQuota = f.soldQuota - :quantity "
             + "where f.id = :id and f.soldQuota >= :quantity")
     int releaseQuota(@Param("id") Long id, @Param("quantity") Integer quantity);
+
+    /**
+     * 悲观锁本场次这一行（SELECT ... FOR UPDATE）：使同一秒杀的并发下单串行化。
+     * 必须在 {@code reserveQuota} 做"每人限购"只读校验【之前】 acquire，否则 READ_COMMITTED 下
+     * 两笔并发单都读不到对方未提交的 order_item，会同时判定"未超限额"，绕过每人限购。
+     * 返回值（id）忽略，调用方只关心这一行已被当前事务锁住。
+     */
+    @Query(value = "select f.id from flash_sale f where f.id = :id for update", nativeQuery = true)
+    Long lockRow(@Param("id") Long id);
 }

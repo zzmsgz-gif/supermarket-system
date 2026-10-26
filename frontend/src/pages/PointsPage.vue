@@ -5,9 +5,15 @@
     <div class="mo-level">
       <span class="mo-badge" :class="'lv' + (session.user?.memberLevel || 0)">{{ tierNameFor(session.user?.memberLevel) }}</span>
       <div class="mo-meta">
-        <strong>{{ memberProfile.points }} 分</strong>
-        <small>累计消费 {{ money(memberProfile.totalSpent) }}</small>
+        <strong>{{ memberProfile.availablePoints != null ? memberProfile.availablePoints : memberProfile.points }} 分</strong>
+        <small>可用积分 · 可直接用于下单抵扣</small>
       </div>
+    </div>
+    <!-- 2026-10-24 口径调整：冻结分只提示、不锁抵扣（可用积分=当前余额）。
+         冻结额可能大于余额（冻结后花掉了部分积分），如实显示，不夹断。 -->
+    <div class="frozen-tip" v-if="(memberProfile.frozenPoints || 0) > 0">
+      <span class="ft-badge">冻结中</span>
+      <span>有 <b>{{ memberProfile.frozenPoints }} 分</b> 关联订单正在售后审核，已预留待回收。售后通过时将按规则扣回该订单产生的积分；若你已提前用掉这部分积分，扣回时不足的金额将从退款现金中等价扣回（100 分 = ¥1）。审核驳回则自动解冻，恢复为可用积分。</span>
     </div>
     <div class="mo-perks">
       <div class="mo-perk">
@@ -55,7 +61,8 @@
       <h3>积分明细</h3>
       <button class="ghost sm" @click="loadMemberLedger(1)" :disabled="memberLedger.loading">刷新</button>
     </div>
-    <empty-state v-if="!memberLedger.items.length && !memberLedger.loading" icon="star" text="还没有积分变动记录，下单可得积分哦" />
+    <skeleton-list v-if="memberLedger.loading && !memberLedger.items.length" :count="6" :thumb="false" :lines="2" :tail="true" />
+    <empty-state v-else-if="!memberLedger.items.length" icon="star" text="还没有积分变动记录，下单可得积分哦" />
     <ul v-else class="ledger-list">
       <li v-for="row in memberLedger.items" :key="row.id" class="ledger-row">
         <span class="lr-type" :class="'t-' + row.type">{{ ledgerLabel(row.type) }}</span>
@@ -64,8 +71,8 @@
           <small v-if="row.refOrderId">订单 #{{ row.refOrderId }}</small>
           <small>{{ formatDate(row.createdAt) }}</small>
         </div>
-        <span class="lr-amount" :class="row.type === 'REDEEM' ? 'minus' : 'plus'">
-          {{ row.type === 'REDEEM' ? '-' : '+' }}{{ row.amount }}
+        <span class="lr-amount" :class="ledgerIsMinus(row.type) ? 'minus' : 'plus'">
+          {{ ledgerSign(row.type) }}{{ row.amount }}
         </span>
         <span class="lr-bal">余 {{ row.balanceAfter }}</span>
       </li>
@@ -89,7 +96,12 @@ export default {
     const appCtx = inject('appCtx');
     const ledgerLabel = (type) => ({
       EARN: '消费获得', REDEEM: '积分抵扣', REFUND: '订单回退', ADJUST: '系统调整',
+      EARN_REVERSE: '退款回收积分',
     }[type] || type || '变动');
+    // 符号：REDEEM（积分抵扣）与 EARN_REVERSE（退款回收已发放积分）都是「扣减」，显示 −；其余为 +。
+    // 后端 point_ledger.amount 存的是绝对值正数，方向由 type 决定，这里只负责把方向正确地呈现给用户。
+    const ledgerIsMinus = (type) => type === 'REDEEM' || type === 'EARN_REVERSE';
+    const ledgerSign = (type) => (ledgerIsMinus(type) ? '-' : '+');
 
     // 会员日（每月几号消费积分翻倍）是**公共配置**、但只有本页与结算页用得上，
     // 所以直接在页面里读公开接口，不往 App.vue 那条 60+ 字段的 appCtx 里加东西（改动面越小越安全）。
@@ -118,7 +130,7 @@ export default {
       appCtx.loadMemberLedger(page);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
-    return { ...appCtx, ledgerLabel, memberDay, memberDayText, memberDayNextText, onLedgerPage };
+    return { ...appCtx, ledgerLabel, ledgerIsMinus, ledgerSign, memberDay, memberDayText, memberDayNextText, onLedgerPage };
   }
 };
 </script>
@@ -134,6 +146,16 @@ export default {
   padding: 2px 10px; font-size: 12px; font-weight: 700;
 }
 .mdt-next { margin-left: auto; color: #96703a; }
+.frozen-tip {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #fff4f4; border: 1px solid #f3c9c9; border-radius: 12px;
+  padding: 10px 14px; margin-top: 12px; font-size: 14px; color: #9a3b3b;
+}
+.frozen-tip .ft-badge {
+  min-height: 0; background: #d9534f; color: #fff; border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; font-weight: 700;
+}
+.frozen-tip b { color: #c0392b; }
 .member-overview {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
   background: linear-gradient(120deg, #f3f8f6, #eaf3ef);

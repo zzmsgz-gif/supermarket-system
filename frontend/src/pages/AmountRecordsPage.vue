@@ -17,7 +17,9 @@
       </div>
     </div>
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <div v-if="loading" class="sk-stack" aria-hidden="true">
+      <skeleton-list :count="6" :thumb="false" :lines="2" :tail="true" />
+    </div>
     <div v-else-if="!rows.length" class="empty">还没有资金流水</div>
 
     <template v-else>
@@ -38,6 +40,11 @@
             <span v-if="r.orderNo" class="arr-order" @click="goOrder(r.orderId)">
               订单 {{ r.orderNo }}
             </span>
+            <!-- #713：退款时已花掉、等价扣回的发放积分 —— 让「支付 −X / 退款 +Y」对不上的差额有据可查。
+                 原应退 = 入账金额(amount) + 扣回额(pointsDeducted)；仅退款且发生积分扣回时才有此行。 -->
+            <span v-if="r.type === 'REFUND' && Number(r.pointsDeducted || 0) > 0" class="arr-deducted">
+              已花积分等价扣回 {{ money(r.pointsDeducted) }}（原应退 {{ money(origRefund(r)) }}）
+            </span>
             <!-- ⚠️ 刻意**不展示** r.remark（2026-10-09 用户反馈）：
                  那是给财务对账用的内部备注，内容是英文（Order payment / Refund approved /
                  User recharge），夹在中文界面里既看不懂、也没有信息量 ——
@@ -53,14 +60,8 @@
         </div>
       </div>
 
-      <!-- AdminPager 的 @change 传的是增量（-1/+1），跳页走 v-model:jump-page + @jump -->
-      <AdminPager
-        :page="page"
-        :total-pages="totalPages"
-        v-model:jump-page="jumpPage"
-        @change="changePage"
-        @jump="jumpTo"
-      />
+      <!-- 与订单页同款分页（Pager），数字页码样式全站统一；@go 传绝对页码 -->
+      <Pager :page="page" :total="total" :size="pageSize" :loading="loading" @go="goPage" />
     </template>
   </section>
 </template>
@@ -69,7 +70,7 @@
 import { inject, ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { money, formatDate } from '../utils/format.js';
-import AdminPager from '../components/AdminPager.vue';
+import Pager from '../components/Pager.vue';
 
 /**
  * 金额明细 —— **直接查钱包流水 wallet_transaction**（2026-10-09 重构）。
@@ -88,7 +89,7 @@ import AdminPager from '../components/AdminPager.vue';
  */
 export default {
   name: 'AmountRecordsPage',
-  components: { AdminPager },
+  components: { Pager },
   setup() {
     const appCtx = inject('appCtx');
     const router = useRouter();
@@ -99,7 +100,6 @@ export default {
     const page = ref(1);
     const pageSize = 20;
     const total = ref(0);
-    const jumpPage = ref(null);
     const summary = reactive({ out: 0, income: 0 });
 
     const totalPages = computed(() => Math.max(1, Math.ceil((total.value || 0) / pageSize)));
@@ -131,20 +131,23 @@ export default {
       }
     }
 
-    /** AdminPager 的 change 传的是增量 */
-    function changePage(delta) {
-      const next = page.value + delta;
-      if (next < 1 || next > totalPages.value) return;
+    /** Pager 的 go 传的是绝对页码 */
+    function goPage(n) {
+      const next = Math.min(totalPages.value, Math.max(1, Number(n) || 1));
+      if (next === page.value) return;
       page.value = next;
-      load();
+      // 翻页先平滑滚回顶部：和订单页一致的交互。
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // 兜底：若下一页内容比当前页短（高度骤降），平滑滚动可能被截断卡在半路；
+      // 数据加载完后再确认一次是否已在顶部，没到顶就补一次归零，保证一定回到顶部。
+      load().finally(() => {
+        if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'auto' });
+      });
     }
 
-    function jumpTo() {
-      const n = Number(jumpPage.value);
-      if (!n || n < 1 || n > totalPages.value) return;
-      page.value = n;
-      jumpPage.value = null;
-      load();
+    /** 退款行若有「已花积分等价扣回」，原应退 = 入账金额 + 扣回额（#713） */
+    function origRefund(r) {
+      return Number(r?.amount || 0) + Number(r?.pointsDeducted || 0);
     }
 
     function goOrder(orderId) {
@@ -156,8 +159,8 @@ export default {
       loadSummary();
     });
 
-    return { rows, loading, page, totalPages, jumpPage, summary,
-             changePage, jumpTo, goOrder, money, formatDate };
+    return { rows, loading, page, pageSize, total, totalPages, summary,
+             goPage, origRefund, goOrder, money, formatDate };
   },
 };
 </script>
@@ -169,6 +172,13 @@ export default {
   border: 1px dashed var(--line, #e5e7eb);
   border-radius: 999px;
   padding: 0 6px;
+  margin-left: 6px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.arr-deducted {
+  color: var(--muted);
+  font-size: 11px;
   margin-left: 6px;
   line-height: 16px;
   white-space: nowrap;

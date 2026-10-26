@@ -405,8 +405,12 @@ async function syncRoute() {
     if (productDetail.data?.id === id) return;
     await openProductDetail({ id }, { fromHistory: true });
   } else if (name === 'orderDetail' && route.params.id) {
-    const id = route.params.id;
+    const id = Number(route.params.id);
     if (orderNavLock) return;
+    // ⚠️ route.params.id 是字符串，orderDetail.data.id 是数字，必须 Number 后再比；
+    // 否则 48 === '48' 为 false，本应短路的「已加载过该订单」判断失效，
+    // syncRoute 每次进订单详情都重调 openOrderDetail —— 不仅重复拉接口，还会把
+    // 列表页带进来的 ?refund=1 等 query 冲掉，导致「重新申请售后」自动展开失效。
     if (orderDetail.data?.id === id) return;
     await openOrderDetail({ id });
   }
@@ -470,7 +474,7 @@ const adminProducts = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminOrders = reactive({ items: [], page: 1, size: 10, total: 0 });
 const adminStatsOverview = ref(null);
 const adminUsers = reactive({ items: [], page: 1, size: 10, total: 0 });
-const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0 });
+const cart = reactive({ items: [], selectedCount: 0, selectedAmount: 0, loading: false });
 // 商品星级聚合：{ productId: { avg, count } }，商品卡/详情展示平均星级
 const ratingSummaryMap = ref({});
 
@@ -658,7 +662,7 @@ function rememberUser(user) {
 /* ---------------- 履约 / 协议 / 消息：已抽为 composable ---------------- */
 // 装配点必须在 fail() 之后（消息的 markMessagesRead 要用），且被抽走的符号在本行之前
 // 无任何同步求值（无 immediate watch / watchEffect），故不存在 TDZ 风险。
-const { stores, deliverySlots, fulfillment, EXPRESS_FREE_THRESHOLD, EXPRESS_FREIGHT, isPickup, isExpress, expressFreight, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment } = useStores({ getCartLocalTotal: () => cartLocalTotal.value });
+const { stores, deliverySlots, fulfillment, EXPRESS_FREE_THRESHOLD, EXPRESS_FREIGHT, isPickup, isExpress, expressFreight, cartFreightProgress, selectedStore, activeStoreId, loadStores, loadDeliverySlots, selectFulfillment, selectStore, resetFulfillment } = useStores({ getCartLocalTotal: () => cartLocalTotal.value });
 
 const { legalDocs, loadLegalDoc, openLegal } = useLegalDoc();
 
@@ -687,11 +691,12 @@ registerAuthListeners();
 const { loadWallet, methodLabel, selectRechargePreset, onCustomAmountInput, formatCountdown, buildQrSvg, qrSvg, startCountdown, clearRechargeTimer, confirmRecharge, payRechargeOrder, cancelRechargeOrder, handleRechargeExpired, closeRechargeModal, resetRecharge } = useRecharge({ getSession: () => session, isAdmin, rememberUser, wallet, recharge, notice, fail, askConfirm, run });
 
 /* ---------------- 活动 / 收藏 / 秒杀：已抽为 composable ---------------- */
-// 装配点必须在 cartLocalTotal / session / isAdmin / route / goLogin / notice / fail 之后，
+// 装配点必须在 cartNonFlashTotal（747 行 useCartTotals 解构）/ session / isAdmin / route / goLogin / notice / fail 之后，
 // 且被抽走的符号在本行之前无任何同步求值（无 immediate watch / watchEffect），无 TDZ 风险。
+// ⚠️ 满减进度条基数用 cartNonFlashTotal（非秒杀小计）：秒杀与全场优惠互斥，秒杀行绝不计入门槛。
 // ⚠️ activeActivities 虽然被游客购物车(estimateGuestActivity)与商品详情页读写，
 //    但解构拿到的是**同一个 ref 对象**，跨域读写天然可用，无需额外注入。
-const { activeActivities, noticeIndex, noticeList, rotatingNotice, topActivity, cartActivityProgress, ensureActiveActivities, activitySlogan, activityNoticeText, activityOffset, activityMatches, productActivityTag, startNoticeRotation, stopNoticeRotation } = useActivity({ getCartLocalTotal: () => cartLocalTotal.value });
+const { activeActivities, noticeIndex, noticeList, rotatingNotice, topActivity, cartActivityProgress, ensureActiveActivities, activitySlogan, activityNoticeText, activityOffset, activityMatches, productActivityTag, startNoticeRotation, stopNoticeRotation } = useActivity({ getCartLocalTotal: () => cartNonFlashTotal.value });
 
 const { favoriteIds, favorites, priceAlerts, alertUnread, pendingFavorite, isFavorite, setFavoriteLocal, loadFavoriteIds, loadFavorites, loadPriceAlerts, loadFavoritesPage, loadPriceAlertsPage, loadAlertUnread, markAlertsRead, toggleFavorite } = useFavorites({ getSession: () => session, isAdmin, getRoute: () => route, goLogin, notice, fail, getView: () => view.value });
 
@@ -744,7 +749,7 @@ const { myCoupons, usableCoupons, selectedUserCouponId, userOptedOutCoupon, cart
 
 // 购物车的纯金额计算层：只读状态，无副作用。⚠️ 必须在 useCart 之后（读它的 usableCoupons /
 //    selectedUserCouponId）且在 useMemberPoints 之前（后者要 orderPayPreview）。
-const { selectedCoupon, cartLocalTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartTotalSaved, productBasePriceMap, catalogBasePrice, appliedPromo } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
+const { selectedCoupon, cartLocalTotal, cartNonFlashTotal, cartFlashTotal, cartOriginalSave, orderPayPreview, cartSelectedQty, cartNonFlashQty, cartFlashQty, cartTotalSaved, productBasePriceMap, catalogBasePrice, appliedPromo } = useCartTotals({ cart, usableCoupons, selectedUserCouponId, getProducts: () => products.value });
 
 // 会员积分体系：档位/资料/流水/结算预览。⚠️ 装配点必须在 orderPayPreview /
 // effectiveMemberLevel / expressFreight / wallet 之后（它们是 ref，装配实参里立即求值）。
@@ -760,7 +765,7 @@ const { loadCoupons, receiveCoupon } = useCoupons({ api, run, session, isAdmin, 
 const { loadAdminProducts, loadAdminOrders, loadAdminStatsOverview, loadRefundOrders, loadRefundApplyingCount, loadPendingShipCount, loadStockAlerts, loadAdminCoupons, loadAdminUsers } = useAdminLoaders({ api, isAdmin, adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage, adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage, adminStatsOverview, refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage, pendingShipCount, stockAlerts, adminCoupons, adminCouponKeyword, adminCouponJumpPage, adminUsers, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUserJumpPage });
 // 结算下单：地址簿 + 去结算 + 提交订单（购物车 / 立即购买两条路径）。
 const { loadAddresses, useAddress, saveAddress, goCheckout, createOrder,
-        editingAddressId, addrPage, ADDR_PAGE_SIZE,
+        editingAddressId, addrPage, ADDR_PAGE_SIZE, remark,
         startEditAddress, cancelEditAddress, deleteAddress, setDefaultAddress, changeAddrPage } = useCheckout({ api, run, fail, session, isAdmin, router, navigate, route, notice, cart, paying, quickBuy, selectedUserCouponId, userOptedOutCoupon, addresses, selectedAddressId, addressForm, usePoints, pointsToUse, memberPreview, isPickup, activeStoreId, isExpress, fulfillment, QUICKBUY_ITEM_ID, loadWallet, loadMyCoupons, loadUsableCoupons, loadCart, loadOrders, loadFlashSales, loadProducts, refreshProductDetail, setPendingAction, goLogin });
 
 
@@ -1013,7 +1018,7 @@ onBeforeUnmount(() => {
 });
 const adminCtx = { adminAnnouncements, adminBanners, announcementForm, bannerForm, bannerFormOpen, bannerUploading, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminAnnouncements, adminBanners, adminProducts, adminStatsOverview, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUserMemberLevel, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openOrderDetail, orderDetail, orders, productForm, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, refundApplyingCount, loadRefundApplyingCount, pendingShipCount, loadPendingShipCount, run, safeParseSpec, saveAnnouncement, session, showAlert, stockAlerts, announcementFormOpen, closeAnnouncementForm, saveBanner, toggleBanner, deleteBanner, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch };
 
-const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, pickAvatar, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, appliedPromo, cartActivityProgress, imgFallback, openImageViewer, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses,
+const appCtx = { productsLoading, ADMIN_MENU_KEYS, ROUTE_VIEWS, activeActivities, adminBanners, bannerUploading, loadAdminBanners, bannerForm, bannerFormOpen, openBannerForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, addDetailToCart, addToCart, addressForm, addresses, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminCtx, adminJumpPage, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductKeyword, adminProductStatus, adminProducts, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, api, applyFilters, askConfirm, authErrors, authOpen, authSubmitting, authTab, autoSelectCoupon, avatarInput, pickAvatar, backFromProduct, backToShop, balanceSufficient, buildQrSvg, buyDetailNow, quickBuy, cancelOrder, reorder, cancelRechargeOrder, cart, cartLocalTotal, cartOriginalSave, cartSelectedQty, cartSyncTimers, cartTotalSaved, appliedPromo, cartActivityProgress, cartFreightProgress, imgFallback, openImageViewer, refreshCurrentPage, topActivity, activitySlogan, productActivityTag, ratingSummaryMap, adminAnnouncements, announcementForm, loadAdminAnnouncements, openAnnouncementForm, saveAnnouncement, toggleAnnouncement, deleteAnnouncement, categories, categoryName, changeDetailQty, chooseCategory, chooseNoCoupon, clearCart, clearRechargeTimer, closeAlert, closeAuth, closeOrderDetail, closeRechargeModal, computed, confirmDialog, confirmReceipt, confirmRecharge, couponEligible, couponShortfall, coupons, createOrder, remark, currentGalleryImage, currentImageIndex, currentTitle, detailQuantity, discountRate, discountSave, dwellEnterTs, dwellProductId, dwellRankProducts, dwellSource, ensureAllowedView, error, fail, filters, forgotPassword, formatCountdown, formatCouponStatus, formatDate, formatPaymentStatus, formatProductStatus, formatRefundStatus, formatRole, formatUnit, fulfillmentLabel, orderStatusLabel, galleryImages, goCheckout, guessProducts, handleAuthExpired, handleRechargeExpired, hotProducts, initials, isAdmin, channelRotatable, rotateChannel, itemOriginalSave, loadAddresses,
   // 地址编辑 / 删除 / 设默认 / 分页（2026-10-09 补）
   editingAddressId, addrPage, ADDR_PAGE_SIZE,
   startEditAddress, cancelEditAddress, deleteAddress, setDefaultAddress, changeAddrPage,
@@ -1044,6 +1049,12 @@ appCtx.isPreviewing = isPreviewing;
 appCtx.setPreviewTier = setPreviewTier;
 appCtx.clearPreviewTier = clearPreviewTier;
 appCtx.catalogBasePrice = catalogBasePrice;
+// 购物车金额拆解（秒杀/普通小计 + 各自件数）：供购物车与结算页透明展示（#11），并暴露给页面。
+// cartNonFlashTotal 已在 useCartTotals 装配，这里一并显式挂上（原先只内部用，页面拿不到）。
+appCtx.cartNonFlashTotal = cartNonFlashTotal;
+appCtx.cartFlashTotal = cartFlashTotal;
+appCtx.cartNonFlashQty = cartNonFlashQty;
+appCtx.cartFlashQty = cartFlashQty;
 // 以下显式挂到 appCtx，供独立登录页 LoginPage 委托调用（见 pages/LoginPage.vue）。
 // 登录/注册的核心逻辑仍集中在这里（单一真相源），LoginPage 只负责渲染表单 + 登录后跳哪。
 appCtx.openLegal = openLegal;

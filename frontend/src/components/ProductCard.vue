@@ -61,6 +61,7 @@
         <!-- 2026-10-07 用户要求去掉兜底的「7 天内发货」：它是句无信息量的占位话
              —— 所有商品都这么写，等于什么都没说；缺货/有销量时才显示对应信息即可。
              留着空白不补文案。 -->
+        <small v-if="flashPrice" class="flash-excl-hint">秒杀不参与满减/券</small>
         <small v-if="lowStock || soldCountText" :class="{ 'low-stock': lowStock }">
           <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="soldCountText"> · </template></template>
           <template v-if="soldCountText">{{ soldCountText }}</template>
@@ -85,6 +86,7 @@
       <!-- 2026-10-14：紧凑卡（首页四运营栏目）也补上「已售 N / 仅剩 N」+ ★评分，
            与搜索结果/分类楼层的 full 卡口径一致。评分<3 条仍不展示（ratingInfo 为 null）。 -->
       <div class="meta-line">
+        <small v-if="flashPrice" class="flash-excl-hint">秒杀不参与满减/券</small>
         <small v-if="lowStock || soldCountText" :class="{ 'low-stock': lowStock }">
           <template v-if="lowStock">仅剩 {{ lowStockCount }} 件<template v-if="soldCountText"> · </template></template>
           <template v-if="soldCountText">{{ soldCountText }}</template>

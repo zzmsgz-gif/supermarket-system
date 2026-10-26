@@ -18,12 +18,15 @@
             <h2>我的优惠券</h2>
           </div>
           <empty-state
-            v-if="!myCoupons.items.length"
+            v-if="!myCoupons.items.length && !myCoupons.loading"
             icon="ticket"
             text="还没有优惠券，领一张下单更划算"
             action-text="去看看可领的券"
             @action="scrollToClaim"
           />
+          <div v-else-if="myCoupons.loading">
+            <skeleton-list :count="3" :thumb="false" :lines="2" :tail="true" />
+          </div>
           <div v-else class="coupon-grid">
             <CouponCard v-for="coupon in myCoupons.items" :key="coupon.id" :coupon="coupon" mode="mine" />
           </div>

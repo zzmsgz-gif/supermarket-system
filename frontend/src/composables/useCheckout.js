@@ -27,6 +27,10 @@ export function useCheckout({
     selectedAddressId.value = defaultAddress?.id || null;
   }
 
+  // 订单备注：用户选填（点2）。原先写死 '前端下单'，后端其实已接住 remark 字段，只是前端没入口。
+  // 默认空串 → 后端 trimToNull 落 null，订单详情不显示空备注。
+  const remark = ref('');
+
   // ===== 地址编辑 / 删除 / 设默认（2026-10-09 补）=====
   // 之前只有 saveAddress() → POST，等于**只能新增、永远改不了**，
   // 而后端 PUT /addresses/{id}、DELETE、设默认接口一直都在，前端没接。
@@ -180,6 +184,7 @@ export function useCheckout({
     userOptedOutCoupon.value = false;
     usePoints.value = false;
     pointsToUse.value = 0;
+    remark.value = '';
     await loadCart();
     // ⚠️ 2026-10-12 修复「提交订单后闪现『购物车是空的』1-2 秒」：
     // 原实现 loadCart 之后又同步 await 了 4 个刷新接口才 navigate —— 那几拍里购物车已空、
@@ -209,7 +214,7 @@ export function useCheckout({
     // 「立即购买」独立通道：不依赖购物车行，走 /orders/quick-buy；成功后清掉虚拟项（购物车零残留）
     if (quickBuy.value) {
       const q = quickBuy.value;
-      const body = { productId: q.productId, quantity: q.qty, skuSpec: q.spec || null, remark: '前端下单' };
+      const body = { productId: q.productId, quantity: q.qty, skuSpec: q.spec || null, remark: remark.value || '' };
       applyFulfillment(body);
       applyDiscounts(body);
       paying.value = true;
@@ -237,7 +242,7 @@ export function useCheckout({
     paying.value = true;
     try {
       await run(async () => {
-        const body = { cartItemIds: itemIds, remark: '前端下单' };
+        const body = { cartItemIds: itemIds, remark: remark.value || '' };
         applyFulfillment(body);
         applyDiscounts(body);
         // 只提交、不付款：创建即锁定库存，剩下交给收银台倒计时，由用户决定是否真正扣款。
@@ -253,6 +258,6 @@ export function useCheckout({
   }
 
   return { loadAddresses, useAddress, saveAddress, goCheckout, createOrder,
-           editingAddressId, addrPage, ADDR_PAGE_SIZE,
+           editingAddressId, addrPage, ADDR_PAGE_SIZE, remark,
            startEditAddress, cancelEditAddress, deleteAddress, setDefaultAddress, changeAddrPage };
 }

@@ -59,6 +59,14 @@ public class SysUser {
     @Column(name = "points", nullable = false)
     private Long points = 0L;
 
+    /**
+     * 冻结积分：被在途退款申请锁定的发放积分（方案D-C，防「先花再退」套利）。
+     * 这部分仍是用户总积分（points）的子集，但下单抵扣时不可用（可用 = points − frozenPoints）。
+     * 退款回收时优先从这里扣回；申请前已花掉的部分则由现金退款等价扣回（方案D-B）。
+     */
+    @Column(name = "frozen_points", nullable = false)
+    private Long frozenPoints = 0L;
+
     @Column(name = "member_level", nullable = false)
     private Integer memberLevel = 0;
 
@@ -188,6 +196,14 @@ public class SysUser {
 
     public void setPoints(Long points) {
         this.points = points;
+    }
+
+    public Long getFrozenPoints() {
+        return frozenPoints;
+    }
+
+    public void setFrozenPoints(Long frozenPoints) {
+        this.frozenPoints = frozenPoints;
     }
 
     public Integer getMemberLevel() {

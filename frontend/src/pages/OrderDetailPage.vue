@@ -10,7 +10,11 @@
             @click="reorder(orderDetail.data)"
           >再来一单</button>
         </div>
-        <div v-if="orderDetail.loading" class="empty">加载中…</div>
+        <div v-if="orderDetail.loading" class="od-skeleton" aria-hidden="true">
+          <skeleton-lines :lines="3" :title="true" />
+          <skeleton-list :count="2" :thumb="true" :lines="2" />
+          <skeleton-lines :lines="4" />
+        </div>
         <div v-else-if="orderDetail.error" class="empty error">{{ orderDetail.error }}</div>
         <template v-else-if="orderDetail.data">
           <!-- ===== 待付款横幅 + 付款/取消入口 =====
@@ -60,7 +64,7 @@
             <div v-for="it in (orderDetail.data.items || [])" :key="it.id" class="order-item">
               <img v-if="it.productCoverUrl" :src="it.productCoverUrl" class="order-item-img" alt="商品图片" @error="imgFallback($event, it.productName)"  loading="lazy" decoding="async"/>
               <div class="order-item-info">
-                <div class="order-item-name">{{ it.productName }}</div>
+                <div class="order-item-name">{{ it.productName }}<span v-if="it.flashSaleId" class="tag warn order-item-flash-tag">秒杀 · 不参与满减/券</span></div>
                 <div v-if="it.skuSpec" class="order-item-spec">规格：{{ it.skuSpec }}</div>
                 <div class="order-item-meta">
                   <span>
@@ -116,12 +120,12 @@
               <b v-else class="none">无</b>
             </div>
             <div class="amount-row minus">
-              <span>优惠券<template v-if="amount.couponName">（{{ amount.couponName }}）</template></span>
+              <span>优惠券<template v-if="amount.couponName">（{{ amount.couponName }}）</template><small v-if="amount.coupon > 0 && amount.flashSubtotal > 0">券门槛与抵扣按非秒杀部分 {{ money(amount.activityBase) }} 计算</small></span>
               <b v-if="amount.coupon > 0">- {{ money(amount.coupon) }}</b>
               <b v-else class="none">未使用</b>
             </div>
             <div class="amount-row minus">
-              <span>活动优惠<template v-if="amount.activityName">（{{ amount.activityName }}）</template></span>
+              <span>活动优惠<template v-if="amount.activityName">（{{ amount.activityName }}）</template><small v-if="amount.activity > 0 && amount.flashSubtotal > 0">仅按非秒杀部分 {{ money(amount.activityBase) }} 计算，秒杀 {{ money(amount.flashSubtotal) }} 不参与</small><small v-else-if="amount.activity > 0">按小计 {{ money(amount.activityBase) }} 计算</small></span>
               <b v-if="amount.activity > 0">- {{ money(amount.activity) }}</b>
               <b v-else class="none">未参与</b>
             </div>
@@ -140,12 +144,27 @@
               <span>实付金额</span>
               <b>{{ money(amount.pay) }}</b>
             </div>
+            <p class="amount-note" v-if="amount.activity > 0 && amount.flashSubtotal > 0">
+              活动仅算非秒杀部分：{{ money(amount.activityBase) }} 参与活动、秒杀 {{ money(amount.flashSubtotal) }} 不参与，故活动优惠是 {{ money(amount.activity) }} 而非按整单小计折算
+            </p>
             <p class="amount-note">
               小计 {{ money(amount.goods) }}<template v-if="amount.freight > 0"> + 运费 {{ money(amount.freight) }}</template>
               <template v-if="amount.totalDiscount > 0"> − 优惠合计 {{ money(amount.totalDiscount) }}</template>
               = 实付 {{ money(amount.pay) }}
             </p>
             <p class="amount-note" v-if="amount.pointsEarned > 0">本单获得 {{ amount.pointsEarned }} 积分</p>
+            <!-- 方案D-B：退款时已花掉、等价扣回的发放积分 —— 在金额明细里让用户看得见（仅当有扣回时） -->
+            <p class="amount-note refund-deduct-note" v-if="refundReturnsDeducted.length">
+              退款时已花掉、等价扣回的发放积分：
+              <template v-for="(r, i) in refundReturnsDeducted" :key="r.id">{{ r.pointsDeducted }} 分（{{ money(Number(r.pointsDeducted) / 100) }}）<template v-if="i < refundReturnsDeducted.length - 1">；</template></template>
+              <span class="rd-sub">（已在实退金额中扣除，100 分 = ¥1）</span>
+            </p>
+            <!-- 方案D-回收：本单用积分抵过现、且已退款 → 抵扣分已返还到账户余额（TYPE_REFUND 返还抵扣）。
+                 此前金额明细只展示了下单时的「积分抵扣 −¥X」，没告诉用户这些分在退款后回到了账户，
+                 用户以为分凭空没了。这里补一行说明（仅当本单确实抵过现且已发生退款）。 -->
+            <p class="amount-note refund-return-note" v-if="amount.pointsUsed > 0 && hasRefund">
+              本单退款后，抵扣用的 {{ amount.pointsUsed }} 分已返还到你的积分账户（约 {{ money(amount.pointsUsed / 100) }}），可在「我的积分」中查看
+            </p>
           </div>
 
           <!-- ===== 订单信息 ===== -->
@@ -178,6 +197,27 @@
               <span>退款状态</span>
               <b>{{ formatRefundStatus(orderDetail.data.refundStatus) }}<template v-if="orderDetail.data.refundReason"> · {{ orderDetail.data.refundReason }}</template><template v-if="orderDetail.data.refundRemark"> · 处理意见：{{ orderDetail.data.refundRemark }}</template><template v-if="amount"> · 退款额 {{ money(amount.pay) }}</template></b>
             </div>
+            <!-- 方案D-C：在途退款冻结的发放积分，让用户在本页也看得见 -->
+            <div class="order-row" v-if="openReturnFrozenPoints > 0">
+              <span>冻结积分</span>
+              <b class="frozen-row">本单退款审核中已冻结 {{ openReturnFrozenPoints }} 分发放积分（暂不可用，退款/驳回后自动处理）</b>
+            </div>
+            <!-- 点6：用户申请的寄回物流信息在订单详情展示。
+                 从本单售后单里挑出「待寄回/已寄回」的在途单，显示用户填的快递公司 + 运单号，
+                 让用户与商家在同一页面看到同一份物流信息（此前仅 ReturnsPage 有、详情页缺）。 -->
+            <template v-if="(orderReturns || []).some(r => r.status === 'WAITING_SHIP' || r.status === 'SHIPPED_BACK')">
+              <div class="order-row" v-for="r in (orderReturns || []).filter(r => r.status === 'WAITING_SHIP' || r.status === 'SHIPPED_BACK')" :key="'shipback-' + r.id">
+                <span>{{ r.status === 'SHIPPED_BACK' ? '寄回物流' : '待寄回' }}</span>
+                <b>
+                  <template v-if="r.status === 'SHIPPED_BACK'">{{ r.expressCompany || '未填快递公司' }}<template v-if="r.trackingNo"> · {{ r.trackingNo }}</template></template>
+                  <template v-else>等待你寄回商品（审核通过后请填写快递公司与运单号）</template>
+                </b>
+              </div>
+              <!-- 2026-10-22：去掉详情页内嵌的「快递公司+运单号 → 提交寄回」表单 ——
+                   列表卡片已内嵌同款表单（OrdersPage card-shipback），两处重复维护；
+                   详情页只保留上面的「待寄回/寄回物流」信息行。 -->
+
+            </template>
             <div class="order-row" v-if="orderDetail.data.remark"><span>备注</span><b>{{ orderDetail.data.remark }}</b></div>
           </div>
 
@@ -365,6 +405,21 @@ export default {
     // return 五态 → 徽标配色（与 ReturnsPage / AdminRefundsPanel 同源）
     const RETURN_STATUS_TAG = { APPLYING: 'warn', WAITING_SHIP: 'warn', SHIPPED_BACK: 'info', APPROVED: 'ok', REJECTED: 'muted', PARTIAL: 'warn' };
     const returnStatusCls = (s) => RETURN_STATUS_TAG[s] || 'muted';
+    // 方案D-B：已完成退款中、被现金等价扣回的发放积分（仅 pointsDeducted>0 的退款单），用于金额明细展示。
+    const refundReturnsDeducted = computed(() => (orderReturns.value || []).filter(
+      (r) => (Number(r.pointsDeducted) || 0) > 0
+    ));
+    // 方案D-C：在途退款单冻结的发放积分合计（让用户在本页也看得见「本单冻结了多少」）。
+    const openReturnFrozenPoints = computed(() => (orderReturns.value || [])
+      .filter((r) => OPEN_RETURN_STATUSES.includes(r.status) && (Number(r.frozenPoints) || 0) > 0)
+      .reduce((sum, r) => sum + (Number(r.frozenPoints) || 0), 0));
+    // 本单是否已进入退款流程（非 NONE）—— 只有退过款，"抵扣分已返还"才有意义展示。
+    const hasRefund = computed(() => {
+      const rs = currentOrder.value?.refundStatus;
+      return !!rs && rs !== 'NONE';
+    });
+
+    // 2026-10-22：寄回表单已从详情页移除（列表卡片内嵌同款表单），相关草稿状态与提交函数一并清理。
 
     async function confirmThisOrder() {
       const o = currentOrder.value;
@@ -556,6 +611,14 @@ export default {
         tierSave = orderOriginalSave(d);
       }
 
+      // 2026-10-22 用户反馈：顾客会拿整单小计去乘活动折扣（602.28×0.8=481.82），
+      // 发现比实付低就误以为多收钱——根因是活动基数只有非秒杀部分（303.28），
+      // 页面没把基数说出来。这里把秒杀小计 / 活动基数算出来给模板展示。
+      const flashSubtotal = Math.round(items.reduce((s, it) => (
+        s + (it.flashSaleId ? num(it.subtotalAmount) : 0)
+      ), 0) * 100) / 100;
+      const activityBase = Math.round((goods - flashSubtotal) * 100) / 100;
+
       return {
         goods,
         freight,
@@ -563,6 +626,8 @@ export default {
         couponName: d.couponName || '',
         activity,
         activityName: d.activityName || '',
+        flashSubtotal,
+        activityBase,
         member,
         memberLevel: num(d.memberLevel),
         points,
@@ -578,7 +643,7 @@ export default {
       };
     });
 
-    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, applyRefundLabel, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, startRefundItem, closeRefund, sendRefund, refundTitle, itemCanRefund, itemOpenReturn, hasOpenWholeOrderReturn, wholeOrderReturnStatusLabel, returnStatusCls, userOrderStatus, routeOrderId, refundFormEl };
+    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, applyRefundLabel, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, startRefundItem, closeRefund, sendRefund, refundTitle, itemCanRefund, itemOpenReturn, hasOpenWholeOrderReturn, wholeOrderReturnStatusLabel, returnStatusCls, userOrderStatus, routeOrderId, refundFormEl, orderReturns, refundReturnsDeducted, openReturnFrozenPoints, hasRefund };
   }
 };
 </script>

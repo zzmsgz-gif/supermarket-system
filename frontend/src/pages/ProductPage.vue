@@ -5,7 +5,13 @@
           <span class="detail-crumb">商品列表 / {{ categoryName(productDetail.data?.categoryId) }} / {{ productDetail.data?.name || '' }}</span>
         </div>
 
-        <div v-if="productDetail.loading || !productDetail.data" class="empty">商品信息加载中…</div>
+        <div v-if="productDetail.loading" class="pd-skeleton" aria-hidden="true">
+          <div class="pd-sk-gallery sk-shimmer"></div>
+          <div class="pd-sk-info">
+            <skeleton-lines :lines="6" :title="true" />
+          </div>
+        </div>
+        <div v-else-if="!productDetail.data" class="empty">商品信息加载失败，请稍后重试</div>
 
         <template v-else>
           <div class="detail-grid">
@@ -69,6 +75,7 @@
                 <span class="detail-unit">/ {{ formatUnit(productDetail.data.unit) }}</span>
               </div>
 
+              <p v-if="flashPrice" class="flash-excl-hint">⚡ 秒杀商品为独立优惠，不参与全场满减、活动与优惠券</p>
               <dl class="detail-meta">
                 <!-- 2026-10-07 去掉「剩余库存」：对普通商品是废话（能买就说明有货），
                      对秒杀品又会与真实名额脱节（product.stock 与 flash_sale 名额两条独立

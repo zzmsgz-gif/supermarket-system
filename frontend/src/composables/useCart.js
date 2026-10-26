@@ -78,14 +78,19 @@ export function useCart({
   async function loadCart() {
     if (isAdmin.value) return;
     if (!session.user) { await refreshGuestCartView(); return; }
-    const cartData = await api.get('/cart');
-    Object.assign(cart, cartData);
-    cartStore.setCart(cartData);
-    await loadMyCoupons();
-    await loadUsableCoupons();
-    // 首次进入：未手动放弃用券且有可用券时，自动选用优惠力度最大的券
-    userOptedOutCoupon.value = false;
-    autoSelectCoupon();
+    cart.loading = true;
+    try {
+      const cartData = await api.get('/cart');
+      Object.assign(cart, cartData);
+      cartStore.setCart(cartData);
+      await loadMyCoupons();
+      await loadUsableCoupons();
+      // 首次进入：未手动放弃用券且有可用券时，自动选用优惠力度最大的券
+      userOptedOutCoupon.value = false;
+      autoSelectCoupon();
+    } finally {
+      cart.loading = false;
+    }
   }
 
   async function loadMyCoupons(reset = true) {

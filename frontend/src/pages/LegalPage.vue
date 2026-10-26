@@ -1,6 +1,8 @@
 <template>
   <section class="data-panel legal-page">
-    <div v-if="loading" class="empty">加载中…</div>
+    <div v-if="loading" class="sk-stack" aria-hidden="true">
+      <skeleton-lines :lines="8" :title="true" />
+    </div>
     <div v-else-if="!doc" class="empty error">该文档暂不可用，请稍后再试</div>
     <template v-else>
       <div class="legal-head">

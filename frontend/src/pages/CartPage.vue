@@ -5,7 +5,9 @@
           <button v-if="cart.items?.length" class="ghost danger" @click="clearCart">清空购物车</button>
         </div>
 
-        <div v-if="cartActivityProgress && cart.items?.length" class="cart-progress">
+        <!-- 点1：满减进度与免邮进度分离，各自一张独立卡片；
+             凑单推荐区也拆出来，与进度条视觉分层，不再混在同一个框里。 -->
+        <div v-if="cartActivityProgress && cart.items?.length" class="cart-progress activity">
           <div class="cp-top">
             <span class="cp-text">
               <template v-if="cartActivityProgress.reachedTop">已满足满 {{ money(cartActivityProgress.threshold) }} 门槛，可{{ cartActivityProgress.benefit }}</template>
@@ -14,24 +16,37 @@
             <button class="ghost" @click="navigate('shop')">去凑单</button>
           </div>
           <div class="cp-track"><i :style="{ width: cartActivityProgress.percent + '%' }"></i></div>
-          <!-- 凑单推荐：既然已经算出「还差 ¥X」，就直接给出买得起的现货，
-               别只丢一个「去凑单」把用户扔回首页乱逛。 -->
-          <div v-if="!cartActivityProgress.reachedTop && upsell.length" class="cart-upsell">
-            <span class="cu-label">买这些能凑上：</span>
-            <button
-              v-for="p in upsell"
-              :key="p.id"
-              type="button"
-              class="cu-item"
-              :title="'加入购物车：' + p.name"
-              @click="addUpsellToCart(p)"
-            >
-              <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)"  loading="lazy" decoding="async"/>
-              <span class="cu-name">{{ p.name }}</span>
-              <b class="cu-price">{{ money(p.price) }}</b>
-              <span class="cu-add">+</span>
-            </button>
+          <small class="cp-note">满减仅按普通商品计算，秒杀商品不计入</small>
+        </div>
+
+        <div v-if="cartFreightProgress && cart.items?.length" class="cart-progress freight">
+          <div class="cp-top">
+            <span class="cp-text">
+              <template v-if="cartFreightProgress.reachedTop">已满足满 ¥{{ cartFreightProgress.threshold }} 免运费</template>
+              <template v-else>再买 <b class="cp-gap">{{ money(cartFreightProgress.gap) }}</b>，即可免 ¥{{ cartFreightProgress.freight }} 运费</template>
+            </span>
+            <button class="ghost" @click="navigate('shop')">去凑单</button>
           </div>
+          <div class="cp-track"><i :style="{ width: cartFreightProgress.percent + '%' }"></i></div>
+          <small class="cp-note">运费按整车（含秒杀商品）计算</small>
+        </div>
+
+        <!-- 凑单推荐：独立区块，与上面的进度条视觉拆开 -->
+        <div v-if="!cartActivityProgress?.reachedTop && upsell.length && cart.items?.length" class="cart-upsell-block">
+          <span class="cu-label">买这些能凑上：</span>
+          <button
+            v-for="p in upsell"
+            :key="p.id"
+            type="button"
+            class="cu-item"
+            :title="'加入购物车：' + p.name"
+            @click="addUpsellToCart(p)"
+          >
+            <img v-if="p.coverUrl" :src="p.coverUrl" class="cu-img" alt="" @error="imgFallback($event, p.name)"  loading="lazy" decoding="async"/>
+            <span class="cu-name">{{ p.name }}</span>
+            <b class="cu-price">{{ money(p.price) }}</b>
+            <span class="cu-add">+</span>
+          </button>
         </div>
 
         <div v-if="cartIssues.length" class="blocker-bar" role="alert">
@@ -47,8 +62,15 @@
           </ul>
         </div>
 
+        <skeleton-list
+          v-if="cart.loading && !cart.items?.length"
+          :count="3"
+          :thumb="true"
+          :lines="2"
+          :tail="true"
+        />
         <empty-state
-          v-if="!cart.items?.length"
+          v-else-if="!cart.items?.length"
           icon="cart"
           text="购物车还是空的，先去挑选几件好物吧"
           action-text="去逛逛"
@@ -128,25 +150,33 @@
         </div>
 
         <div v-if="cart.items?.length" class="cart-settle">
+          <!-- 普通商品小计：这是参与「活动优惠 / 优惠券」的基数（满减门槛、券门槛都只看它）。
+               用户能核到的来源只有明细行，所以先单列这一块，再单列秒杀，逻辑才透明白。 -->
           <div class="cs-row">
-            <span>商品金额<template v-if="cartSelectedQty">（共 {{ cartSelectedQty }} 件）</template></span>
+            <span>普通商品小计<template v-if="cartNonFlashQty">（{{ cartNonFlashQty }} 件，参与活动 / 可用券）</template></span>
+            <b>{{ money(cartNonFlashTotal) }}</b>
+          </div>
+          <!-- 秒杀商品小计：走独立折扣通道，绝不参与活动优惠 / 优惠券（后端同口径）。
+               以前不单列，用户看到「普通商品满 200 打 8 折」却对不上总额，以为算错。 -->
+          <div v-if="cartFlashTotal > 0" class="cs-row">
+            <span>秒杀商品小计<template v-if="cartFlashQty">（{{ cartFlashQty }} 件，不参与活动 / 不可用券）</template></span>
+            <b>{{ money(cartFlashTotal) }}</b>
+          </div>
+          <div class="cs-row">
+            <span>商品金额（合计）<template v-if="cartSelectedQty">（共 {{ cartSelectedQty }} 件）</template></span>
             <b>{{ money(cartLocalTotal) }}</b>
           </div>
-          <!-- 这里**只列真正参与减法、且用户能在别处核到来源的行**：活动优惠 / 优惠券。
-               会员价不列：
-                 · 不列「-X」→ 明细行显示的已是会员成交价，再减一次会与商品金额对不上
-                 · 也不列「已省 X」→ 那个 X 是拿「售价」算的，而售价在界面上根本不显示，
-                   用户拿明细行的吊牌价（划线）一核对就发现对不上，只会觉得系统在乱报
-                   （2026-10-06 用户实测：「哪有这回事？省5块省在哪？」）。
-               会员带来的便宜，明细行的「会员价」标签 + 划线价直降已说清楚，无需在此复述。 -->
-          <div v-if="Number(cart.activityDiscount) > 0" class="cs-row minus">
-            <span>活动优惠<template v-if="cart.activityName">（{{ cart.activityName }}）</template></span>
-            <b>-{{ money(cart.activityDiscount) }}</b>
+          <!-- 优惠互斥：只展示真正生效的那一档（活动优惠 或 优惠券 二选一，绝不双减）。
+               会员价不列：明细行已是会员成交价，再减一次会与商品金额对不上，且「省 X」拿售价算、
+                界面上无售价可核对（2026-10-06 用户实测：「哪有这回事？省5块省在哪？」）。 -->
+          <div v-if="appliedPromo" class="cs-row minus">
+            <span>{{ appliedPromo.type === 'coupon' ? '优惠券' : ('活动优惠（' + (appliedPromo.name || '') + '）') }}</span>
+            <b>-{{ money(appliedPromo.amount) }}</b>
           </div>
-          <div v-if="selectedCoupon" class="cs-row minus">
-            <span>优惠券（{{ selectedCoupon.couponName }}）</span>
-            <b>-{{ money(selectedCoupon.discountAmount) }}</b>
-          </div>
+          <!-- 券已选但被活动压制：静音提示，不参与运算（#12：不再显示 −券额 误导用户以为减了）。 -->
+          <small v-if="selectedCoupon && appliedPromo && appliedPromo.type !== 'coupon'" class="cs-note">
+            已选「{{ selectedCoupon.couponName }}」，但本单活动优惠更划算，已自动优先活动、未消耗此券（活动与券不叠加）
+          </small>
           <div class="cs-row total">
             <span>应付总额</span>
             <b class="cs-pay">{{ money(orderPayPreview) }}</b>
