@@ -646,7 +646,12 @@ public class OrderService {
     }
 
     private void deductStocks(Long orderId, Long userId, List<OrderItem> orderItems, Map<Long, Product> productMap) {
-        for (OrderItem item : orderItems) {
+        // 按 productId 升序扣减：使并发下单对 product 行锁的获取顺序全局一致，
+        // 避免两笔订单含相同商品但相对顺序不同时形成「循环等待」死锁（MySQL 报 1213 → 500）。
+        // 这与 reserveFlashQuotas 按 flashSaleId 升序加锁是同一思路，覆盖 product 这一侧。
+        List<OrderItem> sorted = new ArrayList<>(orderItems);
+        sorted.sort(Comparator.comparing(OrderItem::getProductId));
+        for (OrderItem item : sorted) {
             Product product = requireAvailableProduct(productMap, item.getProductId());
             int stockBefore = product.getStock();
             int stockAfter = stockBefore - item.getQuantity();
@@ -747,7 +752,10 @@ public class OrderService {
     private void returnStocks(Long orderId, Long userId, List<OrderItem> orderItems) {
         // 与库存回滚绑在一起：订单作废时秒杀名额也要还回去，否则名额会被永久占死
         flashSaleService.releaseQuotaForOrder(orderId);
-        for (OrderItem item : orderItems) {
+        // 按 productId 升序回库：与 deductStocks 对称，避免并发取消/退款时对 product 行锁形成循环等待死锁
+        List<OrderItem> sorted = new ArrayList<>(orderItems);
+        sorted.sort(Comparator.comparing(OrderItem::getProductId));
+        for (OrderItem item : sorted) {
             Product product = productRepository.findById(item.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
             int stockBefore = product.getStock();
