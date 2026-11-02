@@ -9,8 +9,17 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import org.hibernate.annotations.DynamicUpdate;
 
+/**
+ * ⚠️ {@code @DynamicUpdate} 是防超卖的必要配置，别删：
+ * 后台编辑商品（AdminProductService.update）会 save 整个实体。默认的 UPDATE 会把**所有列**写回，
+ * 包括内存里那份可能已经过期的 {@code stock} —— 若这期间有用户下单、用条件 UPDATE 扣了库存，
+ * 后台这次 save 就把那次扣减覆盖掉，库存凭空变多 → 超卖。
+ * 加上它以后 Hibernate 只更新真正被改过的字段，没碰 stock 的保存就不会写 stock。
+ */
 @Entity
+@DynamicUpdate
 @Table(name = "product", indexes = {
         @Index(name = "idx_product_kind", columnList = "kind"),
         @Index(name = "idx_product_del_status_cat", columnList = "deleted, status, category_id")

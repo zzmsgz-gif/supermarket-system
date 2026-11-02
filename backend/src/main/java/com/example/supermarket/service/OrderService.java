@@ -449,8 +449,13 @@ public class OrderService {
         savedOrder.setPayAmount(finalPay.add(freight));
         savedOrder = orderRepository.save(savedOrder);
 
+        // ⚠️【顺序不能反】必须先扣库存（拿 product 行的 X 锁），再插 order_item 行。
+        // 原因：order_item.product_id 外键指向 product，INSERT 子表时 InnoDB 会给父表对应行加**共享锁(S)**。
+        // 如果先插行、后更新库存，两笔并发下单就会：各持 S 锁 → 各自要升级成 X 锁 → 互等 → MySQL 1213 死锁
+        // （2026-11-02 实测复现：两人同抢最后一件，一方直接 500）。
+        // 先扣库存则两笔在 X 锁上排队，串行通过，拿不到库存的一方干净地拿到 409。
+        deductStocks(savedOrder.getId(), userId, orderItems, productMap);
         List<OrderItem> savedItems = saveOrderItems(savedOrder.getId(), orderItems);
-        deductStocks(savedOrder.getId(), userId, savedItems, productMap);
         // 秒杀名额在库存扣减之后占用：名额不足会抛 409，整个下单事务回滚（不会留半张单）
         reserveFlashQuotas(savedOrder.getId(), userId, savedItems, flashSales);
         // 刚落地的订单：createdAt 是 insertable=false 的 DB 生成列，此刻实体里仍是 null，
@@ -548,25 +553,35 @@ public class OrderService {
         } else if (!PAYMENT_CHANNEL_BALANCE.equals(channel)) {
             throw new BusinessException(400, "不支持的支付方式");
         }
+        // 【CAS 闸门】先抢下「待支付 → 已支付」这个状态迁移，再动钱。
+        // 收银台连点两次支付、或这一单正好卡在超时关单的同一秒，都只有一方能抢到；
+        // 抢不到说明状态已被别的路径改掉 → 直接拒绝，杜绝重复扣款，
+        // 也杜绝「钱付了、单却被定时任务关掉并还了库存」这种真超卖。
+        if (orderRepository.casStatus(order.getId(), List.of(PENDING_PAYMENT), PAID) == 0) {
+            throw new BusinessException(409, "订单状态已变更（可能已支付或已关闭），请刷新后查看");
+        }
+        // CAS 带 clearAutomatically，上面的 order 已 detached：必须重新加载再写其它字段，
+        // 否则 save(order) 会拿内存里的旧状态把 PAID 覆盖回 PENDING_PAYMENT。
+        OrderEntity fresh = orderRepository.findById(order.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
         if (PAYMENT_CHANNEL_BALANCE.equals(payChannel)) {
-            walletService.payOrder(userId, order.getId(), order.getPayAmount());
+            walletService.payOrder(userId, fresh.getId(), fresh.getPayAmount());
         } else {
             // 微信 / 支付宝模拟支付：不扣余额，但记一笔 PAYMENT 流水，
             // 让「金额明细」能看到这笔消费（#544）。
-            walletService.recordPaymentOnly(userId, order.getId(), order.getPayAmount());
+            walletService.recordPaymentOnly(userId, fresh.getId(), fresh.getPayAmount());
         }
         LocalDateTime now = LocalDateTime.now();
-        order.setStatus(PAID);
-        order.setPaymentStatus(PAYMENT_PAID);
-        order.setPaidAt(now);
+        fresh.setPaymentStatus(PAYMENT_PAID);
+        fresh.setPaidAt(now);
         // 会员日积分按**下单日**判定（与下单时存进订单的 pointsEarned 同口径），
         // 所以这里取订单自身的创建日；createdAt 是 DB 生成列，取不到时退回今天
-        LocalDate consumeDate = order.getCreatedAt() != null
-                ? order.getCreatedAt().toLocalDate() : LocalDate.now();
-        memberService.awardOnPaidOrder(userId, orderId, order.getPayAmount(), consumeDate);
-        OrderEntity savedOrder = orderRepository.save(order);
+        LocalDate consumeDate = fresh.getCreatedAt() != null
+                ? fresh.getCreatedAt().toLocalDate() : LocalDate.now();
+        memberService.awardOnPaidOrder(userId, orderId, fresh.getPayAmount(), consumeDate);
+        OrderEntity savedOrder = orderRepository.save(fresh);
         if (paymentRecordRepository.findByOrderId(orderId).isEmpty()) {
-            paymentRecordRepository.save(buildPaymentRecord(order, now, payChannel));
+            paymentRecordRepository.save(buildPaymentRecord(fresh, now, payChannel));
         }
         // 消息中心：支付成功（自提给自提码、即时配送给时段、快递说明交由快递发出）
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已支付成功",
@@ -582,21 +597,29 @@ public class OrderService {
         if (!PENDING_PAYMENT.equals(order.getStatus()) && !PAID.equals(order.getStatus())) {
             throw new BusinessException(409, "Only pending payment or paid orders can be canceled");
         }
+        // 必须在 CAS 之前记下「原来是不是已支付」：CAS 成功后 fresh.status 已是 CANCELED，判不出来了
+        boolean wasPaid = PAID.equals(order.getStatus());
+        // 【CAS 闸门】抢「待支付/已支付 → 已取消」。与超时关单、后台取消、支付并发时只有一方生效，
+        // 保证库存、秒杀名额、优惠券、钱包退款各自只发生一次 —— 否则库存会被还两次，虚高就是超卖。
+        if (orderRepository.casStatus(order.getId(), List.of(wasPaid ? PAID : PENDING_PAYMENT), CANCELED) == 0) {
+            throw new BusinessException(409, "订单状态已变更，无法取消，请刷新后查看");
+        }
+        OrderEntity fresh = orderRepository.findById(order.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
         if (order.getPointsUsed() != null && order.getPointsUsed() > 0) {
             memberService.refundRedeem(userId, orderId);
         }
-        if (PAID.equals(order.getStatus())) {
-            walletService.refundOrder(userId, order.getId(), order.getPayAmount(), "Order cancel refund");
-            order.setPaymentStatus(PAYMENT_REFUNDED);
-            paymentRecordRepository.findByOrderId(order.getId()).ifPresent(this::refundPaymentRecord);
+        if (wasPaid) {
+            walletService.refundOrder(userId, fresh.getId(), fresh.getPayAmount(), "Order cancel refund");
+            fresh.setPaymentStatus(PAYMENT_REFUNDED);
+            paymentRecordRepository.findByOrderId(fresh.getId()).ifPresent(this::refundPaymentRecord);
         } else {
-            couponService.restoreIfUnpaid(order);
+            couponService.restoreIfUnpaid(fresh);
         }
-        List<OrderItem> orderItems = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
-        returnStocks(order.getId(), userId, orderItems);
-        order.setStatus(CANCELED);
-        order.setCanceledAt(LocalDateTime.now());
-        OrderEntity savedOrder = orderRepository.save(order);
+        List<OrderItem> orderItems = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());
+        returnStocks(fresh.getId(), userId, orderItems);
+        fresh.setCanceledAt(LocalDateTime.now());
+        OrderEntity savedOrder = orderRepository.save(fresh);
         messageService.push(userId, UserMessage.TYPE_ORDER, "订单已取消",
                 "订单 " + savedOrder.getOrderNo() + " 已取消，占用的库存已释放"
                         + (PAYMENT_REFUNDED.equals(savedOrder.getPaymentStatus()) ? "，支付金额已原路退回。" : "。"),

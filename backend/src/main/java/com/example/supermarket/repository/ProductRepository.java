@@ -72,8 +72,19 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             @Param("deleted") Byte deleted
     );
 
+    /**
+     * 原子回补库存与销量（取消 / 超时关闭 / 退款共用）。
+     *
+     * <p>⚠️ 2026-11-02 修正：原先带 {@code and p.sales >= :quantity} 前置条件，本意是防销量变负；
+     * 但后台把销量改小、或秒杀品 sales 与实扣不同步时，这条 UPDATE 会落空，
+     * 而 {@code OrderCloseService} 对落空是 {@code continue} 静默跳过 ——
+     * 结果「用户取消订单了，库存却永久没回来」，且日志里一点痕迹都没有。
+     * 现在改成：库存无条件回补，sales 用 CASE 夹到 0，语义正确且不会再吞库存。
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("update Product p set p.stock = p.stock + :quantity, p.sales = p.sales - :quantity where p.id = :id and p.sales >= :quantity")
+    @Query("update Product p set p.stock = p.stock + :quantity, "
+            + "p.sales = case when coalesce(p.sales, 0) < :quantity then 0 else p.sales - :quantity end "
+            + "where p.id = :id")
     int returnStock(@Param("id") Long id, @Param("quantity") Integer quantity);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

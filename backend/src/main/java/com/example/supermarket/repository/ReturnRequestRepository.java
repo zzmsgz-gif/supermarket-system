@@ -5,10 +5,28 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long> {
+
+    /**
+     * 【售后单状态 CAS 闸门】只有当前状态仍在 {@code fromStatuses} 里才改成 {@code toStatus}（返回 1）。
+     *
+     * <p>售后审批是「同意即放款 + 回补库存 + 释放秒杀名额」的重操作，改动前是「先查状态再放款」，
+     * 管理员双击、或两个客服同时点，会让同一笔售后被放款两次、库存被回补两次 —— 库存虚高就是超卖。
+     * 加了 CAS 后只有一次能生效。
+     *
+     * <p>⚠️ 因为带 {@code clearAutomatically}，CAS 之后必须重新 findById 再改其它字段，
+     * 否则 save 会把内存里的旧状态覆盖回去。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update ReturnRequest r set r.status = :toStatus where r.id = :id and r.status in :fromStatuses")
+    int casStatus(
+            @Param("id") Long id,
+            @Param("fromStatuses") List<String> fromStatuses,
+            @Param("toStatus") String toStatus);
 
     /** 一笔订单当前的售后单（同一订单同时只允许一张未终结的售后单） */
     Optional<ReturnRequest> findByOrderIdAndStatusIn(Long orderId, List<String> statuses);

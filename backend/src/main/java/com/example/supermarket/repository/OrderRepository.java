@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +17,37 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>, JpaSp
     Optional<OrderEntity> findByIdAndUserId(Long id, Long userId);
 
     List<OrderEntity> findByStatusAndCreatedAtBefore(String status, LocalDateTime time);
+
+    /**
+     * 【订单状态 CAS 闸门】只有当前状态仍在 {@code fromStatuses} 里，才改成 {@code toStatus}（返回 1）。
+     *
+     * <p>为什么必须有这道闸门：支付、用户取消、超时关单、后台取消、后台退款这五条路径，
+     * 每一条都会「还钱 / 还库存 / 还秒杀名额」。改动前它们各自是「先查状态、再做动作」，
+     * 并发下两笔都能读到 PENDING_PAYMENT 并各自往下走 —— 于是同一张订单的库存被回补两次、
+     * 秒杀名额被释放两次、钱包被退两次。库存虚高就是用户看到的「超卖」。
+     * 加了 CAS 后，同一张订单只有抢到状态迁移的那一条路径能继续，其余必然返回 0 被拒。
+     *
+     * <p>⚠️ 用法要求：CAS 必须是事务里对这个订单的**第一个写操作**（在任何扣款/回库之前），
+     * 且因为带 {@code clearAutomatically}，CAS 之后旧的实体已 detached，
+     * 必须重新 {@code findById} 再改其它字段，否则 save 会把旧状态写回去。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update OrderEntity o set o.status = :toStatus where o.id = :id and o.status in :fromStatuses")
+    int casStatus(
+            @Param("id") Long id,
+            @Param("fromStatuses") Collection<String> fromStatuses,
+            @Param("toStatus") String toStatus);
+
+    /**
+     * 【售后状态 CAS 闸门】同上，作用于 {@code refund_status}。
+     * 防止同一笔退款申请被审批两次（双重退钱 + 双重回补库存/名额）。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update OrderEntity o set o.refundStatus = :toStatus where o.id = :id and o.refundStatus in :fromStatuses")
+    int casRefundStatus(
+            @Param("id") Long id,
+            @Param("fromStatuses") Collection<String> fromStatuses,
+            @Param("toStatus") String toStatus);
 
     /* ===== 数据统计聚合（仪表盘用，避免前端拿分页数据凑数字） ===== */
 

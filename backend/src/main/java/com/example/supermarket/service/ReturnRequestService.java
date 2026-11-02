@@ -262,12 +262,37 @@ public class ReturnRequestService {
             throw new BusinessException(409, "该售后单已处理过，当前状态：" + r.getStatus());
         }
         boolean approved = Boolean.TRUE.equals(req.getApproved());
+        if (!approved && (req.getRemark() == null || req.getRemark().isBlank())) {
+            throw new BusinessException(400, "驳回必须填写理由。");
+        }
+
+        // 是否需要用户寄回：优先采用管理员在审核弹窗里的手动选择；
+        // 若管理员未显式选择（needReturn 为 null），再按订单状态自动兜底：
+        // · 未收到货（已付款未发货 PAID / 已发货但未签收 SHIPPED）—— 视为未收到货，退款即可、无需寄回；
+        // · 已收货确认（COMPLETED）—— 退货退款，需用户先寄回。
+        // 这样商家既能「一键按状态处理」，也能对单个订单临机改判（如已发货的质量问题判不退件）。
+        Boolean manualNeedReturn = req.getNeedReturn();
+        boolean needReturn = approved && ((manualNeedReturn != null)
+                ? manualNeedReturn
+                : "COMPLETED".equals(order.getStatus()));
+
+        // 【CAS 闸门】抢「审核中 → 目标状态」。
+        // 「同意」这一下会放款 + 回补库存 + 释放秒杀名额，是全系统最重的一步写操作。
+        // 改动前是「先查状态 → 再放款」，管理员双击确认、或两个客服同时点，两笔都能通过校验，
+        // 于是同一笔售后被放款两次、库存被回补两次 —— 库存虚高就是用户说的超卖。
+        String targetStatus = !approved ? STATUS_REJECTED
+                : (needReturn ? STATUS_WAITING_SHIP : STATUS_APPROVED);
+        if (returnRepository.casStatus(returnId, List.of(STATUS_APPLYING), targetStatus) == 0) {
+            throw new BusinessException(409, "该售后单已被处理，请刷新后查看");
+        }
+        // CAS 带 clearAutomatically，上面的 r / order 都已是 detached 旧对象：
+        // 必须重新加载，否则 save 会把内存里的 APPLYING 覆盖回 CAS 刚写好的状态。
+        r = returnRepository.findById(returnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Return request not found"));
+        order = orderRepository.findById(r.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         if (!approved) {
-            if (req.getRemark() == null || req.getRemark().isBlank()) {
-                throw new BusinessException(400, "驳回必须填写理由。");
-            }
-            r.setStatus(STATUS_REJECTED);
             r.setAdminRemark(req.getRemark());
             returnRepository.save(r);
             // 方案D(C)：驳回即释放本单冻结的积分，余额复原
@@ -281,22 +306,12 @@ public class ReturnRequestService {
             return ReturnRequestResponse.from(r, order.getOrderNo());
         }
 
-        // 是否需要用户寄回：优先采用管理员在审核弹窗里的手动选择；
-        // 若管理员未显式选择（needReturn 为 null），再按订单状态自动兜底：
-        // · 未收到货（已付款未发货 PAID / 已发货但未签收 SHIPPED）—— 视为未收到货，退款即可、无需寄回；
-        // · 已收货确认（COMPLETED）—— 退货退款，需用户先寄回。
-        // 这样商家既能「一键按状态处理」，也能对单个订单临机改判（如已发货的质量问题判不退件）。
-        Boolean manualNeedReturn = req.getNeedReturn();
-        boolean needReturn = (manualNeedReturn != null)
-                ? manualNeedReturn
-                : "COMPLETED".equals(order.getStatus());
         r.setAdminRemark(req.getRemark());
         r.setApprovedAt(LocalDateTime.now());
 
         if (!needReturn) {
-            // 未收到货：不必寄回，直接放款
+            // 未收到货：不必寄回，直接放款（状态已由 CAS 置为 APPROVED）
             r.setNeedReturn(false);
-            r.setStatus(STATUS_APPROVED);
             r.setCompletedAt(LocalDateTime.now());
             returnRepository.save(r);
             refundForReturn(order, r);
@@ -329,10 +344,17 @@ public class ReturnRequestService {
         if (!STATUS_SHIPPED_BACK.equals(r.getStatus())) {
             throw new BusinessException(409, "当前状态不能确认收货。");
         }
+        // 【CAS 闸门】抢「已寄回 → 已同意」：重复点「确认收货」只放款一次
+        // （否则退款翻倍、库存与秒杀名额被重复回补 → 库存虚高 → 超卖）。
+        if (returnRepository.casStatus(returnId, List.of(STATUS_SHIPPED_BACK), STATUS_APPROVED) == 0) {
+            throw new BusinessException(409, "该售后单已被处理，请刷新后查看");
+        }
+        // CAS 带 clearAutomatically：重新加载，别用旧实体 save（会把状态覆盖回 SHIPPED_BACK）
+        r = returnRepository.findById(returnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Return request not found"));
         OrderEntity order = orderRepository.findById(r.getOrderId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        r.setStatus(STATUS_APPROVED);
         r.setCompletedAt(LocalDateTime.now());
         if (remark != null && !remark.isBlank()) {
             r.setAdminRemark(remark);
@@ -415,13 +437,13 @@ public class ReturnRequestService {
         });
         List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
         for (OrderItem it : items) {
-            if (it.getProductId() == null) {
+            if (it.getProductId() == null || it.getQuantity() == null) {
                 continue;
             }
-            productRepository.findById(it.getProductId()).ifPresent(p -> {
-                p.setStock(p.getStock() + it.getQuantity());
-                productRepository.save(p);
-            });
+            // 原子增量回补。绝不能写成 p.setStock(p.getStock() + qty) —— 那是「读-改-写」：
+            // 与并发下单的 deductStock（带条件的 UPDATE）抢同一行时会丢更新，
+            // 把别人刚扣掉的库存覆盖回来，库存虚高就是用户看到的那种「超卖」。
+            productRepository.returnStock(it.getProductId(), it.getQuantity());
         }
         // 秒杀品退款：把下单时占用的名额还回去（含独立秒杀商品与基于原商品的秒杀）。
         // 无秒杀行的普通订单进来也是 no-op，安全。
@@ -458,11 +480,9 @@ public class ReturnRequestService {
             rec.setStatus("REFUNDED");
             paymentRecordRepository.save(rec);
         });
-        if (item.getProductId() != null) {
-            productRepository.findById(item.getProductId()).ifPresent(p -> {
-                p.setStock(p.getStock() + item.getQuantity());
-                productRepository.save(p);
-            });
+        if (item.getProductId() != null && item.getQuantity() != null) {
+            // 原子增量回补（理由同 refundWholeOrder：读-改-写会丢更新 → 库存虚高 → 超卖）
+            productRepository.returnStock(item.getProductId(), item.getQuantity());
         }
         flashSaleService.releaseQuotaForOrderItem(order.getId(), item.getId());
         item.setRefunded(true);

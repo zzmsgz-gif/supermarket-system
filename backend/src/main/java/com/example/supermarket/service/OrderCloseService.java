@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class OrderCloseService {
 
+    private static final String PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final String CLOSED = "CLOSED";
     private static final String CANCEL_RETURN = "CANCEL_RETURN";
 
@@ -52,10 +53,22 @@ public class OrderCloseService {
 
     @Transactional
     public void closeTimeoutOrder(OrderEntity order) {
-        couponService.restoreIfUnpaid(order);
+        // 【CAS 闸门】定时任务拿到的是「查询那一刻还在待支付」的订单；从查到关这几秒里，
+        // 用户可能刚好点了支付、或自己取消了。必须在动库存之前再抢一次状态：
+        // 抢不到就直接返回 —— 否则会出现「钱已经收了、订单却被关掉、库存还了回去」的幽灵库存，
+        // 表现就是卖了超卖。这一行是 15 分钟边界上最关键的互斥点。
+        if (orderRepository.casStatus(order.getId(), List.of(PENDING_PAYMENT), CLOSED) == 0) {
+            return;
+        }
+        // CAS 带 clearAutomatically，入参 order 已 detached；后续要写字段，重新加载一份
+        OrderEntity fresh = orderRepository.findById(order.getId()).orElse(null);
+        if (fresh == null) {
+            return;
+        }
+        couponService.restoreIfUnpaid(fresh);
         // 与库存回滚绑在一起：超时关闭也要把秒杀名额还回去
-        flashSaleService.releaseQuotaForOrder(order.getId());
-        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
+        flashSaleService.releaseQuotaForOrder(fresh.getId());
+        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());
         for (OrderItem item : items) {
             Product product = productRepository.findById(item.getProductId()).orElse(null);
             if (product == null) {
@@ -68,7 +81,7 @@ public class OrderCloseService {
             }
             StockLog logEntry = new StockLog();
             logEntry.setProductId(product.getId());
-            logEntry.setOrderId(order.getId());
+            logEntry.setOrderId(fresh.getId());
             logEntry.setChangeQuantity(item.getQuantity());
             logEntry.setStockBefore(stockBefore);
             logEntry.setStockAfter(stockBefore + item.getQuantity());
@@ -79,11 +92,10 @@ public class OrderCloseService {
         }
         // 库存还回来了 → 失效商品读缓存，否则用户看到的仍是「已被占用」时的旧库存
         productCacheEvictor.evictProductReads();
-        order.setStatus(CLOSED);
-        order.setClosedAt(LocalDateTime.now());
-        orderRepository.save(order);
-        messageService.push(order.getUserId(), UserMessage.TYPE_ORDER, "订单超时已关闭",
-                "订单 " + order.getOrderNo() + " 超过支付时限已自动关闭，占用的库存与优惠券已释放。",
-                "orderDetail", String.valueOf(order.getId()), "ORDER:CLOSED:" + order.getId());
+        fresh.setClosedAt(LocalDateTime.now());
+        orderRepository.save(fresh);
+        messageService.push(fresh.getUserId(), UserMessage.TYPE_ORDER, "订单超时已关闭",
+                "订单 " + fresh.getOrderNo() + " 超过支付时限已自动关闭，占用的库存与优惠券已释放。",
+                "orderDetail", String.valueOf(fresh.getId()), "ORDER:CLOSED:" + fresh.getId());
     }
 }

@@ -74,6 +74,8 @@ public class AdminOrderService {
     private final MessageService messageService;
     private final FlashSaleService flashSaleService;
     private final ReturnRequestRepository returnRequestRepository;
+    /** 后台取消/退款要退还用户下单时抵扣的积分（与 OrderService.cancelOrder 同口径） */
+    private final MemberService memberService;
 
     public AdminOrderService(
             OrderRepository orderRepository,
@@ -85,7 +87,8 @@ public class AdminOrderService {
             CouponService couponService,
             MessageService messageService,
             FlashSaleService flashSaleService,
-            ReturnRequestRepository returnRequestRepository
+            ReturnRequestRepository returnRequestRepository,
+            MemberService memberService
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -97,6 +100,7 @@ public class AdminOrderService {
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
         this.returnRequestRepository = returnRequestRepository;
+        this.memberService = memberService;
     }
 
     @Transactional(readOnly = true)
@@ -179,25 +183,30 @@ public class AdminOrderService {
         if (!REFUND_APPLYING.equals(order.getRefundStatus())) {
             throw new BusinessException(409, "Order has no pending refund request");
         }
-        order.setRefundRemark(remark);
+        // 【CAS 闸门】抢售后状态 APPLYING → APPROVED / REJECTED。
+        // 双击审批、或两个客服同时点，只有一方生效 —— 否则会重复退钱、并把库存和秒杀名额重复回补。
+        String refundTarget = approved ? REFUND_APPROVED : REFUND_REJECTED;
+        if (orderRepository.casRefundStatus(id, List.of(REFUND_APPLYING), refundTarget) == 0) {
+            throw new BusinessException(409, "该退款申请已被处理，请刷新后查看");
+        }
+        OrderEntity fresh = getExistingOrder(id);
+        fresh.setRefundRemark(remark);
         if (!approved) {
-            order.setRefundStatus(REFUND_REJECTED);
-            OrderEntity savedOrder = orderRepository.save(order);
+            OrderEntity savedOrder = orderRepository.save(fresh);
             messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "退款申请未通过",
                     remark == null || remark.isBlank() ? "很抱歉，你的退款申请未通过，如有疑问请联系客服。" : "审核说明：" + remark,
                     "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:REFUND_REJECT:" + savedOrder.getId());
             return OrderResponse.from(savedOrder, toItemResponses(savedOrder.getId()));
         }
-        walletService.refundOrder(order.getUserId(), order.getId(), order.getPayAmount(), "Refund approved");
+        walletService.refundOrder(fresh.getUserId(), fresh.getId(), fresh.getPayAmount(), "Refund approved");
         // 否则用户只看到当初的支出，看不到钱回来了。
-        paymentRecordRepository.findByOrderId(order.getId()).ifPresent(this::refundPaymentRecord);
-        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
-        returnStocks(order.getId(), operatorId, items);
-        order.setRefundStatus(REFUND_APPROVED);
-        order.setPaymentStatus(PAYMENT_REFUNDED);
-        order.setStatus(CLOSED);
-        order.setRefundedAt(LocalDateTime.now());
-        OrderEntity savedOrder = orderRepository.save(order);
+        paymentRecordRepository.findByOrderId(fresh.getId()).ifPresent(this::refundPaymentRecord);
+        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());
+        returnStocks(fresh.getId(), operatorId, items);
+        fresh.setPaymentStatus(PAYMENT_REFUNDED);
+        fresh.setStatus(CLOSED);
+        fresh.setRefundedAt(LocalDateTime.now());
+        OrderEntity savedOrder = orderRepository.save(fresh);
         messageService.push(savedOrder.getUserId(), UserMessage.TYPE_ORDER, "退款已到账",
                 "订单 " + savedOrder.getOrderNo() + " 退款 " + savedOrder.getPayAmount() + " 元已退回钱包余额。",
                 "orderDetail", String.valueOf(savedOrder.getId()), "ORDER:REFUND_OK:" + savedOrder.getId());
@@ -222,19 +231,30 @@ public class AdminOrderService {
         if (!PENDING_PAYMENT.equals(order.getStatus()) && !PAID.equals(order.getStatus())) {
             throw new BusinessException(409, "Only pending payment or paid orders can be canceled");
         }
-        if (PAID.equals(order.getStatus())) {
-            walletService.refundOrder(order.getUserId(), order.getId(), order.getPayAmount(), "Admin order cancel refund");
-            order.setPaymentStatus(PAYMENT_REFUNDED);
-            paymentRecordRepository.findByOrderId(order.getId())
+        // CAS 之前先记下原支付态（成功后 fresh.status 已是 CANCELED，判不出来了）
+        boolean wasPaid = PAID.equals(order.getStatus());
+        // 【CAS 闸门】与用户自助取消、超时关单互斥：只有一方能真正执行回补。
+        // 否则后台点一次取消、定时任务同时关单，库存与秒杀名额会被还两次 —— 库存虚高即成超卖。
+        if (orderRepository.casStatus(order.getId(), List.of(wasPaid ? PAID : PENDING_PAYMENT), CANCELED) == 0) {
+            throw new BusinessException(409, "订单状态已变更，请刷新后重试");
+        }
+        OrderEntity fresh = getExistingOrder(id);
+        // 与用户自助取消同口径：抵扣过的积分要退回，否则后台取消会白吞用户积分
+        if (fresh.getPointsUsed() != null && fresh.getPointsUsed() > 0) {
+            memberService.refundRedeem(fresh.getUserId(), fresh.getId());
+        }
+        if (wasPaid) {
+            walletService.refundOrder(fresh.getUserId(), fresh.getId(), fresh.getPayAmount(), "Admin order cancel refund");
+            fresh.setPaymentStatus(PAYMENT_REFUNDED);
+            paymentRecordRepository.findByOrderId(fresh.getId())
                     .ifPresent(record -> refundPaymentRecord(record));
         } else {
-            couponService.restoreIfUnpaid(order);
+            couponService.restoreIfUnpaid(fresh);
         }
-        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
-        returnStocks(order.getId(), operatorId, items);
-        order.setStatus(CANCELED);
-        order.setCanceledAt(LocalDateTime.now());
-        OrderEntity savedOrder = orderRepository.save(order);
+        List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());
+        returnStocks(fresh.getId(), operatorId, items);
+        fresh.setCanceledAt(LocalDateTime.now());
+        OrderEntity savedOrder = orderRepository.save(fresh);
         return OrderResponse.from(savedOrder, toItemResponses(items));
     }
 

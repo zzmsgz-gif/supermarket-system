@@ -266,7 +266,14 @@ public class CouponService {
 
     @Transactional
     public UserCouponResponse receiveCoupon(Long userId, Long couponId) {
-        Coupon coupon = getActiveCoupon(couponId);
+        // 【悲观锁】先把券行锁住，再做「限领校验 → 加计数 → 插券」这一串。
+        // 不加锁时：同一用户并发点两次「领取」，两笔事务都读不到对方未提交的 user_coupon，
+        // 双双判定「没领过」，于是各插一张 —— 「每人限领一次」的券被领到两张，
+        // 每日券同理能刷出多条（这是额度超发，用户看到的就是「券超卖了」）。
+        // 加锁后第二笔会阻塞到第一笔提交，再校验就能看到已领记录，直接返回 409。
+        Coupon coupon = couponRepository.findByIdForUpdate(couponId)
+                .filter(item -> Byte.valueOf(NOT_DELETED).equals(item.getDeleted()))
+                .orElseThrow(() -> new ResourceNotFoundException("Coupon not found"));
         LocalDateTime now = LocalDateTime.now();
         if (coupon.getStatus() == null || coupon.getStatus() != ENABLED) {
             throw new BusinessException(409, "优惠券已下架，暂不可领取");

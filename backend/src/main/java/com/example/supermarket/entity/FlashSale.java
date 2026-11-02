@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import org.hibernate.annotations.DynamicUpdate;
 
 /**
  * 限时秒杀（一个商品一个场次）。
@@ -18,8 +19,13 @@ import java.time.LocalDateTime;
  *
  * <p>名额（{@code totalQuota}/{@code soldQuota}）是独立于商品库存的**秒杀名额**，
  * 用带条件的 UPDATE 原子扣减防超卖，取消/超时/退款时按 {@code order_item.flash_sale_id} 回退。
+ *
+ * <p>⚠️ {@code @DynamicUpdate} 同样是防超卖的必要配置：后台编辑场次会 save 整个实体，
+ * 默认 UPDATE 会把内存里过期的 {@code soldQuota} 一并写回 ——
+ * 若这期间用户刚抢走名额，这次保存就把名额"还"回去，场次能多卖几件。加上后只写真正改过的列。
  */
 @Entity
+@DynamicUpdate
 @Table(name = "flash_sale")
 public class FlashSale {
 
