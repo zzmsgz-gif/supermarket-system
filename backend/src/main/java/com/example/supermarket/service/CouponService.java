@@ -28,6 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -264,7 +265,16 @@ public class CouponService {
                 .toList();
     }
 
-    @Transactional
+    /**
+     * 领取优惠券。
+     *
+     * <p>⚠️ 事务隔离级别必须是 READ COMMITTED（2026-11-02）：限领校验是「先查后插」，
+     * 默认 REPEATABLE READ 下这次查询读的是事务开始时的快照，同一用户并发点两次时第二笔
+     * 看不到第一笔刚插入的 user_coupon → 「每人限领一次」的券能领到两张。
+     * 用 FOR UPDATE 强制当前读也能拦，但 RR 下会加间隙锁、与并发插入互相死锁，故改用 RC。
+     * 配合 {code findByIdForUpdate}（锁券行串行化）后，RC 下的普通查询即可看到最新已提交记录。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public UserCouponResponse receiveCoupon(Long userId, Long couponId) {
         // 【悲观锁】先把券行锁住，再做「限领校验 → 加计数 → 插券」这一串。
         // 不加锁时：同一用户并发点两次「领取」，两笔事务都读不到对方未提交的 user_coupon，
@@ -287,10 +297,12 @@ public class CouponService {
         boolean dailyClaim = coupon.getClaimType() != null && coupon.getClaimType() == CLAIM_DAILY;
         if (dailyClaim) {
             // 每日可领：只看「今天」领没领过。昨天领过今天照样能领。
+            // 能读到并发刚提交的记录，是因为本方法事务显式设为 READ_COMMITTED（见方法注解）。
             if (userCouponRepository.existsReceivedSince(userId, couponId, todayStart())) {
                 throw new BusinessException(409, "今日已领取，明天再来");
             }
         } else if (userCouponRepository.findByUserIdAndCouponId(userId, couponId).isPresent()) {
+            // 「每人限领一次」的唯一拦点：RR 快照读会让它失效（第二笔看不到第一笔刚插的券）
             throw new BusinessException(409, "该券每人限领一次，你已经领取过了");
         }
         int updated = couponRepository.increaseReceivedCount(couponId);

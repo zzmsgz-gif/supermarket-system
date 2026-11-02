@@ -33,6 +33,19 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             @Param("excludedStatuses") Collection<String> excludedStatuses
     );
 
+    /**
+     * ⚠️ 2026-11-02 「每人限购并发绕过」的最终结论（别再走回头路）：
+     *
+     * <p>限购校验曾经试过加 {@code FOR UPDATE} 强制当前读 —— 能拦住同账号并发，但 REPEATABLE READ 下
+     * FOR UPDATE 会加**间隙锁**，与其它事务 INSERT 订单互相等待 → MySQL 1213 死锁
+     * （本机 3 次复现 2 次）。所以最终**不再加锁**，改为要求调用方事务处于
+     * {@code READ_COMMITTED}（见 OrderService.createOrder/quickBuy/buildOrderFromItems）：
+     * RC 下每条 SELECT 都读最新已提交版本，限购自然生效，且只加记录锁、不加间隙锁，不会死锁。
+     *
+     * <p>因此这里只保留上面那条普通聚合查询 {@link #sumFlashQuantityByUser}，
+     * <b>如果哪天把它改成快照读场景（默认 RR 事务）调用，限购会静默失效。</b>
+     */
+
     /** 某订单里占用了秒杀名额的订单行（取消/退款时回退用） */
     List<OrderItem> findByOrderIdAndFlashSaleIdIsNotNull(Long orderId);
 

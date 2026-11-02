@@ -32,6 +32,14 @@ public interface UserCouponRepository extends JpaRepository<UserCoupon, Long>, J
     boolean existsReceivedSince(@Param("userId") Long userId, @Param("couponId") Long couponId,
                                 @Param("todayStart") java.time.LocalDateTime todayStart);
 
+    /**
+     * ⚠️ 2026-11-02 领券限领的最终结论：加 {@code FOR UPDATE} 的 count 能强制当前读、拦住同账号并发领券，
+     * 但在 REPEATABLE READ 下会加间隙锁，与并发插入互相等待 → 死锁。
+     * 因此最终**不加锁**，改由 {@code CouponService.receiveCoupon} 的事务显式使用
+     * {@code READ_COMMITTED}（每条 SELECT 读最新已提交），配合 {@code findByIdForUpdate} 锁券行串行化。
+     * 即：上面那两条普通派生查询就够了，不要再改成快照读场景（默认 RR）调用，否则限领会静默失效。
+     */
+
     List<UserCoupon> findByUserIdOrderByIdDesc(Long userId);
 
     Page<UserCoupon> findByUserId(Long userId, Pageable pageable);

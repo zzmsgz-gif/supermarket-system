@@ -31,6 +31,26 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     /** 一笔订单当前的售后单（同一订单同时只允许一张未终结的售后单） */
     Optional<ReturnRequest> findByOrderIdAndStatusIn(Long orderId, List<String> statuses);
 
+    /**
+     * 【当前读】某订单某商品行是否已有在途售后（APPLYING / WAITING_SHIP / SHIPPED_BACK）。
+     *
+     * <p>⚠️ 2026-11-02：申请售后是「先查在途 → 再插入」。普通 SELECT 在 REPEATABLE READ 下是快照读，
+     * 同一订单并发提交两次时，第二笔看不到第一笔刚插入的行 —— 于是同一订单能挂两条在途售后，
+     * 后续分别审批就变成两次退款 + 两次回补库存。必须改用带 FOR UPDATE 的当前读，
+     * 并配合 {@code OrderRepository.lockRow(orderId)} 把同一订单的申请串行化。
+     */
+    @Query(value = "select cast(count(*) as signed) from return_request "
+            + "where order_id = :orderId and order_item_id = :orderItemId "
+            + "and status in ('APPLYING','WAITING_SHIP','SHIPPED_BACK') for update", nativeQuery = true)
+    long countOpenByOrderAndItemForUpdate(@Param("orderId") Long orderId,
+                                          @Param("orderItemId") Long orderItemId);
+
+    /** 【当前读】某订单是否已有在途售后（整单维度，理由同上） */
+    @Query(value = "select cast(count(*) as signed) from return_request "
+            + "where order_id = :orderId "
+            + "and status in ('APPLYING','WAITING_SHIP','SHIPPED_BACK') for update", nativeQuery = true)
+    long countOpenByOrderForUpdate(@Param("orderId") Long orderId);
+
     /** 某订单某商品行的在途售后单（按商品行维度去重：同单不同商品可各自并行） */
     @Query("select r from ReturnRequest r where r.orderId = :orderId and r.orderItemId = :orderItemId "
             + "and r.status in :statuses")

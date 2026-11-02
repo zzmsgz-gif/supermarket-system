@@ -25,6 +25,7 @@ import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -99,9 +100,22 @@ public class ReturnRequestService {
      * 仅当「该订单」已有未终结的售后单时才拦，避免同一订单重复提交在途申请。
      * 被驳回（REJECTED）的订单允许重新申请 —— 驳回不是终态，用户可修正后再次提交。
      */
-    @Transactional
+    /**
+     * ⚠️ 隔离级别必须是 READ COMMITTED（2026-11-02）：本方法先锁订单行串行化，再用带 FOR UPDATE
+     * 的 count 判断「是否已有在途售后」。若事务仍是默认 REPEATABLE READ，那些 FOR UPDATE 会加**间隙锁**，
+     * 不同订单的并发申请就可能互相等到死锁（秒杀限购那边已经实测踩过：3 次复现 2 次 1213）。
+     * RC 下只加记录锁，且普通查询就能读到最新已提交，串行化 + 判重都成立且不死锁。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ReturnRequestResponse apply(Long userId, ReturnApplyRequest req) {
         OrderEntity order = orderRepository.findByIdAndUserId(req.getOrderId(), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+        // 【串行化】先锁住这一行订单，让同一订单的并发售后申请排队。
+        // 只加「在途检查」不够：REPEATABLE READ 下普通查询是快照读，看不到并发事务刚插入的申请，
+        // 同一订单会被挂上两条在途售后 → 分别审批就变成两次退款、两次回补库存（2026-11-02 修）。
+        orderRepository.lockRow(order.getId());
+        // 拿到锁后重读，确保状态是最新的（等锁期间可能已被支付/取消/退款改写）
+        order = orderRepository.findById(order.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
         // COMPLETED / SHIPPED / PAID 在 OrderService 里是 private，这里用字面量；改动需与 OrderService 同步
         String st = order.getStatus();
@@ -127,8 +141,9 @@ public class ReturnRequestService {
             if (Boolean.TRUE.equals(target.getRefunded())) {
                 throw new BusinessException(409, "该商品已退货退款，无需重复申请。");
             }
-            // 仅拦截「该商品行」的在途售后（APPLYING/WAITING_SHIP/SHIPPED_BACK），不影响其它商品行
-            if (returnRepository.findByOrderIdAndOrderItemIdAndStatusIn(order.getId(), itemId, OPEN_STATUSES).isPresent()) {
+            // 仅拦截「该商品行」的在途售后（APPLYING/WAITING_SHIP/SHIPPED_BACK），不影响其它商品行。
+            // 用当前读版本：快照读看不到并发事务刚插入的申请，同一行会被重复发起售后。
+            if (returnRepository.countOpenByOrderAndItemForUpdate(order.getId(), itemId) > 0) {
                 throw new BusinessException(409, "该商品已有一笔售后申请正在处理中，请等待商家处理完成。");
             }
             r.setOrderItemId(itemId);
@@ -142,8 +157,9 @@ public class ReturnRequestService {
             r.setRemark(req.getRemark());
         } else {
             // ===== 整单售后（存量旧单 / 未传 orderItemId 的兜底） =====
-            // 仅拦截「该订单」的在途售后（APPLYING/WAITING_SHIP/SHIPPED_BACK），不同订单互不影响
-            if (returnRepository.findByOrderIdAndStatusIn(req.getOrderId(), OPEN_STATUSES).isPresent()) {
+            // 仅拦截「该订单」的在途售后（APPLYING/WAITING_SHIP/SHIPPED_BACK），不同订单互不影响。
+            // 同样必须是当前读：否则并发两笔都判定「没有在途单」。
+            if (returnRepository.countOpenByOrderForUpdate(order.getId()) > 0) {
                 throw new BusinessException(409, "该订单已有一笔售后申请正在处理中，请等待商家处理完成。");
             }
             // 允许重新申请：订单售后状态为 NONE（从未申请）或 REJECTED（上次被驳回）均可再次发起；

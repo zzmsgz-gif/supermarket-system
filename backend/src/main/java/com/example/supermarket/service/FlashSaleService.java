@@ -383,12 +383,16 @@ public class FlashSaleService {
      */
     @Transactional
     public void reserveQuota(Long userId, Long orderId, FlashSale sale, int quantity) {
-        // 悲观锁本场次：让同一秒杀的并发购买串行化，关掉"每人限购"在并发下的绕过漏洞。
-        // 必须在下面的"每人限购"只读校验【之前】加锁 —— 否则两笔并发单都读不到对方未提交的
-        // order_item，会同时判定"未超限额"，导致同一用户买到超过 per_user_limit 件。
+        // 悲观锁本场次：让同一秒杀的并发购买串行化。
+        // 但光有锁不够 —— 见下面「已购件数」为什么要用 FOR UPDATE 版本。
         flashSaleRepository.lockRow(sale.getId());
         Integer limit = sale.getPerUserLimit();
         if (limit != null && limit > 0) {
+            // 这里是**普通 SELECT**，靠的是调用方事务处于 READ COMMITTED：
+            // 每条 SELECT 都读最新已提交版本，所以拿到场次行锁（已串行化）之后，一定能看到
+            // 上一笔刚提交的订单行。若调用方是默认的 REPEATABLE READ，这句会读事务开始时的快照，
+            // 限购就形同虚设（2026-11-02 生产实测：限购 1 件被同一账号抢到 4 件）。
+            // 也正因为不用 FOR UPDATE，才不会引入间隙锁 → 不会与 INSERT 订单互相死锁。
             long bought = orderItemRepository.sumFlashQuantityByUser(
                     userId, sale.getId(), orderId, QUOTA_RELEASED_STATUSES);
             if (bought + quantity > limit) {

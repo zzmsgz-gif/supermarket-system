@@ -19,6 +19,17 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>, JpaSp
     List<OrderEntity> findByStatusAndCreatedAtBefore(String status, LocalDateTime time);
 
     /**
+     * 悲观锁订单行（SELECT ... FOR UPDATE）。
+     *
+     * <p>用于「先查后插」场景（如售后申请防重复提交）：锁住这一行把同一订单的并发请求串行化，
+     * 再配合**当前读**的子表校验（带 FOR UPDATE 的 count）才能看到对方已提交的数据
+     * —— 只锁行不够，普通 SELECT 在 REPEATABLE READ 下仍是快照读。
+     * 只锁订单行、不碰商品行，与库存扣减/取消退款的加锁顺序不构成环。
+     */
+    @Query(value = "select o.id from orders o where o.id = :id for update", nativeQuery = true)
+    Long lockRow(@Param("id") Long id);
+
+    /**
      * 【订单状态 CAS 闸门】只有当前状态仍在 {@code fromStatuses} 里，才改成 {@code toStatus}（返回 1）。
      *
      * <p>为什么必须有这道闸门：支付、用户取消、超时关单、后台取消、后台退款这五条路径，

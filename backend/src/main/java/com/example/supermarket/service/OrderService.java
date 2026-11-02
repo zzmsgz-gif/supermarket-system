@@ -55,6 +55,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -185,7 +186,21 @@ public class OrderService {
         return new ReorderResultResponse(added, skipped);
     }
 
-    @Transactional
+    /**
+     * 购物车下单。
+     *
+     * <p>⚠️ 事务隔离级别必须是 READ COMMITTED，不能省（2026-11-02 秒杀限购绕过专项）：
+     * <ul>
+     *   <li>MySQL 默认 REPEATABLE READ 下，本事务里所有普通 SELECT 读的是「事务开始时的快照」。
+     *       于是秒杀限购校验（统计该用户已买几件）永远看不到并发事务刚提交的订单行 →
+     *       「每人限购 1 件」被同一个人并发抢到 4 件（生产实测）。</li>
+     *   <li>如果改用 {@code SELECT ... FOR UPDATE} 去强制当前读，RR 会加**间隙锁**，
+     *       与其它事务 INSERT 订单撞上 → MySQL 1213 死锁（本机实测 3 次里 2 次复现）。</li>
+     * </ul>
+     * READ COMMITTED 同时解决两者：每条 SELECT 都读最新已提交版本，且只加记录锁、不加间隙锁。
+     * 配合 {@code FlashSaleRepository.lockRow}（锁场次行做串行化），限购才真正生效又不死锁。
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
         List<Long> cartItemIds = request.getCartItemIds().stream().distinct().toList();
         List<CartItem> cartItems = cartItemRepository.findByUserIdAndIdInAndSelected(userId, cartItemIds, SELECTED);
@@ -203,7 +218,7 @@ public class OrderService {
      * 用一条「临时 CartItem」承载入参，复用 buildOrderFromItems 的建单逻辑，
      * 下单成功后购物车零残留 —— 用户放弃支付也不会在购物车留下任何东西。
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public OrderResponse quickBuy(Long userId, QuickBuyRequest request) {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new ResourceNotFoundException("商品不存在"));
@@ -228,7 +243,7 @@ public class OrderService {
      * 扣库存、占秒杀名额。本方法【不】删除任何购物车行 —— 购物车下单在 createOrder 里删，
      * 立即购买（quickBuy）不删。这样「查 / 删购物车」与「建单」彻底解耦，立即购买才能不污染购物车。
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public OrderResponse buildOrderFromItems(Long userId, OrderRequestLike request, List<CartItem> cartItems) {
         String fulfillmentType = resolveFulfillmentType(request.getFulfillmentType());
         boolean pickup = OrderEntity.FULFILLMENT_PICKUP.equals(fulfillmentType);
