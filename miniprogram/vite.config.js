@@ -42,6 +42,10 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true
       }
-    }
+    },
+    // 监听所有网卡：默认只绑 IPv6 回环（::1），部分浏览器按 IPv4 解析 localhost 会连不上；
+    // 开全之后 127.0.0.1 / localhost / 局域网 IP（手机同 WiFi 访问）都能打开 H5 预览。
+    host: '0.0.0.0',
+    port: 5173
   }
 })
