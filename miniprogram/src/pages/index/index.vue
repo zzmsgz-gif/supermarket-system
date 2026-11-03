@@ -39,7 +39,7 @@
 
     <!-- ===== 圆形品类入口 ===== -->
     <view class="quick" v-if="quickCats.length">
-      <view v-for="c in quickCats" :key="c.id" class="quick-item" @click="jumpFloor(c.id)">
+      <view v-for="c in quickCats" :key="c.key" class="quick-item" @click="goCategory(c.id)">
         <view class="quick-ico" :style="{ background: c.bg }">
           <text class="quick-ico-t" :style="{ color: c.fg }">{{ c.initial }}</text>
         </view>
@@ -98,7 +98,7 @@
     >
       <view class="floor-head">
         <text class="floor-t">{{ fl.category.name }}</text>
-        <text class="floor-more" @click="goSearch('', fl.category.id)">查看全部</text>
+        <text class="floor-more" @click="goCategory(fl.category.id)">查看全部</text>
       </view>
       <view class="grid">
         <view
@@ -178,11 +178,12 @@ try {
   statusBarHeight.value = 20
 }
 
-// 首页只展示前 4 个分类 + 「全部」，其余靠「查看全部 / 分类页」承接
+// 首页只展示前 4 个分类 + 「全部」，其余靠分类页承接
 const quickCats = computed(() => {
   const head = categories.value.slice(0, 4).map((c, i) => {
     const p = QUICK_PALETTE[i % QUICK_PALETTE.length]
     return {
+      key: 'c' + c.id,
       id: c.id,
       shortName: c.name && c.name.length > 4 ? c.name.slice(0, 4) : c.name,
       initial: (c.name || '·').slice(0, 1),
@@ -190,9 +191,11 @@ const quickCats = computed(() => {
       fg: p.fg
     }
   })
+  // 第 5 格固定「全部」：id 为 null，进分类页时不带 categoryId（落在第一个分类）
   if (categories.value.length > 4) {
     head.push({
-      id: categories.value[4].id,
+      key: 'all',
+      id: null,
       shortName: '全部',
       initial: '全',
       bg: QUICK_PALETTE[4].bg,
@@ -335,9 +338,10 @@ function goFlash(f) {
   goDetail(f.productId || f.linkProductId)
 }
 
-function jumpFloor(id) {
-  // 滚到对应分类楼层（mp-weixin 支持 selector 滚动）
-  uni.pageScrollTo({ selector: '.floor-' + id, duration: 300 })
+/** 圆形品类入口：进分类页并定位到该分类；「全部」不带参数，分类页落在第一个分类 */
+function goCategory(id) {
+  const q = id ? '?categoryId=' + id : ''
+  uni.navigateTo({ url: '/pages/category/category' + q })
 }
 
 onMounted(() => {

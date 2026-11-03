@@ -3,32 +3,58 @@ import uni from '@dcloudio/vite-plugin-uni'
 import fs from 'fs'
 import path from 'path'
 
-// H5 预览时，种子商品图 / 头像等前端静态资源（生产由 nginx 直接喂 /seed-products、/seed-avatars）
-// 在本地没有 nginx，故由 vite 直接从 PC 前端 public 目录喂出，避免 H5 里图片 401/裂图。
-// 注意：这些图不是 /api，不能走 /api 代理（后端 SecurityConfig 未放行 /api/seed-products → 401）。
-const FRONTEND_PUBLIC = path.resolve(__dirname, '../../frontend/public')
+// ⚠️ 不要用 `path.resolve(__dirname, '../../frontend/public')`：vite 执行 config 时
+// __dirname 指向仓库根而不是本文件所在目录，会算成 `D:\frontend\public`（少一层），
+// 于是所有 /seed-products 图片静默 404 → 落到 SPA 兜底返回 text/html（2026-11-03 修）。
+// 这里按 cwd 探测多种可能，取第一个真实存在的目录。
+function resolveFrontendPublic() {
+  const candidates = [
+    path.resolve(process.cwd(), '../frontend/public'),
+    path.resolve(process.cwd(), 'frontend/public'),
+    path.resolve(__dirname, '../../frontend/public'),
+    path.resolve(__dirname, '../frontend/public')
+  ]
+  for (const c of candidates) {
+    try {
+      if (fs.statSync(c).isDirectory()) return c
+    } catch (e) {
+      // 继续试下一个
+    }
+  }
+  return candidates[0]
+}
+
+const FRONTEND_PUBLIC = resolveFrontendPublic()
 
 function serveFrontendStatic() {
   return {
     name: 'serve-frontend-static',
     configureServer(server) {
-      const handler = (req, res, next) => {
-        const rel = decodeURIComponent(req.url.split('?')[0])
-        const file = path.join(FRONTEND_PUBLIC, rel)
-        fs.stat(file, (err, st) => {
-          if (err || !st.isFile()) return next()
-          const ext = path.extname(file).slice(1).toLowerCase()
-          const mime = {
-            webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-            png: 'image/png', gif: 'image/gif', svg: 'image/svg+xml'
-          }[ext] || 'application/octet-stream'
-          res.setHeader('Content-Type', mime)
-          fs.createReadStream(file).pipe(res)
+      // ⚠️ connect 的 `use(base, fn)` 会在调用 handler 前把 req.url 里的 base 前缀**剥掉**
+      // （/seed-products/sx-tomato.webp → req.url = '/sx-tomato.webp'）。
+      // 早期写法直接 path.join(FRONTEND_PUBLIC, req.url)，等于去 public 根目录找文件 → 永远 stat 失败
+      // → next() 落到 SPA 兜底 → 返回 index.html（状态码 200 但 content-type: text/html），
+      // 于是所有 /seed-products 商品图静默裂图，且只看状态码完全查不出来（2026-11-03 修）。
+      // 所以这里必须把 base 拼回去。
+      const mount = (base) => {
+        server.middlewares.use(base, (req, res, next) => {
+          const rel = decodeURIComponent(req.url.split('?')[0])
+          const file = path.join(FRONTEND_PUBLIC, base, rel)
+          fs.stat(file, (err, st) => {
+            if (err || !st.isFile()) return next()
+            const ext = path.extname(file).slice(1).toLowerCase()
+            const mime = {
+              webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+              png: 'image/png', gif: 'image/gif', svg: 'image/svg+xml'
+            }[ext] || 'application/octet-stream'
+            res.setHeader('Content-Type', mime)
+            fs.createReadStream(file).pipe(res)
+          })
         })
       }
       // 只接管明确属于前端静态目录的前缀，其余交给 vite 默认流程
-      server.middlewares.use('/seed-products', handler)
-      server.middlewares.use('/seed-avatars', handler)
+      mount('/seed-products')
+      mount('/seed-avatars')
     }
   }
 }
