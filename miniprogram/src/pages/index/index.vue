@@ -1,16 +1,32 @@
 <template>
   <view class="home">
-    <!-- 搜索条 -->
-    <view class="search" @click="goSearch">
-      <text class="s-icon">🔍</text>
-      <text class="s-ph">搜索商品</text>
+    <!-- ===== 沉浸式头部（A 方案）：深绿底 + 真搜索框 + 配送承诺 ===== -->
+    <view class="hero" :style="{ paddingTop: statusBarHeight + 'px' }">
+      <view class="hero-nav">
+        <view class="brand">
+          <view class="brand-mark"></view>
+          <text class="brand-name">好玛特鲜生</text>
+        </view>
+        <!-- 右侧必须留空：微信胶囊按钮就压在这个位置，放任何东西都会被挡住 -->
+      </view>
+      <view class="search" @click="goSearch('')">
+        <view class="s-lens"></view>
+        <text class="s-ph">搜索 帝王蟹 / 车厘子</text>
+        <view class="s-scan"></view>
+      </view>
+      <view class="deliver">
+        <view class="d-dot"></view>
+        <text class="d-text">最快 30 分钟送达 · 满 59 免运费</text>
+      </view>
     </view>
 
-    <!-- 轮播 -->
+    <!-- ===== 主轮播 ===== -->
     <swiper
       v-if="banners.length"
       class="banner"
       indicator-dots
+      indicator-color="rgba(255,255,255,0.45)"
+      indicator-active-color="#ffffff"
       autoplay
       circular
       interval="3500"
@@ -21,56 +37,60 @@
       </swiper-item>
     </swiper>
 
-    <!-- 热搜词 -->
-    <view class="hot" v-if="hotSearches.length">
-      <text class="hot-t">热搜</text>
-      <view
-        v-for="h in hotSearches"
-        :key="h.id"
-        class="hot-chip"
-        @click="goSearch(h.keyword)"
-      >{{ h.keyword }}</view>
+    <!-- ===== 圆形品类入口 ===== -->
+    <view class="quick" v-if="quickCats.length">
+      <view v-for="c in quickCats" :key="c.id" class="quick-item" @click="jumpFloor(c.id)">
+        <view class="quick-ico" :style="{ background: c.bg }">
+          <text class="quick-ico-t" :style="{ color: c.fg }">{{ c.initial }}</text>
+        </view>
+        <text class="quick-t">{{ c.shortName }}</text>
+      </view>
     </view>
 
-    <!-- 秒杀区 -->
+    <!-- ===== 限时秒杀（A 方案的红底块） ===== -->
     <view class="flash" v-if="flashSales.length">
       <view class="flash-head">
-        <text class="flash-t">限时秒杀</text>
-        <text class="flash-more" @click="goSearch('')">更多 ›</text>
+        <view class="flash-title">
+          <text class="flash-t">限时秒杀</text>
+          <text class="flash-sub" v-if="flashEndLabel">{{ flashEndLabel }}</text>
+        </view>
+        <text class="flash-cd" v-if="flashCountdown">{{ flashCountdown }}</text>
       </view>
-      <scroll-view scroll-x class="flash-scroll">
-        <view
-          v-for="f in flashSales"
-          :key="f.id"
-          class="flash-card"
-          @click="goFlash(f)"
-        >
+      <scroll-view scroll-x class="flash-scroll" :show-scrollbar="false">
+        <view v-for="f in flashSales" :key="f.id" class="fcard" @click="goFlash(f)">
           <image class="f-cover" :src="fullUrl(f.productCoverUrl)" mode="aspectFill" />
-          <view class="f-name">{{ f.productName }}</view>
-          <view class="f-price">¥{{ f.flashPrice }}</view>
-          <view class="f-origin">¥{{ f.price }}</view>
-          <view class="f-bar">
-            <view class="f-bar-in" :style="{ width: (f.progressPercent || 0) + '%' }"></view>
-          </view>
-          <view class="f-state">
-            <text v-if="f.state === 'RUNNING'" class="f-cd">{{ formatCountdown(f.remaining) }}</text>
-            <text v-else :class="['f-tag', f.state === 'UPCOMING' ? 'up' : 'end']">{{ flashStateLabel(f.state) }}</text>
+          <view class="f-info">
+            <text class="f-name">{{ f.productName }}</text>
+            <view class="f-price-row">
+              <text class="f-price">¥{{ f.flashPrice }}</text>
+              <text class="f-origin">¥{{ f.price }}</text>
+            </view>
+            <view class="f-bar" v-if="f.state === 'RUNNING'">
+              <view class="f-bar-in" :style="{ width: (f.progressPercent || 0) + '%' }"></view>
+            </view>
+            <text class="f-state" v-if="f.state === 'RUNNING'">已抢 {{ f.progressPercent || 0 }}%</text>
+            <text class="f-state" v-else>{{ flashStateLabel(f.state) }}</text>
           </view>
         </view>
+        <view class="fcard fcard-ghost" v-if="flashSales.length > 1"></view>
       </scroll-view>
     </view>
 
-    <!-- 分类快捷 -->
-    <scroll-view scroll-x class="cats">
+    <!-- ===== 热搜：细胶囊 + 序号（不再和分类长一样） ===== -->
+    <scroll-view v-if="hotSearches.length" scroll-x class="hot" :show-scrollbar="false">
+      <text class="hot-label">热搜</text>
       <view
-        v-for="c in categories"
-        :key="c.id"
-        class="cat"
-        @click="jumpFloor(c.id)"
-      >{{ c.name }}</view>
+        v-for="(h, i) in hotSearches"
+        :key="h.id"
+        class="hot-chip"
+        @click="goSearch(h.keyword)"
+      >
+        <text class="hot-rank" :class="'r' + (i + 1)">{{ i + 1 }}</text>
+        <text class="hot-kw">{{ h.keyword }}</text>
+      </view>
     </scroll-view>
 
-    <!-- 分类楼层 -->
+    <!-- ===== 分类楼层（B 方案的双列卡：卖点标签 + 销量 + 一步加购） ===== -->
     <view
       v-for="fl in floors"
       :key="fl.category.id"
@@ -78,20 +98,38 @@
     >
       <view class="floor-head">
         <text class="floor-t">{{ fl.category.name }}</text>
-        <text class="floor-more" @click="goSearch('', fl.category.id)">更多 ›</text>
+        <text class="floor-more" @click="goSearch('', fl.category.id)">查看全部</text>
       </view>
       <view class="grid">
         <view
           v-for="p in fl.products"
           :key="p.id"
-          class="card"
+          class="pcard"
           @click="goDetail(p.id)"
         >
-          <image class="cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-          <view class="name">{{ p.name }}</view>
-          <view class="price">
-            <text class="now">¥{{ p.price }}</text>
-            <text class="origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+          <view class="p-cover-wrap">
+            <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <view class="p-soldout" v-if="(p.stock || 0) <= 0">
+              <text class="p-soldout-t">售罄</text>
+            </view>
+          </view>
+          <view class="p-body">
+            <text class="p-name">{{ p.name }}</text>
+            <view class="p-price-row">
+              <text class="p-price">¥{{ p.price }}</text>
+              <text class="p-origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+            </view>
+            <view class="p-foot">
+              <text class="p-sales">{{ salesText(p) }}</text>
+              <view
+                class="p-add"
+                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0 }"
+                @click.stop="quickAdd(p)"
+              >
+                <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -103,12 +141,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
 import { listHotSearches } from '@/api/hotSearch'
 import { listFlashSales } from '@/api/flashSale'
+import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
@@ -118,11 +157,81 @@ const banners = ref([])
 const hotSearches = ref([])
 const flashSales = ref([])
 const floors = ref([])
+const addingId = ref(null)
+const statusBarHeight = ref(20)
+
+// 品类圆形入口的底色/前景色：固定一套低饱和色板，避免每个分类都白圆
+const QUICK_PALETTE = [
+  { bg: '#EAF3DE', fg: '#4C6B2F' },
+  { bg: '#FAEEDA', fg: '#8A5A17' },
+  { bg: '#E6F1FB', fg: '#2A5C87' },
+  { bg: '#FBEAF0', fg: '#8C3653' },
+  { bg: '#EDEAE3', fg: '#5F5E5A' }
+]
 
 let timer = null
 
+try {
+  const info = uni.getWindowInfo ? uni.getWindowInfo() : uni.getSystemInfoSync()
+  statusBarHeight.value = info.statusBarHeight || 20
+} catch (e) {
+  statusBarHeight.value = 20
+}
+
+// 首页只展示前 4 个分类 + 「全部」，其余靠「查看全部 / 分类页」承接
+const quickCats = computed(() => {
+  const head = categories.value.slice(0, 4).map((c, i) => {
+    const p = QUICK_PALETTE[i % QUICK_PALETTE.length]
+    return {
+      id: c.id,
+      shortName: c.name && c.name.length > 4 ? c.name.slice(0, 4) : c.name,
+      initial: (c.name || '·').slice(0, 1),
+      bg: p.bg,
+      fg: p.fg
+    }
+  })
+  if (categories.value.length > 4) {
+    head.push({
+      id: categories.value[4].id,
+      shortName: '全部',
+      initial: '全',
+      bg: QUICK_PALETTE[4].bg,
+      fg: QUICK_PALETTE[4].fg
+    })
+  }
+  return head
+})
+
+// 秒杀头部：倒计时只显示「进行中最早结束」的那一场，避免一排数字挤在一起
+const flashCountdown = computed(() => {
+  const running = flashSales.value.find((f) => f.state === 'RUNNING' && f.remaining > 0)
+  return running ? formatCountdown(running.remaining) : ''
+})
+const flashEndLabel = computed(() => {
+  const upcoming = flashSales.value.find((f) => f.state === 'UPCOMING')
+  return upcoming ? '即将开始' : ''
+})
+
 function showOrigin(p) {
   return p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
+}
+
+/** 商品卡卖点标签：优先用后台维护的 tags，其次按 isNew / isHot 兜底 */
+function tagOf(p) {
+  if (p.tags && String(p.tags).trim()) {
+    const first = String(p.tags).split(/[,，\s]+/).filter(Boolean)[0]
+    if (first) return first.length > 4 ? first.slice(0, 4) : first
+  }
+  if (p.isNew === 1) return '新品'
+  if (p.isHot === 1) return '热卖'
+  return ''
+}
+
+function salesText(p) {
+  const n = Number(p.sales || 0)
+  if (!n) return '新品上架'
+  if (n >= 10000) return '已售 ' + (n / 10000).toFixed(1) + '万'
+  return '已售 ' + n
 }
 
 async function load() {
@@ -170,6 +279,41 @@ function stopTimer() {
   }
 }
 
+/** 一步加购：不跳详情页，加完弹轻提示并同步 tabBar 角标 */
+async function quickAdd(p) {
+  if (addingId.value) return
+  if ((p.stock || 0) <= 0) {
+    uni.showToast({ title: '这件已售罄，看看别的', icon: 'none' })
+    return
+  }
+  addingId.value = p.id
+  try {
+    await addToCart(p.id, 1, '')
+    uni.showToast({ title: '已加入购物车', icon: 'none', duration: 1200 })
+    refreshCartBadge()
+  } catch (err) {
+    uni.showToast({ title: (err && err.message) || '加购失败，请重试', icon: 'none' })
+  } finally {
+    addingId.value = null
+  }
+}
+
+async function refreshCartBadge() {
+  try {
+    const { getCart } = await import('@/api/cart')
+    const cart = await getCart()
+    const list = (cart && cart.items) || (Array.isArray(cart) ? cart : [])
+    const n = list.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+    if (n > 0) {
+      uni.setTabBarBadge({ index: 1, text: n > 99 ? '99+' : String(n) })
+    } else {
+      uni.removeTabBarBadge({ index: 1 })
+    }
+  } catch (e) {
+    // 角标失败不影响主流程
+  }
+}
+
 function goSearch(keyword, categoryId) {
   let url = '/pages/search/search'
   const q = []
@@ -196,6 +340,10 @@ function jumpFloor(id) {
   uni.pageScrollTo({ selector: '.floor-' + id, duration: 300 })
 }
 
+onMounted(() => {
+  refreshCartBadge()
+})
+
 onShow(() => {
   if (!isLoggedIn()) {
     uni.navigateTo({ url: '/pages/login/login' })
@@ -203,213 +351,431 @@ onShow(() => {
   }
   load()
   startTimer()
+  refreshCartBadge()
 })
 
 onHide(stopTimer)
 onUnload(stopTimer)
+onUnmounted(stopTimer)
 </script>
 
 <style scoped>
 .home {
-  padding-bottom: 32rpx;
+  min-height: 100vh;
+  background: #FAF8F3;
+  padding-bottom: 40rpx;
+}
+
+/* ---------- 沉浸头部 ---------- */
+.hero {
+  background: #0F6E56;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  padding-bottom: 22rpx;
+  border-bottom-left-radius: 28rpx;
+  border-bottom-right-radius: 28rpx;
+}
+.hero-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+}
+.brand-mark {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 10rpx;
+  background: #D9EFE7;
+  margin-right: 14rpx;
+}
+.brand-name {
+  font-size: 32rpx;
+  color: #ffffff;
+  font-weight: 500;
+  letter-spacing: 1rpx;
 }
 .search {
   display: flex;
   align-items: center;
-  margin: 16rpx;
-  padding: 16rpx 24rpx;
-  background: #fff;
-  border-radius: 40rpx;
-  color: #999;
+  height: 68rpx;
+  background: #ffffff;
+  border-radius: 34rpx;
+  padding: 0 22rpx;
 }
-.s-icon {
-  margin-right: 12rpx;
+.s-lens {
+  width: 22rpx;
+  height: 22rpx;
+  border: 3rpx solid #9CA3AF;
+  border-radius: 50%;
+  margin-right: 14rpx;
 }
+.s-ph {
+  flex: 1;
+  font-size: 26rpx;
+  color: #9CA3AF;
+}
+.s-scan {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 8rpx;
+  background: #F1F2F4;
+}
+.deliver {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+}
+.d-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #8FD3BC;
+  margin-right: 10rpx;
+}
+.d-text {
+  font-size: 22rpx;
+  color: #B7E0D1;
+}
+
+/* ---------- 轮播 ---------- */
 .banner {
-  height: 280rpx;
-  margin: 0 16rpx;
-  border-radius: 12rpx;
+  height: 300rpx;
+  margin: 20rpx 24rpx 0;
+  border-radius: 20rpx;
   overflow: hidden;
 }
 .b-img {
   width: 100%;
-  height: 280rpx;
+  height: 300rpx;
 }
-.hot {
+
+/* ---------- 圆形品类 ---------- */
+.quick {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 26rpx 28rpx 6rpx;
+}
+.quick-item {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 16rpx;
 }
-.hot-t {
-  font-size: 24rpx;
-  color: #999;
-  margin-right: 12rpx;
+.quick-ico {
+  width: 84rpx;
+  height: 84rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.hot-chip {
-  font-size: 24rpx;
-  color: #333;
-  background: #fff;
-  border-radius: 24rpx;
-  padding: 6rpx 20rpx;
-  margin: 8rpx 12rpx 8rpx 0;
+.quick-ico-t {
+  font-size: 30rpx;
+  font-weight: 500;
 }
+.quick-t {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #374151;
+}
+
+/* ---------- 秒杀红底块 ---------- */
 .flash {
-  background: #fff;
-  margin: 16rpx;
-  border-radius: 12rpx;
-  padding: 16rpx;
+  margin: 22rpx 24rpx 0;
+  background: #C0392B;
+  border-radius: 22rpx;
+  padding: 20rpx 20rpx 22rpx;
 }
 .flash-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.flash-title {
+  display: flex;
   align-items: center;
 }
 .flash-t {
   font-size: 30rpx;
-  font-weight: bold;
-  color: #e4393c;
+  color: #ffffff;
+  font-weight: 500;
+  margin-right: 12rpx;
 }
-.flash-more {
-  font-size: 24rpx;
-  color: #999;
+.flash-sub {
+  font-size: 22rpx;
+  color: #FFD9D3;
+}
+.flash-cd {
+  font-size: 28rpx;
+  color: #ffffff;
+  font-weight: 500;
 }
 .flash-scroll {
   white-space: nowrap;
-  margin-top: 12rpx;
 }
-.flash-card {
+.fcard {
   display: inline-block;
-  width: 200rpx;
+  width: 344rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 12rpx;
   margin-right: 16rpx;
   vertical-align: top;
 }
+.fcard-ghost {
+  width: 8rpx;
+  background: transparent;
+  padding: 0;
+}
 .f-cover {
-  width: 200rpx;
-  height: 200rpx;
-  background: #eee;
+  width: 92rpx;
+  height: 92rpx;
   border-radius: 12rpx;
+  background: #F3D9D4;
+  display: inline-block;
+  vertical-align: top;
+}
+.f-info {
+  display: inline-block;
+  width: 216rpx;
+  margin-left: 14rpx;
+  vertical-align: top;
 }
 .f-name {
+  display: block;
   font-size: 24rpx;
+  color: #374151;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.f-price-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 4rpx;
+}
 .f-price {
-  color: #e4393c;
-  font-weight: bold;
-  font-size: 28rpx;
+  font-size: 30rpx;
+  color: #C0392B;
+  font-weight: 500;
 }
 .f-origin {
-  color: #999;
-  font-size: 22rpx;
+  font-size: 20rpx;
+  color: #9CA3AF;
   text-decoration: line-through;
   margin-left: 8rpx;
 }
 .f-bar {
-  height: 10rpx;
-  background: #f2f2f2;
-  border-radius: 6rpx;
+  height: 8rpx;
+  background: #F0D6D1;
+  border-radius: 4rpx;
   margin-top: 8rpx;
   overflow: hidden;
 }
 .f-bar-in {
-  height: 100%;
-  background: #07c160;
+  height: 8rpx;
+  background: #C0392B;
 }
 .f-state {
-  margin-top: 8rpx;
-  font-size: 22rpx;
+  display: block;
+  font-size: 20rpx;
+  color: #9CA3AF;
+  margin-top: 6rpx;
 }
-.f-cd {
-  color: #e4393c;
-}
-.f-tag.up {
-  color: #ff9800;
-}
-.f-tag.end {
-  color: #999;
-}
-.cats {
+
+/* ---------- 热搜 ---------- */
+.hot {
   white-space: nowrap;
-  padding: 16rpx;
+  padding: 22rpx 24rpx 4rpx;
 }
-.cat {
-  display: inline-block;
-  padding: 8rpx 24rpx;
-  margin-right: 12rpx;
-  background: #fff;
-  border-radius: 32rpx;
-  font-size: 26rpx;
+.hot-label {
+  font-size: 22rpx;
+  color: #9CA3AF;
+  margin-right: 14rpx;
+  vertical-align: middle;
 }
+.hot-chip {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 26rpx;
+  padding: 8rpx 20rpx 8rpx 8rpx;
+  margin-right: 14rpx;
+  vertical-align: middle;
+}
+.hot-rank {
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  background: #F1EFE8;
+  color: #888780;
+  font-size: 20rpx;
+  text-align: center;
+  line-height: 30rpx;
+  margin-right: 10rpx;
+}
+.r1 {
+  background: #C0392B;
+  color: #ffffff;
+}
+.r2 {
+  background: #D97757;
+  color: #ffffff;
+}
+.r3 {
+  background: #BA7517;
+  color: #ffffff;
+}
+.hot-kw {
+  font-size: 24rpx;
+  color: #374151;
+}
+
+/* ---------- 楼层 ---------- */
 .floor {
-  margin: 16rpx;
+  margin-top: 24rpx;
 }
 .floor-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8rpx 0 16rpx;
+  justify-content: space-between;
+  padding: 0 28rpx 14rpx;
 }
 .floor-t {
   font-size: 30rpx;
-  font-weight: bold;
+  color: #111827;
+  font-weight: 500;
 }
 .floor-more {
-  font-size: 24rpx;
-  color: #999;
+  font-size: 22rpx;
+  color: #9CA3AF;
 }
 .grid {
   display: flex;
   flex-wrap: wrap;
-  background: #fff;
-  border-radius: 12rpx;
-  padding: 8rpx 0;
+  justify-content: space-between;
+  padding: 0 24rpx;
 }
-.card {
-  width: 50%;
-  box-sizing: border-box;
-  padding: 8rpx;
-}
-.cover {
-  width: 100%;
-  height: 320rpx;
-  background: #eee;
-  border-radius: 12rpx;
-}
-.name {
-  padding: 8rpx;
-  font-size: 26rpx;
+.pcard {
+  width: 336rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-bottom: 18rpx;
 }
-.price {
-  padding: 0 8rpx 8rpx;
+.p-cover-wrap {
+  position: relative;
+  width: 336rpx;
+  height: 336rpx;
 }
-.now {
-  color: #e4393c;
-  font-weight: bold;
+.p-cover {
+  width: 336rpx;
+  height: 336rpx;
+  background: #EDF0EE;
 }
-.origin {
-  color: #999;
+.p-tag {
+  position: absolute;
+  left: 12rpx;
+  top: 12rpx;
+  background: #0F6E56;
+  color: #ffffff;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+}
+.p-soldout {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 336rpx;
+  height: 336rpx;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.p-soldout-t {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6B7280;
   font-size: 22rpx;
+  text-align: center;
+  line-height: 96rpx;
+}
+.p-body {
+  padding: 12rpx 14rpx 16rpx;
+}
+.p-name {
+  display: block;
+  font-size: 25rpx;
+  color: #111827;
+  line-height: 1.35;
+  height: 68rpx;
+  overflow: hidden;
+}
+.p-price-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 8rpx;
+}
+.p-price {
+  font-size: 30rpx;
+  color: #C0392B;
+  font-weight: 500;
+}
+.p-origin {
+  font-size: 20rpx;
+  color: #9CA3AF;
   text-decoration: line-through;
   margin-left: 8rpx;
 }
-.floor-empty {
-  background: #fff;
-  border-radius: 12rpx;
-  color: #999;
-  font-size: 24rpx;
-  text-align: center;
-  padding: 32rpx 0;
+.p-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10rpx;
 }
+.p-sales {
+  font-size: 20rpx;
+  color: #9CA3AF;
+}
+.p-add {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  background: #0F6E56;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.p-add-busy {
+  background: #1D9E75;
+}
+.p-add-off {
+  background: #E5E7EB;
+}
+.p-add-ico {
+  color: #ffffff;
+  font-size: 32rpx;
+  line-height: 1;
+}
+.floor-empty {
+  padding: 30rpx 28rpx;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  text-align: center;
+}
+
 .footer-tip {
   text-align: center;
-  color: #ccc;
   font-size: 22rpx;
-  padding: 24rpx 0;
+  color: #C4C0B6;
+  padding: 24rpx 0 8rpx;
 }
 </style>
