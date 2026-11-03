@@ -41,7 +41,7 @@
     <view class="quick" v-if="quickCats.length">
       <view v-for="c in quickCats" :key="c.key" class="quick-item" @click="goCategory(c.id)">
         <view class="quick-ico" :style="{ background: c.bg }">
-          <text class="quick-ico-t" :style="{ color: c.fg }">{{ c.initial }}</text>
+          <image class="quick-ico-img" :src="c.iconSrc" mode="aspectFit" />
         </view>
         <text class="quick-t">{{ c.shortName }}</text>
       </view>
@@ -160,14 +160,35 @@ const floors = ref([])
 const addingId = ref(null)
 const statusBarHeight = ref(20)
 
-// 品类圆形入口的底色/前景色：固定一套低饱和色板，避免每个分类都白圆
+// 品类圆形入口的底色（浅色系）+ 图标映射（分类名关键词 → static/category/*.png）
 const QUICK_PALETTE = [
-  { bg: '#EAF3DE', fg: '#4C6B2F' },
-  { bg: '#FAEEDA', fg: '#8A5A17' },
-  { bg: '#E6F1FB', fg: '#2A5C87' },
-  { bg: '#FBEAF0', fg: '#8C3653' },
-  { bg: '#EDEAE3', fg: '#5F5E5A' }
+  { bg: '#EAF3DE' },
+  { bg: '#FAEEDA' },
+  { bg: '#E6F1FB' },
+  { bg: '#FBEAF0' },
+  { bg: '#EDEAE3' }
 ]
+
+const CATEGORY_ICON_RULES = [
+  { keys: ['中秋', '团圆', '月饼'], icon: 'moon' },
+  { keys: ['生鲜', '果蔬', '水果', '蔬菜'], icon: 'fresh' },
+  { keys: ['酒水', '饮料', '酒'], icon: 'wine' },
+  { keys: ['零食', '休闲'], icon: 'snack' },
+  { keys: ['日用', '百货'], icon: 'bottle' },
+  { keys: ['粮油', '调味'], icon: 'grain' },
+  { keys: ['乳品', '烘焙', '奶'], icon: 'milk' },
+  { keys: ['冲调', '饮品', '咖啡', '茶'], icon: 'coffee' },
+  { keys: ['冷冻', '速食'], icon: 'snow' },
+  { keys: ['清洁', '纸品', '纸'], icon: 'tissue' },
+  { keys: ['个人', '护理', '美妆'], icon: 'care' }
+]
+
+/** 分类名 → 图标。后端分类是动态的，认不出来的走通用购物袋，不会出现空圆 */
+function categoryIcon(name) {
+  const n = name || ''
+  const hit = CATEGORY_ICON_RULES.find((r) => r.keys.some((k) => n.includes(k)))
+  return '/static/category/' + (hit ? hit.icon : 'bag') + '.png'
+}
 
 let timer = null
 
@@ -186,9 +207,8 @@ const quickCats = computed(() => {
       key: 'c' + c.id,
       id: c.id,
       shortName: c.name && c.name.length > 4 ? c.name.slice(0, 4) : c.name,
-      initial: (c.name || '·').slice(0, 1),
-      bg: p.bg,
-      fg: p.fg
+      iconSrc: categoryIcon(c.name),
+      bg: p.bg
     }
   })
   // 第 5 格固定「全部」：id 为 null，进分类页时不带 categoryId（落在第一个分类）
@@ -197,9 +217,8 @@ const quickCats = computed(() => {
       key: 'all',
       id: null,
       shortName: '全部',
-      initial: '全',
-      bg: QUICK_PALETTE[4].bg,
-      fg: QUICK_PALETTE[4].fg
+      iconSrc: '/static/category/grid.png',
+      bg: QUICK_PALETTE[4].bg
     })
   }
   return head
@@ -476,9 +495,9 @@ onUnmounted(stopTimer)
   align-items: center;
   justify-content: center;
 }
-.quick-ico-t {
-  font-size: 30rpx;
-  font-weight: 500;
+.quick-ico-img {
+  width: 52rpx;
+  height: 52rpx;
 }
 .quick-t {
   margin-top: 10rpx;
