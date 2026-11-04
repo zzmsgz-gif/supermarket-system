@@ -9,6 +9,7 @@ export function useQuickBuy({
   api, run, fail, session, isAdmin, router, navigate, notice,
   cart, quickBuy, pendingQuickBuy,
   productDetail, detailQuantity, selectedSpecText, effectiveDetailPrice, selectedSkuPrice,
+  selectedSkuOriginalPrice,
   getFlashSaleOfProduct, getFlashLimitOfProduct,
   reportDwell, guestAdd, takeAddSource, flyToCart, loadCart, loadProducts,
   setPendingAction, takePendingAction, clearPendingAction, goLogin,
@@ -16,12 +17,24 @@ export function useQuickBuy({
   async function addDetailToCart() {
     if (isAdmin.value) { fail('管理员只能查看上架商品，不能加入购物车'); return; }
     if (!session.user) {
+      const d = productDetail.data || {};
+      const qty = detailQuantity.value || 1;
+      const spec = selectedSpecText.value || '';
+      // 游客加购按「所选规格价」入车（effectiveDetailPrice：规格价优先，会员价不与规格价叠加）。
+      //
+      // 为什么不在这里套秒杀价：秒杀价要按「名额 × 数量」拆分（超出名额部分按原价），
+      // 而游客车在改数量时只改 quantity、不会重算拆分 —— 试过直接写入 flashQty/flashPrice，
+      // 结果「+1 件」后变成「小计按 1 件、优惠按 2 件」的自相矛盾（2026-11-04 实测）。
+      // 游客车只保证「规格对、单价对、数量×单价 = 小计」；秒杀、优惠券这些依赖名额的，
+      // 统一在登录后由后端按 skuSpec + 真实名额重算（只会更便宜，不会跳涨）。
+      const unitPrice = Number(effectiveDetailPrice.value ?? d.price ?? 0);
+      const unitOrig = Number(selectedSkuOriginalPrice.value ?? d.originalPrice ?? unitPrice);
       const ok = await guestAdd(
-        { id: productDetail.data?.id, name: productDetail.data?.name, stock: productDetail.data?.stock,
-          price: productDetail.data?.price, originalPrice: productDetail.data?.originalPrice,
-          coverUrl: productDetail.data?.coverUrl, unit: productDetail.data?.unit },
-        detailQuantity.value || 1,
-        selectedSpecText.value || ''
+        { id: d.id, name: d.name, stock: d.stock, price: unitPrice,
+          originalPrice: unitOrig, coverUrl: d.coverUrl, unit: d.unit },
+        qty,
+        spec,
+        { price: unitPrice, originalPrice: unitOrig }
       );
       if (ok) { navigate('cart'); flyToCart(takeAddSource(), productDetail.data?.coverUrl); }
       return;

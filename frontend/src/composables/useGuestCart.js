@@ -37,7 +37,16 @@ export function useGuestCart({ cart, getSession, activeActivities, getLoadCart, 
     localStorage.setItem(GUEST_CART_KEY, JSON.stringify(guestCartRows.value));
   }
   function persistGuestFromItems() {
-    guestCartRows.value = (cart.items || []).map((i) => ({ productId: i.productId, quantity: Number(i.quantity) || 1, skuSpec: i.skuSpec || '' }));
+    guestCartRows.value = (cart.items || []).map((i) => ({
+      productId: i.productId,
+      quantity: Number(i.quantity) || 1,
+      skuSpec: i.skuSpec || '',
+      // ⚠️ 行价格必须一起落盘。游客车在「改数量 / 删行 / 切勾选」时都走这里重建 rows，
+      // 早期只存 {productId, quantity, skuSpec}，重建后价格就退回商品基础价 —— 表现为
+      // 「详情页选了 12 包装（¥71.90），购物车里却按基础价 ¥19.90 结算」，看起来像 SKU 走了默认（2026-11-04 修）。
+      price: i.productPrice != null ? Number(i.productPrice) : undefined,
+      originalPrice: i.productOriginalPrice != null ? Number(i.productOriginalPrice) : undefined
+    }));
     writeGuestCart();
   }
 
@@ -94,8 +103,10 @@ export function useGuestCart({ cart, getSession, activeActivities, getLoadCart, 
         try { p = await api.get(`/products/${row.productId}`); guestProductCache.set(row.productId, p); } catch { /* 商品可能已下架 */ }
       }
       if (!p) continue;
-      const price = Number(p.price ?? p.productPrice ?? 0);
-      const orig = Number(p.originalPrice ?? p.productOriginalPrice ?? price);
+      // 价格优先取「加购当时锁定的行价格」（规格价 / 秒杀价都已算好），
+      // 其次才回退商品快照 —— 否则选了高档规格也会被基础价覆盖（2026-11-04 修）。
+      const price = Number(row.price ?? p.price ?? p.productPrice ?? 0);
+      const orig = Number(row.originalPrice ?? p.originalPrice ?? p.productOriginalPrice ?? price);
       const stock = Number(p.stock ?? 0);
       const qty = Math.max(1, Math.min(Number(row.quantity) || 1, Math.max(stock, 1)));
       items.push({
@@ -120,14 +131,44 @@ export function useGuestCart({ cart, getSession, activeActivities, getLoadCart, 
     recomputeCartTotals();
   }
 
-  async function guestAdd(product, quantity = 1, skuSpec = '') {
+  /**
+   * 加入游客购物车。
+   *
+   * @param product    商品快照（至少 id / stock；price 作为兜底价）
+   * @param quantity   数量
+   * @param skuSpec    规格文本（不同规格分行存）
+   * @param priceInfo  { price, originalPrice, flashSaleId } —— 加购当时锁定的行价格。
+   *                   详情页会用 buildQuickBuyCartItem 算出与「立即购买」同口径的
+   *                   规格价 / 秒杀价 / 名额拆分后单价，传进来即可；不传则退回 product.price。
+   *
+   * ⚠️ 为什么必须显式传价：游客车的价格只能靠这里锁定。早期只传商品基础价，
+   * 于是「选 12 包装（¥71.90）」在购物车与结算里显示成基础价（¥19.90），
+   * 看起来就是「SKU 走了默认」（2026-11-04 修）。
+   */
+  async function guestAdd(product, quantity = 1, skuSpec = '', priceInfo = null) {
     const q = Math.max(1, Number(quantity) || 1);
     const stock = Number(product.stock ?? product.stockQuantity ?? 0);
+    const unitPrice = Number(priceInfo?.price ?? product.price ?? 0);
+    const unitOrig = Number(priceInfo?.originalPrice ?? product.originalPrice ?? unitPrice);
+    // 说明：游客行**不**记录秒杀分段（flashSaleId / flashQty / flashPrice）。秒杀要按
+    // 「名额 × 数量」拆分，而游客车改数量时不会重算拆分 —— 透出去会让行模板显示
+    // 「小计按 1 件、优惠按 2 件」，比不显示更糟（2026-11-04 实测）。
+    // 秒杀价统一等登录后由后端按真实名额重算。
     const rows = readGuestCart();
     const idx = rows.findIndex((r) => r.productId === product.id && (r.skuSpec || '') === (skuSpec || ''));
     const cur = idx >= 0 ? Number(rows[idx].quantity) || 0 : 0;
     if (stock > 0 && cur + q > stock) { fail(`库存不足：仅剩 ${stock} 件，购物车中已有 ${cur} 件`, '库存不足'); return false; }
-    if (idx >= 0) rows[idx].quantity = cur + q; else rows.push({ productId: product.id, quantity: q, skuSpec: skuSpec || '' });
+    if (idx >= 0) {
+      rows[idx].quantity = cur + q;
+      // 同一规格重复加购时用最新价覆盖（规格价调整后不该还按旧价算）
+      rows[idx].price = unitPrice;
+      rows[idx].originalPrice = unitOrig;
+    } else {
+      rows.push({
+        productId: product.id, quantity: q, skuSpec: skuSpec || '',
+        price: unitPrice, originalPrice: unitOrig
+      });
+    }
     guestCartRows.value = rows;
     writeGuestCart();
     if (product?.id) guestProductCache.set(product.id, product);
