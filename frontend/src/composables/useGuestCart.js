@@ -196,23 +196,52 @@ export function useGuestCart({ cart, getSession, activeActivities, getLoadCart, 
     if (!rows.length || !s?.user) return;
     let added = 0;
     let merged = 0;
+    // 逐行并入，失败的单独记下来 —— 绝不再「一行失败、整车清空」
+    const failed = []; // [{ row, reason }]
     for (const row of rows) {
+      const qty = Math.max(1, Number(row.quantity) || 1);
       try {
-        await api.post('/cart/items', { productId: row.productId, quantity: Math.max(1, Number(row.quantity) || 1), skuSpec: row.skuSpec || undefined });
-        added += Math.max(1, Number(row.quantity) || 1);
+        await api.post('/cart/items', { productId: row.productId, quantity: qty, skuSpec: row.skuSpec || undefined });
+        added += qty;
         merged += 1;
       } catch (e) {
         if (e?.authExpired) throw e;
-        fail(e?.message || '部分本地商品未能并入购物车');
+        // ⚠️ 这里曾经 catch 完只 fail() 一遍，然后**无条件清空整个 localStorage**：
+        // 游客车 2 件 + 秒杀限购被拒，登录后这 2 件凭空消失，只剩一句提示（2026-11-04 实测确认）。
+        // 现在只清成功的行，失败的行原样留在本地，下次登录会再试一次，不静默丢数据。
+        failed.push({ row, reason: (e?.message || '加入失败') });
       }
     }
-    guestCartRows.value = [];
-    localStorage.removeItem(GUEST_CART_KEY);
-    guestProductCache.clear();
-    if (added > 0) {
-      notice.value = `已将本地购物车 ${merged} 种 / ${added} 件商品并入你的账户`;
-      await getLoadCart()();
+
+    if (failed.length) {
+      guestCartRows.value = failed.map((f) => f.row);
+      writeGuestCart();
+      // 成功那部分商品不再需要本地快照；失败行要留着渲染/提示用
+      const failedIds = new Set(failed.map((f) => f.row.productId));
+      for (const row of rows) {
+        if (!failedIds.has(row.productId)) guestProductCache.delete(row.productId);
+      }
+    } else {
+      guestCartRows.value = [];
+      localStorage.removeItem(GUEST_CART_KEY);
+      guestProductCache.clear();
     }
+
+    const names = failed.map((f) => {
+      const name = guestProductCache.get(f.row.productId)?.name || `商品#${f.row.productId}`;
+      const spec = String(f.row.skuSpec || '').replace(/^规格\s*[:：]?\s*/, '');
+      return spec ? `${name}（${spec}）` : name;
+    });
+    const moreTip = names.length > 2 ? ` 等 ${names.length} 种` : '';
+    const failTip = failed.length
+      ? `；${names.slice(0, 2).join('、')}${moreTip} 未能并入（${failed[0].reason}），已保留在本地购物车`
+      : '';
+    if (merged > 0) {
+      notice.value = `已并入 ${merged} 种 / ${added} 件商品${failTip}`;
+    } else if (failed.length) {
+      notice.value = `本地购物车 ${failed.length} 种商品未能并入（${failed[0].reason}），已保留`;
+    }
+    if (merged > 0) await getLoadCart()();
   }
 
   return {
