@@ -142,25 +142,13 @@ export function useAdminCategoryStock({ run, fail, askConfirm, categories,
       return;
     }
 
-    // 查一次该分类的商品总数（size=1 只为拿 total，不拉数据）
-    //
-    // ⚠️ 必须用**后台**接口 `/admin/products`：前台 `/products` 只返回在售商品，
-    // 用户把商品全部「下架」后前台查 total=0，于是这里放行 → 调 DELETE → 后端
-    // `existsByCategoryIdAndDeleted` 口径是「未删除」，下架商品仍算存在 → 409。
-    // 表现就是「明明下架光了却删不掉，还弹一句英文 Category has products」（2026-11-06 用户实测）。
-    let total = 0;
-    try {
-      const res = await api.get(`/admin/products?categoryId=${id}&page=1&size=1`);
-      total = Number(res?.total ?? 0);
-    } catch (e) {
-      fail('无法确认该分类下的商品数量，请稍后重试');
-      return;
-    }
-    if (total > 0) {
-      fail(`「${name}」下还有 ${total} 件商品（含已下架），请先把商品移到其它分类（或在商品管理里删除）后再删分类`);
-      return;
-    }
-
+    // 商品校验交给后端 deleteCategory —— 只有它掌握全部口径：含下架商品，也含**不在商品列表里
+    // 显示的秒杀独立商品（kind=FLASH）**。
+    // 前端在这里预查过两次，都因为口径追不上后端而翻车：
+    //   ① 用前台 /products（只返回在售）→ 商品全下架后前端放行 → 后端 409 弹英文；
+    //   ② 改用 /admin/products 仍排除 FLASH → 用户删光看得见的商品后前端放行 → 后端照样 409，
+    //      而用户根本不知道还挂着一件「限时秒杀」商品（2026-11-07 实测：中秋团圆下只剩这类）。
+    // 现在前端只负责「子分类检查 + 确认框」，商品明细与原因交给后端 409 的中文 message。
     const ok = await askConfirm(`确定删除分类「${name}」吗？删除后不可恢复。`);
     if (!ok) return;
 

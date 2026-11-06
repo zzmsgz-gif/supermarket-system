@@ -3,6 +3,7 @@ package com.example.supermarket.service;
 import com.example.supermarket.dto.AdminCategoryRequest;
 import com.example.supermarket.dto.CategoryResponse;
 import com.example.supermarket.dto.CategoryStatusRequest;
+import com.example.supermarket.entity.Product;
 import com.example.supermarket.entity.ProductCategory;
 import com.example.supermarket.exception.BusinessException;
 import com.example.supermarket.exception.ResourceNotFoundException;
@@ -96,11 +97,24 @@ public class AdminCategoryService {
             // message 用中文：这里会原样弹给后台用户看，早期是英文 "Category has child categories"（2026-11-06 改）
             throw new BusinessException(409, "该分类下还有子分类，请先删除或移走子分类再删本分类");
         }
-        // ⚠️ 注意 existsByCategoryIdAndDeleted 的口径是「未删除」，**已下架但没删的商品仍然算存在**：
-        // 用户把商品全部下架后点删除分类，就会命中这里。所以提示里必须点明「含已下架」，
-        // 否则用户会以为「我明明下架光了为什么不让删」（2026-11-06 用户实测踩到）。
-        if (productRepository.existsByCategoryIdAndDeleted(id, NOT_DELETED)) {
-            throw new BusinessException(409, "该分类下还有商品（含已下架的商品），请先把商品移到其它分类或删除商品后再删分类");
+        // ⚠️ 口径：「未删除」——已下架但没删的商品算存在；**秒杀独立商品（kind=FLASH）也算**，
+        // 而后者在后台「商品管理」列表里是刻意不显示的（见 AdminProductService.buildAdminSearchSpec）。
+        // 于是用户把看得见的商品全删光后仍被拦，且完全不知道还挂着什么（2026-11-07 用户实测：
+        // 「中秋团圆」下只剩 1 件限时秒杀商品，列表里根本看不到）。
+        // 所以这里分情况给准确提示，重点点明「秒杀商品 + 去限时秒杀删场次（会连带软删商品）」。
+        long total = productRepository.countByCategoryIdAndDeleted(id, NOT_DELETED);
+        if (total > 0) {
+            long flashCount = productRepository.countByCategoryIdAndDeletedAndKind(id, NOT_DELETED, Product.KIND_FLASH);
+            if (flashCount > 0) {
+                String tip = flashCount == total
+                        ? String.format("该分类下还有 %d 件商品，全部是「限时秒杀」商品（商品管理列表不显示这类商品）。"
+                                        + "请先到「限时秒杀」删除对应场次，秒杀商品会随之删除，然后再删分类", flashCount)
+                        : String.format("该分类下还有 %d 件商品，其中 %d 件是「限时秒杀」商品（商品管理列表不显示）。"
+                                        + "请先到「限时秒杀」删除对应场次，并在商品管理里删掉其余商品", total, flashCount);
+                throw new BusinessException(409, tip);
+            }
+            throw new BusinessException(409, String.format(
+                    "该分类下还有 %d 件商品（含已下架的商品），请先把商品移到其它分类或删除商品后再删分类", total));
         }
         category.setStatus(DISABLED);
         category.setDeleted(DELETED);

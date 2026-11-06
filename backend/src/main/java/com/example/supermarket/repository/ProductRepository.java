@@ -24,6 +24,13 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     boolean existsByCategoryIdAndDeleted(Long categoryId, Byte deleted);
 
+    // 分类删除前的精确统计（2026-11-07）：单纯 exists 只能回一句「还有商品」，
+    // 但秒杀独立商品（kind=FLASH）不在后台商品列表里显示，用户删光看得见的商品后
+    // 仍会被拦，完全不知道还挂着什么。所以拆成「总数」和「其中秒杀商品数」分开数。
+    long countByCategoryIdAndDeleted(Long categoryId, Byte deleted);
+
+    long countByCategoryIdAndDeletedAndKind(Long categoryId, Byte deleted, String kind);
+
     List<Product> findByStatusAndDeletedAndIsHot(String status, Byte deleted, Byte isHot, Pageable pageable);
 
     List<Product> findByStatusAndDeletedAndIsNew(String status, Byte deleted, Byte isNew, Pageable pageable);
