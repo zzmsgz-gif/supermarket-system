@@ -16,6 +16,8 @@ import AdminStockFormRow from './AdminStockFormRow.vue';
 
 const props = defineProps({
   adminCtx: { type: Object, required: true },
+  // 分类下拉选项（按分类筛选 + 商品表单的「所属分类」都读它）
+  categories: { type: Array, required: true },
   stockForm: { type: Object, required: true },
   openStockForm: { type: Function, required: true },
   submitStock: { type: Function, required: true },
@@ -26,6 +28,8 @@ const props = defineProps({
 //    页面完全正常、控制台也没有报错。共用件（AdminSearchBox / AdminPageSize /
 //    AdminPager）本身不用改，它们本来就正确 emit('update:*')。
 const adminProductKeyword = defineModel('adminProductKeyword', { type: String, required: true });
+// 按分类筛选（2026-11-06）：'' = 全部分类
+const adminProductCategoryId = defineModel('adminProductCategoryId', { type: String, default: '' });
 const adminJumpPage = defineModel('adminJumpPage', { type: Number, required: true });
 const { adminChartProducts, adminCouponJumpPage, adminCouponKeyword, adminCoupons, adminMenu, adminOrderJumpPage, adminOrderKeyword, adminOrderStatus, adminOrders, adminProductStatus, adminProducts, adminAnnouncements, adminBanners, adminStatsOverview, announcementForm, announcementFormOpen, bannerForm, bannerFormOpen, bannerUploading, adminUserJumpPage, adminUserKeyword, adminUserRole, adminUserStatus, adminUsers, alertDialog, askConfirm, categoryName, confirmDialog, coupons, error, fail, filters, loadAdminAnnouncements, loadAdminBanners, loadAdminCoupons, loadAdminOrders, loadAdminProducts, loadAdminStatsOverview, loadAdminUsers, loadCategories, loadProducts, loadRefundOrders, loadStockAlerts, notice, openAnnouncementForm, openBannerForm, openOrderDetail, orderDetail, orders, productForm, saveAnnouncement, products, refreshAdminData, refundJumpPage, refundOrders, refundStatusFilter, run, safeParseSpec, session, showAlert, stockAlerts, closeAnnouncementForm, closeBannerForm, saveBanner, toggleBanner, deleteBanner, toggleAnnouncement, deleteAnnouncement, adminHotSearches, hotSearchForm, hotSearchFormOpen, loadAdminHotSearches, openHotSearchForm, closeHotSearchForm, saveHotSearch, toggleHotSearch, deleteHotSearch } = props.adminCtx;
 // 本组件只在后台挂载，与 AdminPanel 内的写法保持一致
@@ -86,6 +90,7 @@ async function goAdminPage() {
 function resetAdminProductSearch() {
   adminProductKeyword.value = '';
   adminProductStatus.value = '';
+  adminProductCategoryId.value = '';
   adminProducts.page = 1;
   loadAdminProducts();
 }
@@ -380,6 +385,10 @@ async function deleteProduct(product) {
                 <option value="ON_SALE">上架</option>
                 <option value="OFF_SALE">下架</option>
                 <option value="DRAFT">草稿</option>
+              </select>
+              <select v-model="adminProductCategoryId" class="filter-select" @change="searchAdminProducts">
+                <option value="">全部分类</option>
+                <option v-for="c in categories" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
               </select>
               <AdminPageSize v-model="adminProducts.size" @change="changeAdminPageSize" />
               <button class="ghost" @click="resetAdminProductSearch">重置</button>

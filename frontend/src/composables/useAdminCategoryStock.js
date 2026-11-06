@@ -143,16 +143,21 @@ export function useAdminCategoryStock({ run, fail, askConfirm, categories,
     }
 
     // 查一次该分类的商品总数（size=1 只为拿 total，不拉数据）
+    //
+    // ⚠️ 必须用**后台**接口 `/admin/products`：前台 `/products` 只返回在售商品，
+    // 用户把商品全部「下架」后前台查 total=0，于是这里放行 → 调 DELETE → 后端
+    // `existsByCategoryIdAndDeleted` 口径是「未删除」，下架商品仍算存在 → 409。
+    // 表现就是「明明下架光了却删不掉，还弹一句英文 Category has products」（2026-11-06 用户实测）。
     let total = 0;
     try {
-      const res = await api.get(`/products?categoryId=${id}&page=1&size=1`);
+      const res = await api.get(`/admin/products?categoryId=${id}&page=1&size=1`);
       total = Number(res?.total ?? 0);
     } catch (e) {
       fail('无法确认该分类下的商品数量，请稍后重试');
       return;
     }
     if (total > 0) {
-      fail(`「${name}」下还有 ${total} 件商品，请先把商品移到其它分类（或在商品管理里删除）后再删分类`);
+      fail(`「${name}」下还有 ${total} 件商品（含已下架），请先把商品移到其它分类（或在商品管理里删除）后再删分类`);
       return;
     }
 

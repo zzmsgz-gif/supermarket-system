@@ -84,11 +84,11 @@ public class AdminProductService {
      * so off-shelf products stay reachable and can be put back on sale.
      */
     @Transactional(readOnly = true)
-    public PageResponse<ProductSummaryResponse> listProducts(int page, int size, String status, String keyword) {
+    public PageResponse<ProductSummaryResponse> listProducts(int page, int size, String status, String keyword, Long categoryId) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Product> products = productRepository.findAll(buildAdminSearchSpec(status, keyword), pageable);
+        Page<Product> products = productRepository.findAll(buildAdminSearchSpec(status, keyword, categoryId), pageable);
         List<ProductSummaryResponse> items = products.getContent()
                 .stream()
                 .map(ProductSummaryResponse::from)
@@ -279,7 +279,7 @@ public class AdminProductService {
         }
     }
 
-    private Specification<Product> buildAdminSearchSpec(String status, String keyword) {
+    private Specification<Product> buildAdminSearchSpec(String status, String keyword, Long categoryId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("deleted"), NOT_DELETED));
@@ -290,6 +290,12 @@ public class AdminProductService {
                 String normalized = normalize(status);
                 validateStatus(normalized);
                 predicates.add(cb.equal(root.get("status"), normalized));
+            }
+
+            // 按分类筛选（2026-11-06 加）：后台商品列表要能「看这个分类下有哪些商品」，
+            // 也是「分类下有商品就不能删」的前置检查依据（含下架商品，与删除校验同口径）。
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("categoryId"), categoryId));
             }
 
             if (StringUtils.hasText(keyword)) {

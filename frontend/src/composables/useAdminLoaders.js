@@ -5,7 +5,7 @@
 //    （adminMenuItems）要读它们的 total 来算角标，那是跨所有模块的聚合层，不能搬。
 export function useAdminLoaders({
   api, isAdmin,
-  adminProducts, adminProductKeyword, adminProductStatus, adminJumpPage,
+  adminProducts, adminProductKeyword, adminProductStatus, adminProductCategoryId, adminJumpPage,
   adminOrders, adminOrderKeyword, adminOrderStatus, adminOrderJumpPage,
   adminStatsOverview,
   refundOrders, refundStatusFilter, refundApplyingCount, refundJumpPage,
@@ -22,6 +22,8 @@ export function useAdminLoaders({
     });
     if (adminProductKeyword.value.trim()) params.set('keyword', adminProductKeyword.value.trim());
     if (adminProductStatus.value) params.set('status', adminProductStatus.value);
+    // 按分类筛选（2026-11-06）：空 = 全部分类
+    if (adminProductCategoryId.value) params.set('categoryId', String(adminProductCategoryId.value));
     const data = await api.get(`/admin/products?${params}`);
     Object.assign(adminProducts, data);
     // 当前页被删空（如删掉最后一页最后一条）时，自动回退到上一页

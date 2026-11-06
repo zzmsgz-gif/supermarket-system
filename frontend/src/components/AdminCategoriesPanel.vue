@@ -1,5 +1,5 @@
 <script setup>
-import { toRefs } from 'vue';
+import { toRefs, nextTick } from 'vue';
 // 后台「分类管理」面板：从 AdminPanel.vue 整块搬过来的。
 //
 // 依赖走显式 props（不接 adminCtx）：面板只服务一个 tab，列全依赖比藏起来好。
@@ -42,6 +42,22 @@ const categoryJumpPage = defineModel('categoryJumpPage', { type: Number, require
 const categoryKeyword = defineModel('categoryKeyword', { type: String, required: true });
 const categorySize = defineModel('categorySize', { type: Number, required: true });
 const { categories, categoryPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch, categoryForm, saveCategory, categoryName, editingCategoryId, startEditCategory, cancelEditCategory, deleteCategory } = toRefs(props);
+
+/**
+ * 点「编辑」：填表单 + 把编辑区滚进视野。
+ * 表单在页面顶部、列表往下滚过之后，只填表单用户看不到任何变化（以为没反应）——
+ * 2026-11-06 用户提的体验点。滚完顺手聚焦名称输入框，改完直接敲。
+ */
+function onEditClick(category) {
+  startEditCategory.value(category);
+  nextTick(() => {
+    const form = document.querySelector('.compact-form');
+    const block = form?.closest('.form-block') || form;
+    block?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const nameInput = form?.querySelector('input');
+    nameInput?.focus?.({ preventScroll: true });
+  });
+}
 </script>
 
 <template>
@@ -110,7 +126,7 @@ const { categories, categoryPage, categoryFiltered, categoryTotalPages, category
               <td>{{ category.sortNo }}</td>
               <td><span :class="['tag', category.parentId ? 'muted' : '']">{{ category.parentId ? '二级分类' : '一级分类' }}</span></td>
               <td class="cat-actions">
-                <button class="ghost" @click="startEditCategory(category)">编辑</button>
+                <button class="ghost" @click="onEditClick(category)">编辑</button>
                 <button class="ghost danger" @click="deleteCategory(category)">删除</button>
               </td>
             </tr>

@@ -93,10 +93,14 @@ public class AdminCategoryService {
     public void deleteCategory(Long id) {
         ProductCategory category = getActiveCategory(id);
         if (categoryRepository.existsByParentIdAndDeleted(id, NOT_DELETED)) {
-            throw new BusinessException(409, "Category has child categories");
+            // message 用中文：这里会原样弹给后台用户看，早期是英文 "Category has child categories"（2026-11-06 改）
+            throw new BusinessException(409, "该分类下还有子分类，请先删除或移走子分类再删本分类");
         }
+        // ⚠️ 注意 existsByCategoryIdAndDeleted 的口径是「未删除」，**已下架但没删的商品仍然算存在**：
+        // 用户把商品全部下架后点删除分类，就会命中这里。所以提示里必须点明「含已下架」，
+        // 否则用户会以为「我明明下架光了为什么不让删」（2026-11-06 用户实测踩到）。
         if (productRepository.existsByCategoryIdAndDeleted(id, NOT_DELETED)) {
-            throw new BusinessException(409, "Category has products");
+            throw new BusinessException(409, "该分类下还有商品（含已下架的商品），请先把商品移到其它分类或删除商品后再删分类");
         }
         category.setStatus(DISABLED);
         category.setDeleted(DELETED);

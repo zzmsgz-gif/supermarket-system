@@ -43,9 +43,10 @@ public class AdminProductController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long categoryId
     ) {
-        return ApiResponse.ok(adminProductService.listProducts(page, size, status, keyword));
+        return ApiResponse.ok(adminProductService.listProducts(page, size, status, keyword, categoryId));
     }
 
     @GetMapping("/{id}")
