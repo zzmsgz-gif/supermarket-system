@@ -241,7 +241,11 @@ async function deleteProduct(product) {
   });
   if (!confirmed) return;
   await run(async () => {
-    if (stockForm.productId === product.id) stockForm.productId = null;
+    // ⚠️ 脚本里不能裸写 stockForm —— 它只是 prop，模板能直接访问、script 里必须走 props，
+    // 否则抛 ReferenceError("stockForm is not defined")，被 run 的 catch 当业务错误弹成英文提示，
+    // 表现就是「点删除删除不掉，弹一句英文」（2026-11-06 用户实测）。
+    const stockFormRef = props.stockForm;
+    if (stockFormRef && stockFormRef.productId === product.id) stockFormRef.productId = null;
     await api.delete(`/admin/products/${product.id}`);
     await Promise.all([loadAdminProducts(), loadProducts()]);
   }, '商品已删除');

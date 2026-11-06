@@ -793,7 +793,19 @@ async function run(action, message) {
     if (err.authExpired) {
       notice.value = err.message || '登录已过期，请重新登录';
     } else {
-      fail(err.message || '操作失败，请稍后重试');
+      // 后端业务错误（BusinessException）的 message 都是中文，可以直接展示；
+      // 但 JS 自身的运行时错误（ReferenceError / TypeError / SyntaxError…）message 是英文技术信息，
+      // 直接弹出去就是「操作失败：stockForm is not defined」这种，用户既看不懂也办不了
+      // （2026-11-06 在商品删除上实际发生：函数里裸用了一个 prop 名）。这类只进 console 便于排查，
+      // 界面统一给一句人话。
+      const isRuntimeError = err instanceof ReferenceError || err instanceof TypeError
+        || err instanceof SyntaxError || err instanceof RangeError;
+      if (isRuntimeError) {
+        console.error('[未预期的运行时错误]', err);
+        fail('操作失败，请刷新页面后重试；若反复出现请联系管理员');
+      } else {
+        fail(err?.message || '操作失败，请稍后重试');
+      }
     }
     throw err;
   }
