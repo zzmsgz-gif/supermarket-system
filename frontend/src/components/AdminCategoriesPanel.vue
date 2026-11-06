@@ -45,15 +45,23 @@ const { categories, categoryPage, categoryFiltered, categoryTotalPages, category
 
 /**
  * 点「编辑」：填表单 + 把编辑区滚进视野。
- * 表单在页面顶部、列表往下滚过之后，只填表单用户看不到任何变化（以为没反应）——
- * 2026-11-06 用户提的体验点。滚完顺手聚焦名称输入框，改完直接敲。
+ * 表单在页面顶部、列表往下滚过之后，只填表单用户看不到任何变化（以为没反应）。
+ *
+ * ⚠️ 不能用 `scrollIntoView({block:'start'})`：顶部 `.site-header` 是 sticky 的，
+ * 元素对齐到视口顶部后，表单标题正好被导航栏盖住 —— 用户看到的就是「滚到编辑栏顶部、
+ * 但内容还是看不见」。这里手动算偏移：元素文档位置 − 顶栏实际高度 − 12px 缓冲。
  */
 function onEditClick(category) {
   startEditCategory.value(category);
   nextTick(() => {
     const form = document.querySelector('.compact-form');
     const block = form?.closest('.form-block') || form;
-    block?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (block) {
+      const header = document.querySelector('.site-header') || document.querySelector('header');
+      const headerH = header?.getBoundingClientRect().height || 0;
+      const top = block.getBoundingClientRect().top + window.scrollY - headerH - 12;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+    }
     const nameInput = form?.querySelector('input');
     nameInput?.focus?.({ preventScroll: true });
   });
