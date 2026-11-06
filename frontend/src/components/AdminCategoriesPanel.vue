@@ -24,6 +24,11 @@ const props = defineProps({
   categoryForm: { type: Object, required: true },
   saveCategory: { type: Function, required: true },
   categoryName: { type: Function, required: true },
+  // 编辑 / 删除（2026-11-06 新增）：editingCategoryId 为 null 表示表单处于「新增」态
+  editingCategoryId: { type: Number, default: null },
+  startEditCategory: { type: Function, required: true },
+  cancelEditCategory: { type: Function, required: true },
+  deleteCategory: { type: Function, required: true },
 });
 
 // ⚠️ 下面这几个用 defineModel 而不是 props —— 它们被 v-model 双向绑定，
@@ -36,15 +41,16 @@ const props = defineProps({
 const categoryJumpPage = defineModel('categoryJumpPage', { type: Number, required: true });
 const categoryKeyword = defineModel('categoryKeyword', { type: String, required: true });
 const categorySize = defineModel('categorySize', { type: Number, required: true });
-const { categories, categoryPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch, categoryForm, saveCategory, categoryName } = toRefs(props);
+const { categories, categoryPage, categoryFiltered, categoryTotalPages, categoryPageItems, changeCategoryPage, goCategoryPage, resetCategoryPage, resetCategorySearch, categoryForm, saveCategory, categoryName, editingCategoryId, startEditCategory, cancelEditCategory, deleteCategory } = toRefs(props);
 </script>
 
 <template>
   <div class="data-panel">
     <div class="form-block">
       <div class="form-title">
-        <span>新增分类</span>
-        <small>选「顶级分类」创建一级导航，选其它分类则在其下创建二级分类</small>
+        <span>{{ editingCategoryId ? '编辑分类' : '新增分类' }}</span>
+        <small v-if="editingCategoryId">正在编辑该分类，改完点「保存修改」；点「取消」回到新增</small>
+        <small v-else>选「顶级分类」创建一级导航，选其它分类则在其下创建二级分类</small>
       </div>
       <form class="compact-form form-bar" @submit.prevent="saveCategory">
         <label class="field">
@@ -67,7 +73,8 @@ const { categories, categoryPage, categoryFiltered, categoryTotalPages, category
           <ImageUpload v-model="categoryForm.iconUrl" :multiple="false" :max="1" type="category" />
         </label>
         <div class="field field-action">
-          <button type="submit">新增分类</button>
+          <button type="submit">{{ editingCategoryId ? '保存修改' : '新增分类' }}</button>
+          <button v-if="editingCategoryId" type="button" class="ghost" @click="cancelEditCategory">取消</button>
         </div>
       </form>
     </div>
@@ -89,6 +96,7 @@ const { categories, categoryPage, categoryFiltered, categoryTotalPages, category
               <th>上级分类</th>
               <th>排序</th>
               <th>层级</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -101,6 +109,10 @@ const { categories, categoryPage, categoryFiltered, categoryTotalPages, category
               <td>{{ categoryName(category.parentId) }}</td>
               <td>{{ category.sortNo }}</td>
               <td><span :class="['tag', category.parentId ? 'muted' : '']">{{ category.parentId ? '二级分类' : '一级分类' }}</span></td>
+              <td class="cat-actions">
+                <button class="ghost" @click="startEditCategory(category)">编辑</button>
+                <button class="ghost danger" @click="deleteCategory(category)">删除</button>
+              </td>
             </tr>
           </tbody>
         </table>

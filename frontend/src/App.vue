@@ -805,15 +805,20 @@ async function run(action, message) {
 
 
 function askConfirm(options) {
+  // ⚠️ 必须支持「直接传字符串」：早期这里是 Object.assign(dialog, {...options})，
+  // 传字符串时 `...'确定删除吗'` 会被展开成 {0:'确',1:'定',...}（字符索引），
+  // message 永远是空 —— 弹窗只剩「再想想 / 确认」两个按钮，用户看不到自己在删什么
+  // （2026-11-06 在「分类删除」验收时发现，公告删除等所有字符串调用同样受影响）。
+  const opts = typeof options === 'string' ? { message: options } : (options || {});
   return new Promise((resolve) => {
     Object.assign(confirmDialog, {
       open: true,
-      title: '',
+      title: '请确认',
       message: '',
       details: [],
       confirmText: '确认',
       danger: false,
-      ...options,
+      ...opts,
       resolver: resolve,
     });
   });

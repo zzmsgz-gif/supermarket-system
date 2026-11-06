@@ -1,24 +1,30 @@
 /**
- * 后台运营杂项：分类新增、库存入库、公告类型标签、经营趋势判空
+ * 后台运营杂项：分类增删改、库存入库、公告类型标签、经营趋势判空
  *
  * 从 AdminPanel.vue 抽出（原 1344 分类表单 + 1403-1466 公告工具与入库 + 1746-1753 分类保存）。
- * 这些函数分散在文件各处但都很短、彼此无依赖，合成一个模块比拆成 4 个更合理。
  *
- * - 分类表单没有编辑入口（只新增），保存后重置为默认值。
+ * - 分类表单**兼作新增与编辑**：`editingCategoryId` 为 null 是新增（POST），
+ *   非 null 是编辑（PUT /admin/categories/{id}）。点列表「编辑」把该行填进表单。
+ * - 删除分类的前置规则（用户明确要求）：**分类下有商品就不能删**，有子分类也不能删。
+ *   后端 deleteCategory 本身有 409 校验，但 message 是英文（"Category has products"），
+ *   直接弹给用户很难看；所以这里先查一次商品总数 / 子分类，用中文把原因说清楚，
+ *   后端 409 仍作为兜底。
  * - 入库走 `/admin/products/{id}/stock-adjustments`，bizType 固定 `PURCHASE`（采购入库），
  *   入库后要同时刷新商品列表、库存预警与前台商品（首页在售数量会变）。
  * - 公告类型的配色复用 .tag 变体：公告=蓝(info) / 活动=绿(ok) / 服务=灰(muted) / 提醒=红(warn)。
  *
  * 依赖注入：api 直接 import；run / fail / askConfirm +
- *   loadAdminProducts / loadStockAlerts / loadProducts / loadCategories / adminProducts /
- *   adminStatsOverview 由 AdminPanel 注入。
+ *   loadAdminProducts / loadStockAlerts / loadProducts / loadCategories / categories /
+ *   adminProducts / adminStatsOverview 由 AdminPanel 注入。
  */
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { api } from '../api/client';
 
-export function useAdminCategoryStock({ run, fail, askConfirm,
+export function useAdminCategoryStock({ run, fail, askConfirm, categories,
   loadAdminProducts, loadStockAlerts, loadProducts, loadCategories, adminProducts, adminStatsOverview }) {
   const categoryForm = reactive({ parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
+  // null = 新增模式；数字 = 正在编辑的分类 id
+  const editingCategoryId = ref(null);
   const stockForm = reactive({ productId: null, quantity: 10, remark: '' });
 
   function noticeTypeLabel(type) {
@@ -85,19 +91,86 @@ export function useAdminCategoryStock({ run, fail, askConfirm,
 
   }
 
+  function resetCategoryForm() {
+    Object.assign(categoryForm, { parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
+    editingCategoryId.value = null;
+  }
+
+  /** 点列表「编辑」：把该行填进表单，表单进入编辑态 */
+  function startEditCategory(category) {
+    if (!category) return;
+    editingCategoryId.value = category.id;
+    Object.assign(categoryForm, {
+      parentId: Number(category.parentId) || 0,
+      name: category.name || '',
+      iconUrl: category.iconUrl || '',
+      sortNo: Number(category.sortNo ?? 10),
+      status: Number(category.status ?? 1)
+    });
+  }
+
+  function cancelEditCategory() {
+    resetCategoryForm();
+  }
+
   async function saveCategory() {
     if (!categoryForm.name.trim()) { fail('请填写分类名称'); return; }
+    const editingId = editingCategoryId.value;
     await run(async () => {
-      await api.post('/admin/categories', categoryForm);
-      Object.assign(categoryForm, { parentId: 0, name: '', iconUrl: '', sortNo: 10, status: 1 });
+      if (editingId) {
+        await api.put(`/admin/categories/${editingId}`, categoryForm);
+      } else {
+        await api.post('/admin/categories', categoryForm);
+      }
+      resetCategoryForm();
       await loadCategories();
-    }, '分类已新增');
+    }, editingId ? '分类已更新' : '分类已新增');
+  }
 
+  /**
+   * 删除分类。规则（用户明确要求）：**分类下有商品就不能删**；有子分类也不能删。
+   * 后端 deleteCategory 有 409 兜底，但 message 是英文，所以这里先自己判一次并给中文原因。
+   */
+  async function deleteCategory(category) {
+    if (!category) return;
+    const id = Number(category.id);
+    const name = category.name || '该分类';
+
+    const children = (categories?.value || []).filter((c) => Number(c.parentId) === id);
+    if (children.length) {
+      fail(`「${name}」下还有 ${children.length} 个子分类，请先删除或移走子分类`);
+      return;
+    }
+
+    // 查一次该分类的商品总数（size=1 只为拿 total，不拉数据）
+    let total = 0;
+    try {
+      const res = await api.get(`/products?categoryId=${id}&page=1&size=1`);
+      total = Number(res?.total ?? 0);
+    } catch (e) {
+      fail('无法确认该分类下的商品数量，请稍后重试');
+      return;
+    }
+    if (total > 0) {
+      fail(`「${name}」下还有 ${total} 件商品，请先把商品移到其它分类（或在商品管理里删除）后再删分类`);
+      return;
+    }
+
+    const ok = await askConfirm(`确定删除分类「${name}」吗？删除后不可恢复。`);
+    if (!ok) return;
+
+    await run(async () => {
+      await api.delete(`/admin/categories/${id}`);
+      await loadCategories();
+      // 正在编辑这个分类时，删完要把表单切回新增态，否则再点保存会 PUT 一个已删除的 id
+      if (Number(editingCategoryId.value) === id) resetCategoryForm();
+    }, '分类已删除');
   }
 
   return {
-    categoryForm, stockForm,
+    categoryForm, stockForm, editingCategoryId,
     noticeTypeLabel, noticeTypeClass, adminProductName, trendHasData,
     openStockForm, submitStock, saveCategory,
+    startEditCategory, cancelEditCategory, deleteCategory,
   };
 }
