@@ -1,8 +1,12 @@
 // 后端可达地址。
-// - 微信小程序（开发者工具/真机）：必须用绝对地址（http://localhost:8080 或局域网IP/域名）
-// - H5 浏览器预览：用相对路径 '/api'，由 vite.config.js 的 devServer.proxy 转发到 8080，避免跨域被浏览器拦截
-//   判断依据：浏览器环境存在 window；小程序运行时没有 window，故回退绝对地址。
-export const API_BASE = (typeof window !== 'undefined') ? '/api' : 'http://localhost:8080'
+// - H5 浏览器预览：用相对路径 '/api'，由 vite.config.js 的 devServer.proxy 转发到 8080（本地开发用）
+// - 微信小程序（开发者工具 / 真机 / 上线）：**统一访问线上环境**，用绝对地址 https://haomart.xyz
+//   ⚠️ 绝不能用 localhost —— 真机上 localhost 指向手机自己，接口会全挂（2026-11-07 修正）。
+//   若临时想连本机后端调试，把 PROD_API_HOST 改成 'http://<本机局域网IP>:8080' 即可（手机需同 WiFi）。
+export const PROD_API_HOST = 'https://haomart.xyz'
+
+// 浏览器环境存在 window → H5 走同源 /api 代理；小程序运行时没有 window → 走线上绝对地址
+export const API_BASE = (typeof window !== 'undefined') ? '/api' : PROD_API_HOST
 
 // 微信小程序 AppID（已提供）
 export const APP_ID = 'wx3a6edd169faeba2e'
