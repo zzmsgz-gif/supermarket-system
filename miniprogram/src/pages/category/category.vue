@@ -62,7 +62,7 @@
                 <text class="p-sales">{{ salesText(p) }}</text>
                 <view
                   class="p-add"
-                  :class="{ 'p-add-off': (p.stock || 0) <= 0 }"
+                  :class="{ 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
                   @click.stop="quickAdd(p)"
                 >
                   <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
@@ -76,11 +76,20 @@
         <view class="list-tip" v-else>{{ loading ? '加载中…' : (noMore ? '没有更多了' : '上拉加载更多') }}</view>
       </scroll-view>
     </view>
+
+    <!-- 加购后的底部轻提示条（与首页一致）：3 秒自动收起，可直接去购物车结算 -->
+    <view class="cart-tip" :class="{ show: cartTipVisible }" @click="goCartFromTip">
+      <view class="cart-tip-left">
+        <text class="cart-tip-emoji">🛒</text>
+        <text class="cart-tip-text">已加入购物车<text class="cart-tip-count">（{{ cartTipCount }} 件）</text></text>
+      </view>
+      <text class="cart-tip-action">去结算 ›</text>
+    </view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { addToCart, getCart } from '@/api/cart'
@@ -97,6 +106,11 @@ const loading = ref(false)
 const noMore = ref(false)
 const sideIntoView = ref('')
 const addingId = ref(null)
+// 加号动画 + 加购轻提示条（与首页同一套交互）
+const popId = ref(null)
+const cartTipVisible = ref(false)
+const cartTipCount = ref(0)
+let cartTipTimer = null
 let startCategoryId = null
 
 const activeName = computed(() => {
@@ -178,15 +192,32 @@ async function quickAdd(p) {
     return
   }
   addingId.value = p.id
+  // 加号弹一下（460ms 后清 class，下次点击才能重播）
+  popId.value = p.id
+  setTimeout(() => { if (popId.value === p.id) popId.value = null }, 460)
   try {
     await addToCart(p.id, 1, '')
-    uni.showToast({ title: '已加入购物车', icon: 'none', duration: 1200 })
-    refreshCartBadge()
+    const n = await refreshCartBadge()
+    showCartTip(n)
   } catch (err) {
     uni.showToast({ title: (err && err.message) || '加购失败，请重试', icon: 'none' })
   } finally {
     addingId.value = null
   }
+}
+
+/** 底部轻提示条：3 秒自动收起；连续加购只刷新数字并重置计时 */
+function showCartTip(count) {
+  cartTipCount.value = Number(count) || 1
+  cartTipVisible.value = true
+  if (cartTipTimer) clearTimeout(cartTipTimer)
+  cartTipTimer = setTimeout(() => { cartTipVisible.value = false }, 3000)
+}
+
+function goCartFromTip() {
+  cartTipVisible.value = false
+  if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
+  uni.switchTab({ url: '/pages/cart/cart' })
 }
 
 async function refreshCartBadge() {
@@ -196,8 +227,10 @@ async function refreshCartBadge() {
     const n = list.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
     if (n > 0) uni.setTabBarBadge({ index: 1, text: n > 99 ? '99+' : String(n) })
     else uni.removeTabBarBadge({ index: 1 })
+    return n
   } catch (e) {
     // 角标失败不影响主流程
+    return 0
   }
 }
 
@@ -213,6 +246,10 @@ onLoad((options) => {
   startCategoryId = options && options.categoryId ? Number(options.categoryId) : null
   loadCategories()
   refreshCartBadge()
+})
+
+onUnmounted(() => {
+  if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
 })
 </script>
 
@@ -402,6 +439,17 @@ onLoad((options) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+}
+/* 点加号回弹（与首页一致） */
+@keyframes p-add-pop {
+  0% { transform: scale(1); }
+  38% { transform: scale(0.78); }
+  72% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+.p-add-pop {
+  animation: p-add-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .p-add-off {
   background: #E5E7EB;
@@ -423,5 +471,53 @@ onLoad((options) => {
   font-size: 24rpx;
   color: #9CA3AF;
   padding: 80rpx 0;
+}
+
+/* ---------- 加购后的底部轻提示条（与首页一致） ---------- */
+.cart-tip {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: calc(118rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 26rpx;
+  background: #0F6E56;
+  border-radius: 18rpx;
+  box-shadow: 0 10rpx 30rpx rgba(15, 110, 86, 0.3);
+  transform: translateY(200rpx);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.32s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.24s ease;
+  z-index: 900;
+}
+.cart-tip.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.cart-tip-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.cart-tip-emoji {
+  font-size: 30rpx;
+  line-height: 1;
+}
+.cart-tip-text {
+  color: #ffffff;
+  font-size: 26rpx;
+}
+.cart-tip-count {
+  color: #CDEADF;
+  font-size: 24rpx;
+}
+.cart-tip-action {
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding-left: 16rpx;
 }
 </style>

@@ -124,7 +124,7 @@
               <text class="p-sales">{{ salesText(p) }}</text>
               <view
                 class="p-add"
-                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0 }"
+                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
                 @click.stop="quickAdd(p)"
               >
                 <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
@@ -137,6 +137,15 @@
     </view>
 
     <view class="footer-tip">已经到底啦 ~</view>
+
+    <!-- 加购后的底部轻提示条（不常驻、不挡商品）：3 秒自动收起，可直接去购物车结算 -->
+    <view class="cart-tip" :class="{ show: cartTipVisible }" @click="goCartFromTip">
+      <view class="cart-tip-left">
+        <text class="cart-tip-emoji">🛒</text>
+        <text class="cart-tip-text">已加入购物车<text class="cart-tip-count">（{{ cartTipCount }} 件）</text></text>
+      </view>
+      <text class="cart-tip-action">去结算 ›</text>
+    </view>
   </view>
 </template>
 
@@ -158,6 +167,12 @@ const hotSearches = ref([])
 const flashSales = ref([])
 const floors = ref([])
 const addingId = ref(null)
+// 加号动画：popId 单独控制（不用 addingId —— 请求快时它一闪就空，动画来不及播）
+const popId = ref(null)
+// 加购后的底部轻提示条状态
+const cartTipVisible = ref(false)
+const cartTipCount = ref(0)
+let cartTipTimer = null
 const statusBarHeight = ref(20)
 
 // 品类圆形入口的底色（浅色系）+ 图标映射（分类名关键词 → static/category/*.png）
@@ -301,7 +316,7 @@ function stopTimer() {
   }
 }
 
-/** 一步加购：不跳详情页，加完弹轻提示并同步 tabBar 角标 */
+/** 一步加购：不跳详情页，加完弹底部轻提示条（可去结算）并同步 tabBar 角标 */
 async function quickAdd(p) {
   if (addingId.value) return
   if ((p.stock || 0) <= 0) {
@@ -309,15 +324,32 @@ async function quickAdd(p) {
     return
   }
   addingId.value = p.id
+  // 加号弹一下（460ms 后清掉 class，下次点击才能重新触发动画）
+  popId.value = p.id
+  setTimeout(() => { if (popId.value === p.id) popId.value = null }, 460)
   try {
     await addToCart(p.id, 1, '')
-    uni.showToast({ title: '已加入购物车', icon: 'none', duration: 1200 })
-    refreshCartBadge()
+    const n = await refreshCartBadge()
+    showCartTip(n)
   } catch (err) {
     uni.showToast({ title: (err && err.message) || '加购失败，请重试', icon: 'none' })
   } finally {
     addingId.value = null
   }
+}
+
+/** 底部轻提示条：3 秒自动收起；连续加购时只刷新数字并重置计时 */
+function showCartTip(count) {
+  cartTipCount.value = Number(count) || 1
+  cartTipVisible.value = true
+  if (cartTipTimer) clearTimeout(cartTipTimer)
+  cartTipTimer = setTimeout(() => { cartTipVisible.value = false }, 3000)
+}
+
+function goCartFromTip() {
+  cartTipVisible.value = false
+  if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
+  uni.switchTab({ url: '/pages/cart/cart' })
 }
 
 async function refreshCartBadge() {
@@ -331,8 +363,10 @@ async function refreshCartBadge() {
     } else {
       uni.removeTabBarBadge({ index: 1 })
     }
+    return n
   } catch (e) {
     // 角标失败不影响主流程
+    return 0
   }
 }
 
@@ -379,7 +413,10 @@ onShow(() => {
 
 onHide(stopTimer)
 onUnload(stopTimer)
-onUnmounted(stopTimer)
+onUnmounted(() => {
+  stopTimer()
+  if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
+})
 </script>
 
 <style scoped>
@@ -776,6 +813,18 @@ onUnmounted(stopTimer)
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 点击时按下反馈（配合 .p-add-pop 的回弹动画） */
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+}
+/* 点加号时的回弹：先压下去再弹回，带一点点过冲，手感更"实" */
+@keyframes p-add-pop {
+  0% { transform: scale(1); }
+  38% { transform: scale(0.78); }
+  72% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+.p-add-pop {
+  animation: p-add-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .p-add-busy {
   background: #1D9E75;
@@ -800,5 +849,55 @@ onUnmounted(stopTimer)
   font-size: 22rpx;
   color: #C4C0B6;
   padding: 24rpx 0 8rpx;
+}
+
+/* ---------- 加购后的底部轻提示条 ----------
+   默认移出屏幕 + 透明 + 不接收点击；.show 时滑入。
+   bottom 抬到 tabBar 之上（小程序 tabBar 约 100rpx + 安全区），避免被挡。 */
+.cart-tip {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: calc(118rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 26rpx;
+  background: #0F6E56;
+  border-radius: 18rpx;
+  box-shadow: 0 10rpx 30rpx rgba(15, 110, 86, 0.3);
+  transform: translateY(200rpx);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.32s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.24s ease;
+  z-index: 900;
+}
+.cart-tip.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.cart-tip-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.cart-tip-emoji {
+  font-size: 30rpx;
+  line-height: 1;
+}
+.cart-tip-text {
+  color: #ffffff;
+  font-size: 26rpx;
+}
+.cart-tip-count {
+  color: #CDEADF;
+  font-size: 24rpx;
+}
+.cart-tip-action {
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding-left: 16rpx;
 }
 </style>
