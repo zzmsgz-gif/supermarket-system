@@ -59,13 +59,20 @@ function serveFrontendStatic() {
   }
 }
 
+// H5 预览的后端目标：默认打本地 8080；要连线上用环境变量切（见下方 server.proxy 注释）。
+// 为什么 H5 不能像小程序那样直连 https://haomart.xyz：浏览器会判跨域，而线上 nginx 没给
+// 我们开 CORS 头。走 vite 同源代理（/api → 目标站）就没有跨域问题，H5 代码一行都不用改。
+const API_TARGET = process.env.MINI_API_TARGET || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [uni(), serveFrontendStatic()],
   server: {
-    // H5 预览时把 /api 代理到本地后端，避免浏览器跨域拦截（小程序本体不受影响）
+    // H5 预览时把 /api 代理到后端，避免浏览器跨域拦截（小程序本体不受影响）
+    //   本地后端：      NODE_OPTIONS= npm run dev:h5
+    //   连线上后端：    MINI_API_TARGET=https://haomart.xyz NODE_OPTIONS= npm run dev:h5
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: API_TARGET,
         changeOrigin: true
       }
     },
