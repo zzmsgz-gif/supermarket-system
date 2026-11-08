@@ -221,8 +221,8 @@ onShow(load)
 }
 .a-def {
   font-size: 20rpx;
-  color: #07c160;
-  border: 1rpx solid #07c160;
+  color: #0F6E56;
+  border: 1rpx solid #0F6E56;
   border-radius: 20rpx;
   padding: 2rpx 12rpx;
   margin-left: 16rpx;
@@ -243,7 +243,7 @@ onShow(load)
   margin-left: 24rpx;
 }
 .op.del {
-  color: #e4393c;
+  color: #C0392B;
 }
 .empty {
   text-align: center;
@@ -252,7 +252,7 @@ onShow(load)
 }
 .add {
   margin: 24rpx;
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   border-radius: 48rpx;
 }
@@ -296,7 +296,7 @@ onShow(load)
 }
 .f-save {
   flex: 1;
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   border-radius: 48rpx;
 }

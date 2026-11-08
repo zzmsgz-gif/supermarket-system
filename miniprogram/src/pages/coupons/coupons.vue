@@ -127,9 +127,9 @@ onShow(() => {
   color: #666;
 }
 .tab.active {
-  color: #07c160;
+  color: #0F6E56;
   font-weight: bold;
-  border-bottom: 4rpx solid #07c160;
+  border-bottom: 4rpx solid #0F6E56;
 }
 .cp {
   display: flex;
@@ -144,7 +144,7 @@ onShow(() => {
 }
 .cp-left {
   width: 200rpx;
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -178,7 +178,7 @@ onShow(() => {
 }
 .cp-reason {
   font-size: 22rpx;
-  color: #e4393c;
+  color: #C0392B;
   margin-top: 6rpx;
 }
 .cp-right {
@@ -189,7 +189,7 @@ onShow(() => {
   color: #999;
 }
 .cp-get {
-  background: #e4393c;
+  background: #C0392B;
   color: #fff;
   font-size: 24rpx;
   padding: 10rpx 24rpx;

@@ -125,14 +125,14 @@ onReachBottom(() => {
   margin-top: 10rpx;
 }
 .now {
-  color: #e4393c;
+  color: #C0392B;
   font-weight: bold;
   font-size: 30rpx;
 }
 .drop {
   font-size: 20rpx;
   color: #fff;
-  background: #e4393c;
+  background: #C0392B;
   border-radius: 16rpx;
   padding: 2rpx 12rpx;
   margin-left: 12rpx;
@@ -153,7 +153,7 @@ onReachBottom(() => {
   margin-top: 16rpx;
 }
 .op.del {
-  color: #e4393c;
+  color: #C0392B;
 }
 .empty {
   text-align: center;

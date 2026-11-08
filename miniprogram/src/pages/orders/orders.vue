@@ -13,7 +13,14 @@
     <view v-for="o in orders" :key="o.id" class="row" @click="goDetail(o.id)">
       <view class="head">
         <text class="oid">订单 {{ o.orderNo || ('#' + o.id) }}</text>
-        <text class="status">{{ orderStatusLabel(o.status) }}</text>
+        <view class="status-wrap">
+          <!-- 有售后时把售后进度也标出来：光看「已完成」看不出退款走到哪一步 -->
+          <text
+            class="refund-tag"
+            v-if="o.refundStatus && o.refundStatus !== 'NONE'"
+          >{{ refundStatusText(o.refundStatus) }}</text>
+          <text class="status">{{ orderStatusLabel(o.status) }}</text>
+        </view>
       </view>
       <view class="items">
         <view v-for="it in (o.items || []).slice(0, 3)" :key="it.id" class="mini">
@@ -93,8 +100,25 @@ const tabs = [
   { key: 'PENDING_PAYMENT', label: '待付款' },
   { key: 'PAID', label: '待发货' },
   { key: 'SHIPPED', label: '待收货' },
-  { key: 'COMPLETED', label: '已完成' }
+  { key: 'COMPLETED', label: '已完成' },
+  // 售后不是订单状态，而是 refundStatus != NONE —— 后端 buildUserOrderSpec 已支持这个特殊值
+  { key: 'AFTER_SALE', label: '售后' }
 ]
+
+// 退款/售后状态中文（对应后端 7 值：NONE / APPLYING / APPROVED / REJECTED /
+// WAITING_SHIP / SHIPPED_BACK / PARTIAL）
+const REFUND_STATUS_TEXT = {
+  APPLYING: '售后审核中',
+  APPROVED: '售后已通过',
+  REJECTED: '售后被驳回',
+  WAITING_SHIP: '待寄回',
+  SHIPPED_BACK: '已寄回',
+  PARTIAL: '部分退款'
+}
+
+function refundStatusText(status) {
+  return REFUND_STATUS_TEXT[status] || ''
+}
 const activeTab = ref('ALL')
 const orders = ref([])
 const page = ref(0)
@@ -259,13 +283,26 @@ onReachBottom(() => {
   flex: 1;
   text-align: center;
   padding: 20rpx 0;
-  font-size: 26rpx;
+  font-size: 24rpx;
   color: #666;
 }
 .tab.active {
-  color: #07c160;
+  color: #0F6E56;
   font-weight: bold;
-  border-bottom: 4rpx solid #07c160;
+  border-bottom: 4rpx solid #0F6E56;
+}
+/* 订单号右侧：售后进度标签 + 订单状态 */
+.status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.refund-tag {
+  font-size: 20rpx;
+  color: #C0392B;
+  background: #FDECEA;
+  border-radius: 6rpx;
+  padding: 2rpx 10rpx;
 }
 .row {
   background: #fff;
@@ -283,7 +320,7 @@ onReachBottom(() => {
   font-weight: bold;
 }
 .status {
-  color: #07c160;
+  color: #0F6E56;
   font-size: 24rpx;
 }
 .items {
@@ -328,7 +365,7 @@ onReachBottom(() => {
   padding: 12rpx 0;
 }
 .amt {
-  color: #e4393c;
+  color: #C0392B;
   font-weight: bold;
 }
 .actions {
@@ -343,11 +380,11 @@ onReachBottom(() => {
   line-height: 1.4;
 }
 .a.main {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .a.pay {
-  background: #e4393c;
+  background: #C0392B;
   color: #fff;
 }
 .a.ghost {

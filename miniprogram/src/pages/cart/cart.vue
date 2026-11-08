@@ -188,7 +188,7 @@ onShow(async () => {
   align-items: baseline;
 }
 .now {
-  color: #e4393c;
+  color: #C0392B;
   font-weight: bold;
   font-size: 30rpx;
 }
@@ -200,7 +200,7 @@ onShow(async () => {
 }
 .flash {
   color: #fff;
-  background: #e4393c;
+  background: #C0392B;
   font-size: 20rpx;
   padding: 2rpx 8rpx;
   border-radius: 6rpx;
@@ -371,10 +371,10 @@ onShow(async () => {
 .sum {
   font-size: 32rpx;
   font-weight: bold;
-  color: #e4393c;
+  color: #C0392B;
 }
 .checkout {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   border-radius: 48rpx;
   margin: 0;

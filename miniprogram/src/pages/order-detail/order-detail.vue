@@ -229,7 +229,7 @@ async function submitReviewOrder() {
   padding-bottom: 160rpx;
 }
 .status-bar {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   padding: 24rpx;
   border-radius: 12rpx;
@@ -281,7 +281,7 @@ async function submitReviewOrder() {
 }
 .meta {
   font-size: 24rpx;
-  color: #e4393c;
+  color: #C0392B;
   margin-top: 8rpx;
 }
 .sub {
@@ -304,12 +304,12 @@ async function submitReviewOrder() {
   border-bottom: none;
 }
 .code {
-  color: #07c160;
+  color: #0F6E56;
   font-weight: bold;
   letter-spacing: 2rpx;
 }
 .amt {
-  color: #e4393c;
+  color: #C0392B;
   font-weight: bold;
 }
 .actions {
@@ -324,11 +324,11 @@ async function submitReviewOrder() {
   border-radius: 32rpx;
 }
 .a.main {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .a.pay {
-  background: #e4393c;
+  background: #C0392B;
   color: #fff;
 }
 .a.ghost {

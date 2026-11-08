@@ -119,7 +119,7 @@ onReachBottom(() => {
 }
 .t-all {
   font-size: 24rpx;
-  color: #07c160;
+  color: #0F6E56;
 }
 .msg {
   background: #fff;
@@ -137,8 +137,8 @@ onReachBottom(() => {
 }
 .m-type {
   font-size: 20rpx;
-  color: #07c160;
-  border: 1rpx solid #07c160;
+  color: #0F6E56;
+  border: 1rpx solid #0F6E56;
   border-radius: 16rpx;
   padding: 2rpx 12rpx;
 }
@@ -155,7 +155,7 @@ onReachBottom(() => {
   width: 16rpx;
   height: 16rpx;
   border-radius: 50%;
-  background: #e4393c;
+  background: #C0392B;
 }
 .m-content {
   font-size: 24rpx;

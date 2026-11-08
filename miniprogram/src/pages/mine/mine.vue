@@ -144,7 +144,7 @@ onShow(() => {
 .header {
   display: flex;
   align-items: center;
-  background: #07c160;
+  background: #0F6E56;
   padding: 40rpx 32rpx;
 }
 .avatar {
@@ -227,7 +227,7 @@ onShow(() => {
   color: #333;
 }
 .mi-badge {
-  background: #e4393c;
+  background: #C0392B;
   color: #fff;
   font-size: 20rpx;
   border-radius: 20rpx;

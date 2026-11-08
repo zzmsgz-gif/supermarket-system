@@ -87,7 +87,7 @@ onShow(load)
   padding-bottom: 24rpx;
 }
 .hero {
-  background: linear-gradient(135deg, #07c160, #05a050);
+  background: linear-gradient(135deg, #0F6E56, #05a050);
   color: #fff;
   padding: 48rpx 32rpx;
   text-align: center;
@@ -129,7 +129,7 @@ onShow(load)
 }
 .bar-in {
   height: 100%;
-  background: #07c160;
+  background: #0F6E56;
 }
 .kv {
   display: flex;
@@ -162,7 +162,7 @@ onShow(load)
 }
 .lv-rate {
   font-size: 26rpx;
-  color: #07c160;
+  color: #0F6E56;
 }
 .md-row {
   display: flex;
@@ -179,7 +179,7 @@ onShow(load)
 }
 .md-mul {
   font-size: 24rpx;
-  color: #e4393c;
+  color: #C0392B;
   margin-left: 24rpx;
 }
 .md-remark {

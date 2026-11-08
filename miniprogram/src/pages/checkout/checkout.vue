@@ -352,7 +352,7 @@ async function submit() {
 }
 .meta {
   font-size: 24rpx;
-  color: #e4393c;
+  color: #C0392B;
   margin-top: 8rpx;
 }
 .modes {
@@ -367,7 +367,7 @@ async function submit() {
   color: #666;
 }
 .mode.active {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .store {
@@ -377,7 +377,7 @@ async function submit() {
   margin-top: 12rpx;
 }
 .store.active {
-  border-color: #07c160;
+  border-color: #0F6E56;
   background: #f0fff7;
 }
 .s-name {
@@ -401,7 +401,7 @@ async function submit() {
   padding: 16rpx 0;
 }
 .addr {
-  border: 1rpx solid #07c160;
+  border: 1rpx solid #0F6E56;
   background: #f0fff7;
   border-radius: 12rpx;
   padding: 16rpx;
@@ -427,7 +427,7 @@ async function submit() {
 }
 .a-edit {
   font-size: 22rpx;
-  color: #07c160;
+  color: #0F6E56;
   margin-top: 6rpx;
   display: block;
 }
@@ -461,7 +461,7 @@ async function submit() {
   color: #666;
 }
 .slot.active {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .freight-tip {
@@ -473,7 +473,7 @@ async function submit() {
   padding: 24rpx;
   font-size: 32rpx;
   font-weight: bold;
-  color: #e4393c;
+  color: #C0392B;
 }
 .channel {
   padding: 0 24rpx 24rpx;
@@ -482,7 +482,7 @@ async function submit() {
 }
 .pay {
   margin: 24rpx;
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
   border-radius: 48rpx;
 }

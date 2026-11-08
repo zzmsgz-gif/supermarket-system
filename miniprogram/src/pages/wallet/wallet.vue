@@ -131,7 +131,7 @@ onReachBottom(() => {
   background: #f5f5f5;
 }
 .balance-card {
-  background: linear-gradient(135deg, #07c160, #05a050);
+  background: linear-gradient(135deg, #0F6E56, #05a050);
   color: #fff;
   padding: 48rpx 32rpx;
   text-align: center;
@@ -149,7 +149,7 @@ onReachBottom(() => {
   display: inline-block;
   margin-top: 24rpx;
   background: #fff;
-  color: #07c160;
+  color: #0F6E56;
   font-size: 26rpx;
   padding: 8rpx 40rpx;
   border-radius: 40rpx;
@@ -190,10 +190,10 @@ onReachBottom(() => {
   font-weight: bold;
 }
 .tx-amt.in {
-  color: #07c160;
+  color: #0F6E56;
 }
 .tx-amt.out {
-  color: #e4393c;
+  color: #C0392B;
 }
 .empty {
   text-align: center;

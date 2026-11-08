@@ -126,7 +126,7 @@ onReachBottom(loadMore)
   display: flex;
   align-items: center;
   padding: 16rpx;
-  background: #07c160;
+  background: #0F6E56;
 }
 .input {
   flex: 1;
@@ -153,7 +153,7 @@ onReachBottom(loadMore)
   color: #666;
 }
 .f-all.active {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .f-scroll {
@@ -169,7 +169,7 @@ onReachBottom(loadMore)
   color: #666;
 }
 .f-cat.active {
-  background: #07c160;
+  background: #0F6E56;
   color: #fff;
 }
 .result {
@@ -199,7 +199,7 @@ onReachBottom(loadMore)
   padding: 0 8rpx 8rpx;
 }
 .now {
-  color: #e4393c;
+  color: #C0392B;
   font-weight: bold;
 }
 .origin {

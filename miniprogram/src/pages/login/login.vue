@@ -83,6 +83,8 @@ async function onPasswordLogin() {
   margin-bottom: 80rpx;
 }
 .wx-btn {
+  /* 微信一键登录按钮保持微信品牌绿 —— 这是微信侧的视觉规范，
+     不要跟项目主色 #0F6E56 统一（2026-11-08 批量改色时差点误伤） */
   background: #07c160;
   color: #fff;
   border-radius: 48rpx;
