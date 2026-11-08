@@ -4,15 +4,48 @@
     <view class="hero" :style="{ paddingTop: statusBarHeight + 'px' }">
       <view class="hero-nav">
         <view class="brand">
-          <view class="brand-mark"></view>
-          <text class="brand-name">好玛特鲜生</text>
+          <image class="brand-mark" src="/static/logo.png" mode="aspectFit" />
+          <text class="brand-name">{{ BRAND_NAME }}</text>
         </view>
         <!-- 右侧必须留空：微信胶囊按钮就压在这个位置，放任何东西都会被挡住 -->
       </view>
-      <view class="search" @click="goSearch('')">
-        <view class="s-lens"></view>
-        <text class="s-ph">搜索 帝王蟹 / 车厘子</text>
-        <view class="s-scan"></view>
+      <!-- 搜索框：直接在首页输入，边打字边出结果，不必先跳搜索页 -->
+      <view class="search-wrap">
+        <view class="search">
+          <view class="s-lens"></view>
+          <input
+            class="s-input"
+            v-model="keyword"
+            confirm-type="search"
+            placeholder="搜索 帝王蟹 / 车厘子"
+            placeholder-class="s-placeholder"
+            @input="onKeywordInput"
+            @confirm="doSearch"
+          />
+          <text class="s-btn" v-if="keyword.trim()" @click.stop="doSearch">搜索</text>
+        </view>
+        <view class="sug" v-if="sugVisible">
+          <view class="sug-loading" v-if="sugLoading">搜索中…</view>
+          <block v-else>
+            <view
+              class="sug-item"
+              v-for="p in sugList"
+              :key="p.id"
+              @click="openSuggest(p)"
+            >
+              <image class="sug-img" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+              <view class="sug-info">
+                <text class="sug-name">{{ p.name }}</text>
+                <text class="sug-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
+              </view>
+              <text class="sug-price">¥{{ p.price }}</text>
+            </view>
+            <view class="sug-all" @click="doSearch" v-if="sugList.length">查看全部结果 ›</view>
+            <view class="sug-empty" v-if="!sugList.length && !sugLoading">
+              没找到「{{ keyword }}」相关的商品
+            </view>
+          </block>
+        </view>
       </view>
       <view class="deliver">
         <view class="d-dot"></view>
@@ -147,7 +180,7 @@ import { listBanners } from '@/api/banner'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
-import { fullUrl } from '@/config'
+import { fullUrl, BRAND_NAME } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
 
 const categories = ref([])
@@ -357,6 +390,59 @@ async function refreshCartBadge() {
   }
 }
 
+// —— 首页原地搜索：边打字边出结果，点结果直接进详情；
+//    只有点「搜索」或「查看全部结果」才进搜索页（原来点搜索框整块跳页，用户反馈不该这样）
+const keyword = ref('')
+const sugList = ref([])
+const sugVisible = ref(false)
+const sugLoading = ref(false)
+let sugTimer = null
+
+function onKeywordInput(e) {
+  const v = (e && e.detail && e.detail.value != null) ? e.detail.value : keyword.value
+  keyword.value = v
+  if (sugTimer) { clearTimeout(sugTimer); sugTimer = null }
+  const kw = String(v || '').trim()
+  if (!kw) {
+    sugList.value = []
+    sugVisible.value = false
+    sugLoading.value = false
+    return
+  }
+  sugVisible.value = true
+  sugLoading.value = true
+  // 300ms 防抖：别每敲一个字都打一次接口
+  sugTimer = setTimeout(() => runSuggest(kw), 300)
+}
+
+async function runSuggest(kw) {
+  try {
+    const res = await listProducts({ keyword: kw, page: 1, size: 6 })
+    // 回包时用户可能已经改了关键词，过期结果丢掉
+    if (kw === String(keyword.value || '').trim()) {
+      sugList.value = (res && res.items) || []
+    }
+  } catch (e) {
+    sugList.value = []
+  } finally {
+    sugLoading.value = false
+  }
+}
+
+function doSearch() {
+  const kw = String(keyword.value || '').trim()
+  sugVisible.value = false
+  if (sugTimer) { clearTimeout(sugTimer); sugTimer = null }
+  goSearch(kw)
+}
+
+function openSuggest(p) {
+  sugVisible.value = false
+  sugList.value = []
+  keyword.value = ''
+  uni.navigateTo({ url: '/pages/product/detail?id=' + p.id })
+}
+
 function goSearch(keyword, categoryId) {
   let url = '/pages/search/search'
   const q = []
@@ -403,6 +489,7 @@ onUnload(stopTimer)
 onUnmounted(() => {
   stopTimer()
   if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
+  if (sugTimer) { clearTimeout(sugTimer); sugTimer = null }
 })
 </script>
 
@@ -433,17 +520,24 @@ onUnmounted(() => {
   align-items: center;
 }
 .brand-mark {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 10rpx;
-  background: #D9EFE7;
+  /* 现在是真的 logo 图（/static/logo.png，144×144 圆角渐变 + 购物袋），
+     图本身带圆角，这里只控制尺寸与间距 */
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 12rpx;
   margin-right: 14rpx;
+  flex-shrink: 0;
 }
 .brand-name {
   font-size: 32rpx;
   color: #ffffff;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 1rpx;
+}
+/* 搜索区：容器负责给联想浮层做定位父级 */
+.search-wrap {
+  position: relative;
+  z-index: 20;
 }
 .search {
   display: flex;
@@ -459,10 +553,101 @@ onUnmounted(() => {
   border: 3rpx solid #9CA3AF;
   border-radius: 50%;
   margin-right: 14rpx;
+  flex-shrink: 0;
 }
-.s-ph {
+.s-input {
   flex: 1;
+  height: 68rpx;
   font-size: 26rpx;
+  color: #1F2937;
+  line-height: 68rpx;
+}
+.s-placeholder {
+  color: #9CA3AF;
+  font-size: 26rpx;
+}
+.s-btn {
+  margin-left: 12rpx;
+  padding: 0 20rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  background: #0F6E56;
+  color: #ffffff;
+  font-size: 24rpx;
+  border-radius: 24rpx;
+  flex-shrink: 0;
+}
+
+/* 搜索联想浮层：在首页直接看到结果，不必先跳搜索页 */
+.sug {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 76rpx;
+  background: #ffffff;
+  border-radius: 18rpx;
+  box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, 0.16);
+  padding: 6rpx 0;
+  overflow: hidden;
+}
+.sug-loading {
+  padding: 26rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #9CA3AF;
+}
+.sug-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 20rpx;
+}
+.sug-img {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 10rpx;
+  background: #f2efe8;
+  flex-shrink: 0;
+}
+.sug-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  overflow: hidden;
+}
+.sug-name {
+  font-size: 26rpx;
+  color: #1F2937;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sug-sub {
+  font-size: 21rpx;
+  color: #9CA3AF;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sug-price {
+  font-size: 26rpx;
+  color: #C0392B;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.sug-all {
+  margin-top: 4rpx;
+  padding: 20rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #0F6E56;
+  border-top: 1rpx solid #F5F2EC;
+}
+.sug-empty {
+  padding: 30rpx 20rpx;
+  text-align: center;
+  font-size: 24rpx;
   color: #9CA3AF;
 }
 .s-scan {

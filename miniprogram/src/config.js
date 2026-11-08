@@ -11,6 +11,11 @@ export const API_BASE = (typeof window !== 'undefined') ? '/api' : PROD_API_HOST
 // 微信小程序 AppID（已提供）
 export const APP_ID = 'wx3a6edd169faeba2e'
 
+// 全站品牌名：首页、登录页统一引用它。
+// 2026-11-08 之前小程序叫「好玛特鲜生」、web 端叫「超市购物系统」，两端不一致（用户反馈"名字不对"）。
+// ⚠️ pages.json 里的 navigationBarTitleText 是静态 JSON，改名时要一起改。
+export const BRAND_NAME = '超市购物系统'
+
 // 把后端返回的相对路径图片拼成可访问地址。
 // 关键：图片资源分两类，不能都走 /api 代理，否则后端 SecurityConfig 未放行的路径会 401。
 //  - 种子商品图 / 头像（/seed-products、/seed-avatars）：前端静态目录托管（生产 nginx、本地 vite 中间件），H5 下走同源根路径，切勿叠加 /api。

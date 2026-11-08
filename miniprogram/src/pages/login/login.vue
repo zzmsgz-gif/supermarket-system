@@ -1,6 +1,9 @@
 <template>
   <view class="login">
-    <view class="logo">超市购物</view>
+    <view class="logo-wrap">
+      <image class="logo-img" src="/static/logo.png" mode="aspectFit" />
+      <text class="logo-name">{{ BRAND_NAME }}</text>
+    </view>
     <button class="wx-btn" @click="onWechatLogin">微信一键登录</button>
     <!-- 仅浏览器(H5)环境：微信登录在普通浏览器不可用，这里给账号密码登录，
          用自己的线上账号登进来预览（H5 预览可经 MINI_API_TARGET 连线上后端）。
@@ -20,6 +23,7 @@ import { reactive, ref } from 'vue'
 import { wechatLogin } from '@/api/auth'
 import { request } from '@/api/request'
 import { setAuth } from '@/store/auth'
+import { BRAND_NAME } from '@/config'
 
 // 仅浏览器(H5)环境才有 window；小程序运行时无 window，isBrowser=false，账号密码登录块不渲染
 const isBrowser = typeof window !== 'undefined'
@@ -77,10 +81,23 @@ async function onPasswordLogin() {
   padding: 120rpx 60rpx;
   text-align: center;
 }
-.logo {
-  font-size: 48rpx;
-  font-weight: bold;
+.logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin-bottom: 80rpx;
+}
+.logo-img {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 32rpx;
+}
+.logo-name {
+  margin-top: 24rpx;
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #1F2937;
+  letter-spacing: 2rpx;
 }
 .wx-btn {
   /* 微信一键登录按钮保持微信品牌绿 —— 这是微信侧的视觉规范，
