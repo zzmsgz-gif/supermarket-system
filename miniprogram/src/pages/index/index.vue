@@ -76,19 +76,9 @@
       </scroll-view>
     </view>
 
-    <!-- ===== 热搜：细胶囊 + 序号（不再和分类长一样） ===== -->
-    <scroll-view v-if="hotSearches.length" scroll-x class="hot" :show-scrollbar="false">
-      <text class="hot-label">热搜</text>
-      <view
-        v-for="(h, i) in hotSearches"
-        :key="h.id"
-        class="hot-chip"
-        @click="goSearch(h.keyword)"
-      >
-        <text class="hot-rank" :class="'r' + (i + 1)">{{ i + 1 }}</text>
-        <text class="hot-kw">{{ h.keyword }}</text>
-      </view>
-    </scroll-view>
+    <!-- 热搜模块已按需求移除（2026-11-08）：首页不再展示热搜词条，
+         分类楼层直接接在搜索区下方。api/hotSearch 与后台热搜管理仍然保留，
+         以后想恢复只需把这段 scroll-view 加回来。 -->
 
     <!-- ===== 分类楼层（B 方案的双列卡：卖点标签 + 销量 + 一步加购） ===== -->
     <view
@@ -154,7 +144,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
-import { listHotSearches } from '@/api/hotSearch'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
@@ -163,7 +152,6 @@ import { flashStateLabel, formatCountdown } from '@/utils/format'
 
 const categories = ref([])
 const banners = ref([])
-const hotSearches = ref([])
 const flashSales = ref([])
 const floors = ref([])
 const addingId = ref(null)
@@ -272,15 +260,14 @@ function salesText(p) {
 }
 
 async function load() {
-  const [cats, bn, hs, fs] = await Promise.all([
+  // 热搜已从首页移除，不再请求 /hot-searches（少一次网络往返）
+  const [cats, bn, fs] = await Promise.all([
     listCategories(),
     listBanners(),
-    listHotSearches(),
     listFlashSales()
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
-  hotSearches.value = (hs || []).filter((h) => h.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
 
   // 分类楼层：每个分类取前 8 件（按 categoryId 分组现场取，避免只用分页第一页截断）

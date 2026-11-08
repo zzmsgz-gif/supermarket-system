@@ -32,16 +32,19 @@
           class="a pay"
           @click="pay(o)"
         >去支付</button>
+        <!-- 未支付的直接「取消」 -->
         <button
           v-if="o.status === 'PENDING_PAYMENT'"
           class="a ghost"
           @click="cancel(o)"
         >取消</button>
+        <!-- 已支付未发货：后端 cancelOrder 允许 PENDING_PAYMENT / PAID，
+             这条走「取消订单」而不是售后（货没发，直接退款取消更直接） -->
         <button
-          v-if="o.status === 'PAID' || o.status === 'SHIPPED'"
+          v-if="o.status === 'PAID'"
           class="a ghost"
-          @click="goDetail(o.id)"
-        >申请退款</button>
+          @click="cancel(o)"
+        >取消订单</button>
         <button
           v-if="o.status === 'SHIPPED'"
           class="a main"
@@ -57,6 +60,18 @@
           class="a ghost"
           @click="goDetail(o.id)"
         >评价</button>
+        <!-- 售后：后端 applyRefund 只允许「已收货(COMPLETED)」申请
+             （2026-10-07 收紧，未发货请走取消订单），申请中则置灰 -->
+        <button
+          v-if="o.status === 'COMPLETED' && o.refundStatus !== 'APPLYING'"
+          class="a ghost"
+          @click="applyAftersales(o)"
+        >申请售后</button>
+        <button
+          v-if="o.status === 'COMPLETED' && o.refundStatus === 'APPLYING'"
+          class="a ghost"
+          disabled
+        >售后审核中</button>
       </view>
     </view>
 
@@ -68,7 +83,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
-import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder } from '@/api/order'
+import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder, refundApply } from '@/api/order'
 import { orderStatusLabel, fulfillmentLabel } from '@/utils/format'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
@@ -134,11 +149,45 @@ async function pay(o) {
   }
 }
 
+/**
+ * 申请售后。
+ * ⚠️ 后端 applyRefund 只接受「已完成(COMPLETED)」订单（未发货请走取消订单）。
+ * ⚠️ uni-app 的 showModal 在 H5 下，用户**没输入**时 res.content 会回填 placeholderText，
+ *    直接拿它当原因会存进"请填写售后原因…"这种废话（实测踩到），所以要和 placeholder 比对。
+ */
+const AFTERSALES_PLACEHOLDER = '填写售后原因（必填），如：商品破损 / 少件 / 质量问题'
+
+function applyAftersales(o) {
+  uni.showModal({
+    title: '申请售后',
+    content: '',
+    editable: true,
+    placeholderText: AFTERSALES_PLACEHOLDER,
+    success: async (r) => {
+      if (!r.confirm) return
+      const reason = (r.content || '').trim()
+      if (!reason || reason === AFTERSALES_PLACEHOLDER) {
+        uni.showToast({ title: '请填写售后原因', icon: 'none' })
+        return
+      }
+      uni.showLoading({ title: '提交中' })
+      try {
+        await refundApply(o.id, { reason })
+        uni.hideLoading()
+        uni.showToast({ title: '已提交售后申请', icon: 'none' })
+        load(true)
+      } catch (e) {
+        uni.hideLoading()
+        uni.showToast({ title: (e && e.message) || '提交失败', icon: 'none' })
+      }
+    }
+  })
+}
+
 async function cancel(o) {
   uni.showModal({
     title: '取消订单',
-    content: '确定要取消该订单吗？',
-    success: async (r) => {
+    content: '确定要取消该订单吗？',    success: async (r) => {
       if (!r.confirm) return
       try {
         await cancelOrder(o.id)

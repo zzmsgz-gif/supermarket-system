@@ -45,14 +45,23 @@
 
     <view class="actions">
       <button v-if="order.status === 'PENDING_PAYMENT'" class="a pay" @click="pay">去支付</button>
+      <button v-if="order.status === 'PENDING_PAYMENT'" class="a ghost" @click="cancelOrderAction">取消</button>
+      <!-- 已支付未发货：走取消订单（后端 cancelOrder 允许 PENDING_PAYMENT / PAID） -->
+      <button v-if="order.status === 'PAID'" class="a ghost" @click="cancelOrderAction">取消订单</button>
       <button v-if="order.status === 'SHIPPED'" class="a main" @click="confirm">确认收货</button>
-      <button
-        v-if="order.status === 'PAID' || order.status === 'SHIPPED'"
-        class="a ghost"
-        @click="applyRefund"
-      >申请退款</button>
       <button v-if="order.status === 'COMPLETED'" class="a main" @click="reorderOrder">再来一单</button>
       <button v-if="order.status === 'COMPLETED'" class="a ghost" @click="openReview">评价</button>
+      <!-- 售后：后端 applyRefund 只允许已收货(COMPLETED)申请，申请中置灰 -->
+      <button
+        v-if="order.status === 'COMPLETED' && order.refundStatus !== 'APPLYING'"
+        class="a ghost"
+        @click="applyRefund"
+      >申请售后</button>
+      <button
+        v-if="order.status === 'COMPLETED' && order.refundStatus === 'APPLYING'"
+        class="a ghost"
+        disabled
+      >售后审核中</button>
     </view>
 
     <!-- 评价弹层 -->
@@ -81,7 +90,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { getOrder, payOrder, confirmReceipt, refundApply, reorder } from '@/api/order'
+import { getOrder, payOrder, confirmReceipt, refundApply, reorder, cancelOrder } from '@/api/order'
 import { submitReview } from '@/api/review'
 import { orderStatusLabel, fulfillmentLabel, formatTime } from '@/utils/format'
 import { fullUrl } from '@/config'
@@ -125,17 +134,47 @@ async function confirm() {
   })
 }
 
-function applyRefund() {
+// 取消订单：后端 cancelOrder 允许「待付款 / 待发货」，已支付的原路退回
+function cancelOrderAction() {
   uni.showModal({
-    title: '申请退款',
-    content: '请简要说明退款原因',
-    editable: true,
-    placeholderText: '如：商品质量问题',
+    title: '取消订单',
+    content: '确定要取消该订单吗？已支付的金额将原路退回。',
     success: async (r) => {
       if (!r.confirm) return
+      uni.showLoading({ title: '处理中' })
       try {
-        await refundApply(order.value.id, { reason: r.content || '' })
-        uni.showToast({ title: '已提交退款申请', icon: 'none' })
+        await cancelOrder(order.value.id)
+        uni.hideLoading()
+        uni.showToast({ title: '已取消', icon: 'none' })
+        order.value = await getOrder(order.value.id)
+      } catch (e) {
+        uni.hideLoading()
+        uni.showToast({ title: (e && e.message) || '取消失败', icon: 'none' })
+      }
+    }
+  })
+}
+
+// ⚠️ uni-app 的 showModal 在 H5 下，用户没输入时 res.content 会回填 placeholderText，
+// 直接当原因提交会存进一句废话，所以要和 placeholder 对比。
+const AFTERSALES_PLACEHOLDER = '填写售后原因（必填），如：商品破损 / 少件 / 质量问题'
+
+function applyRefund() {
+  uni.showModal({
+    title: '申请售后',
+    content: '',
+    editable: true,
+    placeholderText: AFTERSALES_PLACEHOLDER,
+    success: async (r) => {
+      if (!r.confirm) return
+      const reason = (r.content || '').trim()
+      if (!reason || reason === AFTERSALES_PLACEHOLDER) {
+        uni.showToast({ title: '请填写售后原因', icon: 'none' })
+        return
+      }
+      try {
+        await refundApply(order.value.id, { reason })
+        uni.showToast({ title: '已提交售后申请', icon: 'none' })
         order.value = await getOrder(order.value.id)
       } catch (e) {
         uni.showToast({ title: (e && e.message) || '操作失败', icon: 'none' })
