@@ -16,7 +16,7 @@
       </view>
       <view class="deliver">
         <view class="d-dot"></view>
-        <text class="d-text">最快 30 分钟送达 · 满 59 免运费</text>
+        <text class="d-text">最快 30 分钟送达 · 满 99 免运费</text>
       </view>
     </view>
 

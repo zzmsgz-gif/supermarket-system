@@ -100,8 +100,8 @@
       <view class="svc-row">
         <text class="svc-ico">🚚</text>
         <view class="svc-main">
-          <text class="svc-strong">满 ¥59 免运费</text>
-          <text class="svc-desc">未满收取 ¥5 配送费</text>
+          <text class="svc-strong">满 ¥99 免运费</text>
+          <text class="svc-desc">未满收取 ¥8 配送费</text>
         </view>
       </view>
       <view class="svc-row">
