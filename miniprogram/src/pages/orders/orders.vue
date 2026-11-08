@@ -82,15 +82,44 @@
       </view>
     </view>
 
-    <view class="empty" v-if="!loading && !orders.length">暂无订单</view>
+    <!-- 空态：不再是干巴巴一行「暂无订单」，给一句贴合当前 tab 的话 + 出口 -->
+    <view class="empty-wrap" v-if="!loading && !orders.length">
+      <view class="empty-ico">📋</view>
+      <text class="empty-title">{{ emptyTitle }}</text>
+      <text class="empty-sub">{{ emptySub }}</text>
+      <view class="empty-btn" @click="goHome">去逛逛</view>
+    </view>
+
+    <!-- 空态也给点可买的，别让用户卡在死胡同 -->
+    <view class="reco" v-if="!loading && !orders.length && recommends.length">
+      <view class="reco-head">
+        <text class="reco-line"></text>
+        <text class="reco-title">大家都在买</text>
+        <text class="reco-line"></text>
+      </view>
+      <view class="reco-grid">
+        <view class="reco-card" v-for="p in recommends" :key="p.id" @click="openProduct(p)">
+          <image class="reco-img" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+          <view class="reco-body">
+            <text class="reco-name">{{ p.name }}</text>
+            <view class="reco-foot">
+              <text class="reco-price">¥{{ p.price }}</text>
+              <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view class="loading" v-if="loading">加载中…</view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
 import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder, refundApply } from '@/api/order'
+import { listHotProducts } from '@/api/product'
 import { orderStatusLabel, fulfillmentLabel } from '@/utils/format'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
@@ -119,6 +148,46 @@ const REFUND_STATUS_TEXT = {
 function refundStatusText(status) {
   return REFUND_STATUS_TEXT[status] || ''
 }
+
+// —— 空态文案：按当前 tab 说人话，比统一一句「暂无订单」有用 ——
+const EMPTY_COPY = {
+  ALL: ['还没有任何订单', '挑点新鲜的，下单后可以在这里跟踪进度'],
+  PENDING_PAYMENT: ['没有待付款的订单', '该付的都付了，轻松'],
+  PAID: ['没有待发货的订单', '已付款的订单会在这里等仓库拣货'],
+  SHIPPED: ['没有待收货的订单', '发货后的订单会出现在这里'],
+  COMPLETED: ['还没有已完成的订单', '确认收货后就能在这里评价和申请售后'],
+  AFTER_SALE: ['没有售后中的订单', '希望一直用不上，有问题随时可以申请']
+}
+
+const emptyTitle = computed(() => {
+  const c = EMPTY_COPY[activeTab.value]
+  return c ? c[0] : '暂无订单'
+})
+const emptySub = computed(() => {
+  const c = EMPTY_COPY[activeTab.value]
+  return c ? c[1] : ''
+})
+
+// 空态推荐（拉热销，仅空列表时拉一次）
+const recommends = ref([])
+
+async function loadRecommends() {
+  if (recommends.value.length) return
+  try {
+    recommends.value = await listHotProducts(6)
+  } catch (e) {
+    recommends.value = []
+  }
+}
+
+function goHome() {
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
+function openProduct(p) {
+  uni.navigateTo({ url: '/pages/product/detail?id=' + p.id })
+}
+
 const activeTab = ref('ALL')
 const orders = ref([])
 const page = ref(0)
@@ -143,6 +212,8 @@ async function load(reset = false) {
     orders.value = page.value === 0 ? items : orders.value.concat(items)
     page.value += 1
     hasMore.value = orders.value.length < total.value
+    // 空列表才拉推荐（切 tab 会反复触发 load，靠 loadRecommends 内部去重）
+    if (!orders.value.length) loadRecommends()
   } catch (e) {
     uni.showToast({ title: (e && e.message) || '加载失败', icon: 'none' })
   } finally {
@@ -392,10 +463,114 @@ onReachBottom(() => {
   color: #666;
   border: 1rpx solid #ddd;
 }
-.empty {
+/* ---------- 空态（不再是一行灰字） ---------- */
+.empty-wrap {
+  padding: 90rpx 60rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-ico {
+  width: 150rpx;
+  height: 150rpx;
+  line-height: 150rpx;
   text-align: center;
-  color: #999;
-  padding: 120rpx 0;
+  border-radius: 50%;
+  background: #F1F7F4;
+  font-size: 68rpx;
+}
+.empty-title {
+  margin-top: 30rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.empty-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  text-align: center;
+  line-height: 1.6;
+}
+.empty-btn {
+  margin-top: 34rpx;
+  width: 260rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  background: #0F6E56;
+  color: #ffffff;
+  border-radius: 38rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+/* ---------- 空态推荐（与购物车/详情页同一套视觉） ---------- */
+.reco {
+  margin: 8rpx 24rpx 0;
+}
+.reco-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+.reco-line {
+  width: 60rpx;
+  height: 1rpx;
+  background: #E5E1D8;
+}
+.reco-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #4B5563;
+}
+.reco-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.reco-card {
+  width: 330rpx;
+  margin-bottom: 20rpx;
+  background: #fff;
+  border-radius: 18rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 12rpx rgba(15, 110, 86, 0.04);
+}
+.reco-img {
+  width: 330rpx;
+  height: 240rpx;
+  background: #f2efe8;
+}
+.reco-body {
+  padding: 14rpx 16rpx 18rpx;
+}
+.reco-name {
+  font-size: 24rpx;
+  color: #1F2937;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 66rpx;
+}
+.reco-foot {
+  margin-top: 10rpx;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.reco-price {
+  color: #C0392B;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+.reco-sales {
+  font-size: 20rpx;
+  color: #9CA3AF;
 }
 .loading {
   text-align: center;
