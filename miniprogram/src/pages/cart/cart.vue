@@ -360,13 +360,16 @@ onShow(async () => {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* H5 下 tabBar 是真实 DOM 元素、层级更高，bottom:0 会被它盖住（结算按钮只露一条边）；
+     var(--window-bottom) 是 uni-app 提供的变量：H5 = tabBar 高度，小程序 = 0（原生 tabBar 不占页面）*/
+  bottom: var(--window-bottom, 0);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16rpx 24rpx;
   background: #fff;
   border-top: 1rpx solid #eee;
+  z-index: 10;
 }
 .sum {
   font-size: 32rpx;

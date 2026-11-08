@@ -147,6 +147,10 @@ onReachBottom(loadMore)
   padding: 12rpx 16rpx;
 }
 .f-all {
+  /* 「全部」固定在左侧：不加 flex-shrink:0 会被右侧 scroll-view 挤扁，
+     宽度小于两个字时中文会一个字一行（用户截图里的竖排就是这个原因） */
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 26rpx;
   padding: 8rpx 20rpx;
   border-radius: 32rpx;

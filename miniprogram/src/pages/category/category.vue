@@ -478,7 +478,8 @@ onUnmounted(() => {
   position: fixed;
   left: 24rpx;
   right: 24rpx;
-  bottom: calc(118rpx + env(safe-area-inset-bottom));
+  /* 分类页不是 tabBar 页，没有底部 tab 栏，贴底留 24rpx 即可 */
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: space-between;

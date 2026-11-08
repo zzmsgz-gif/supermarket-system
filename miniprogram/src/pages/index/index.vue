@@ -51,6 +51,24 @@
         <view class="d-dot"></view>
         <text class="d-text">最快 30 分钟送达 · 满 99 免运费</text>
       </view>
+
+      <!-- 系统公告：后台「内容管理 → 公告」维护，多条竖向轮播；点开看全文 -->
+      <view class="notice" v-if="noticeList.length" @click="openNotice">
+        <text class="n-ico">📢</text>
+        <swiper
+          class="n-swiper"
+          vertical
+          circular
+          autoplay
+          :interval="4000"
+          :duration="500"
+        >
+          <swiper-item v-for="n in noticeList" :key="n.id">
+            <text class="n-text">{{ n.title }}</text>
+          </swiper-item>
+        </swiper>
+        <text class="n-more">详情 ›</text>
+      </view>
     </view>
 
     <!-- ===== 主轮播 ===== -->
@@ -169,6 +187,25 @@
       </view>
       <text class="cart-tip-action">去结算 ›</text>
     </view>
+
+    <!-- 公告详情：点顶部公告条打开，一次展示全部生效中的公告 -->
+    <view class="notice-mask" v-if="noticeOpen" @click="noticeOpen = false">
+      <view class="notice-sheet" @click.stop>
+        <view class="ns-head">
+          <text class="ns-title">系统公告</text>
+          <text class="ns-close" @click="noticeOpen = false">✕</text>
+        </view>
+        <scroll-view scroll-y class="ns-body">
+          <view v-for="n in noticeList" :key="n.id" class="ns-item">
+            <view class="ns-item-head">
+              <text class="ns-item-title">{{ n.title }}</text>
+              <text class="ns-item-time" v-if="n.publishTime">{{ String(n.publishTime).slice(0, 10) }}</text>
+            </view>
+            <text class="ns-item-content">{{ n.content }}</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -177,6 +214,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
+import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
@@ -190,6 +228,14 @@ const floors = ref([])
 const addingId = ref(null)
 // 加号动画：popId 单独控制（不用 addingId —— 请求快时它一闪就空，动画来不及播）
 const popId = ref(null)
+// 系统公告（后台「内容管理 → 公告」维护）：顶部竖向轮播条 + 点击看全文
+const noticeList = ref([])
+const noticeOpen = ref(false)
+
+function openNotice() {
+  if (!noticeList.value.length) return
+  noticeOpen.value = true
+}
 // 加购后的底部轻提示条状态
 const cartTipVisible = ref(false)
 const cartTipCount = ref(0)
@@ -294,14 +340,17 @@ function salesText(p) {
 
 async function load() {
   // 热搜已从首页移除，不再请求 /hot-searches（少一次网络往返）
-  const [cats, bn, fs] = await Promise.all([
+  // 公告失败不阻塞首页：单独 catch 成空数组
+  const [cats, bn, fs, nts] = await Promise.all([
     listCategories(),
     listBanners(),
-    listFlashSales()
+    listFlashSales(),
+    listAnnouncements().catch(() => [])
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
+  noticeList.value = (nts || []).filter((n) => n.enabled !== false)
 
   // 分类楼层：每个分类取前 8 件（按 categoryId 分组现场取，避免只用分页第一页截断）
   const floorsData = []
@@ -673,6 +722,119 @@ onUnmounted(() => {
   color: #B7E0D1;
 }
 
+/* ---------- 系统公告条（头部内，竖向轮播） ---------- */
+.notice {
+  margin-top: 14rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 0 16rpx;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 28rpx;
+}
+.n-ico {
+  font-size: 24rpx;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.n-swiper {
+  flex: 1;
+  height: 56rpx;
+  min-width: 0;
+}
+.n-text {
+  display: block;
+  height: 56rpx;
+  line-height: 56rpx;
+  font-size: 22rpx;
+  color: #E6F4EF;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.n-more {
+  font-size: 20rpx;
+  color: #8FD3BC;
+  flex-shrink: 0;
+}
+
+/* ---------- 公告详情弹层 ---------- */
+.notice-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 60rpx;
+  z-index: 999;
+}
+.notice-sheet {
+  width: 100%;
+  max-height: 70vh;
+  background: #ffffff;
+  border-radius: 24rpx;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ns-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 28rpx;
+  border-bottom: 1rpx solid #F0EDE6;
+}
+.ns-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.ns-close {
+  font-size: 30rpx;
+  color: #9CA3AF;
+  padding: 0 8rpx;
+}
+.ns-body {
+  flex: 1;
+  padding: 8rpx 28rpx 24rpx;
+}
+.ns-item {
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid #F5F2EC;
+}
+.ns-item:last-child {
+  border-bottom: none;
+}
+.ns-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+.ns-item-title {
+  flex: 1;
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.ns-item-time {
+  font-size: 20rpx;
+  color: #C4C0B6;
+  flex-shrink: 0;
+}
+.ns-item-content {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 25rpx;
+  color: #4B5563;
+  line-height: 1.7;
+}
+
 /* ---------- 轮播 ---------- */
 .banner {
   height: 300rpx;
@@ -1030,7 +1192,9 @@ onUnmounted(() => {
   position: fixed;
   left: 24rpx;
   right: 24rpx;
-  bottom: calc(118rpx + env(safe-area-inset-bottom));
+  /* 首页是 tabBar 页：--window-bottom 在 H5 下等于 tabBar 高度、小程序下为 0，
+     比手写 118rpx 这种估算值可靠 */
+  bottom: calc(var(--window-bottom, 0px) + 18rpx);
   display: flex;
   align-items: center;
   justify-content: space-between;
