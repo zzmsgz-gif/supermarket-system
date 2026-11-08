@@ -13,7 +13,7 @@
       <input v-model="pwdForm.password" class="pwd-input" type="password" placeholder="密码" :disabled="pwdLoading" @confirm="onPasswordLogin" />
       <button class="pwd-btn" :disabled="pwdLoading" @click="onPasswordLogin">{{ pwdLoading ? '登录中…' : '账号密码登录' }}</button>
     </view>
-    <view class="tip">登录后即用钱包余额下单（首期未接入真实微信支付）</view>
+    <!-- 2026-11-08 按用户要求移除：「（首期未接入真实微信支付）」这类开发期说明不该出现在用户界面 -->
     <view v-if="isBrowser" class="tip dev-tip">微信一键登录仅在微信客户端/开发者工具内可用；浏览器预览请用上方账号密码登录。</view>
   </view>
 </template>

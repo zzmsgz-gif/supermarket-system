@@ -86,7 +86,7 @@
     </view>
 
     <view class="total">合计 ¥{{ total }}</view>
-    <view class="channel">支付方式：钱包余额（首期未接入微信支付）</view>
+    <view class="channel">支付方式：钱包余额</view>
     <button
       class="pay"
       :disabled="!canSubmit || submitting"
@@ -235,6 +235,23 @@ async function loadAddresses() {
   }
 }
 
+/**
+ * 按收货地址自动选履约方式（用户仍可手动改）：
+ *  - 收货城市与任一门店同城 → 同城配送（INSTANT，2 小时达、免运费）
+ *  - 跨城 → 快递配送（EXPRESS，满 99 免运费，否则 8 元）
+ *  - 没有任何收货地址 → 保持「门店自提」（不需要地址，最合理）
+ * 只在 onLoad 首次调用一次；之后用户手动切换不会被覆盖。
+ */
+function autoPickFulfillment() {
+  const def = addresses.value.find((a) => a.isDefault) || addresses.value[0]
+  if (!def || !def.city) return
+  const city = String(def.city).trim()
+  const sameCity = (stores.value || []).some(
+    (s) => String(s.city || '').trim() === city
+  )
+  fulfillmentType.value = sameCity ? 'INSTANT' : 'EXPRESS'
+}
+
 async function loadSlots() {
   try {
     slots.value = await listDeliverySlots()
@@ -260,6 +277,9 @@ onLoad(async (opts) => {
     await loadCart()
   }
   await loadStores()
+  // 拿到默认地址后按城市自动选「同城配送 / 快递配送」——用户不必自己想选哪个
+  await loadAddresses()
+  autoPickFulfillment()
 })
 
 onShow(() => {
@@ -296,7 +316,12 @@ async function submit() {
     await payOrder(order.id)
     uni.hideLoading()
     uni.showToast({ title: '支付成功', icon: 'success' })
-    uni.redirectTo({ url: '/pages/orders/orders' })
+    // ⚠️ 原来这里是 redirectTo('/pages/orders/orders') —— 但 orders 是 tabBar 页，
+    // redirectTo / navigateTo 跳 tabBar 页都会**静默失败**（不报错也不跳），
+    // 用户看到的就是"支付成功但页面没动"。payOrder 成功后应该进订单详情看后续状态。
+    setTimeout(() => {
+      uni.redirectTo({ url: '/pages/order-detail/order-detail?id=' + order.id })
+    }, 500)
   } catch (e) {
     uni.hideLoading()
     uni.showToast({ title: (e && e.message) || '下单失败', icon: 'none' })
