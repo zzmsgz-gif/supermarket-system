@@ -4,7 +4,7 @@
       <image class="cover" :src="fullUrl(it.productCoverUrl)" mode="aspectFill" />
       <view class="info">
         <view class="name">{{ it.productName }}</view>
-        <view class="spec" v-if="it.skuSpec">规格：{{ it.skuSpec }}</view>
+        <view class="spec" v-if="it.skuSpec">{{ specText(it.skuSpec) }}</view>
         <view class="price" v-if="it.flashSaleId">
           <text class="now">¥{{ it.productPrice }}</text>
           <text class="origin" v-if="showOrigin(it)">¥{{ it.productOriginalPrice }}</text>
@@ -53,6 +53,14 @@ const total = computed(() =>
 
 function showOrigin(it) {
   return it.productOriginalPrice != null && Number(it.productOriginalPrice) > Number(it.productPrice)
+}
+
+// skuSpec 存的是「规格:70g」这种带维度名的串（线上存量数据全是这个格式），
+// 模板里再硬写「规格：」就显示成「规格：规格:70g」（2026-11-08 修）。
+// 只有裸值（不带维度名）才补前缀，两种格式都兼容。
+function specText(s) {
+  if (!s) return ''
+  return /[:：]/.test(s) ? s : '规格：' + s
 }
 
 async function load() {
