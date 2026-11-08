@@ -1,10 +1,30 @@
 <template>
-  <view class="od" v-if="order">
-    <view class="status-bar">
-      <text class="status">{{ orderStatusLabel(order.status) }}</text>
-      <text class="pay-deadline" v-if="order.status === 'PENDING_PAYMENT' && order.payDeadline">
-        请在 {{ formatTime(order.payDeadline) }} 前支付
-      </text>
+  <view class="od" v-if="order" :style="{ paddingTop: (statusBarHeight + 44) + 'px' }">
+    <!-- 自定义导航栏：支付成功后是 redirectTo 进来的，页面栈里只有自己，
+         原生导航栏不会显示返回箭头（用户会卡在这一页），所以自绘一个 -->
+    <view class="nav" :style="{ paddingTop: statusBarHeight + 'px' }">
+      <view class="nav-bar">
+        <view class="nav-back" @click="goBack">
+          <text class="nav-arrow">‹</text>
+          <text class="nav-back-text">订单</text>
+        </view>
+        <text class="nav-title">订单详情</text>
+        <view class="nav-holder"></view>
+      </view>
+    </view>
+
+    <!-- 状态块：图标 + 主状态 + 一句说明，替换原来那块空荡荡的纯色横幅 -->
+    <view class="status-hero">
+      <view class="sh-main">
+        <view class="sh-ico-wrap"><text class="sh-ico">{{ statusIcon }}</text></view>
+        <view class="sh-text">
+          <text class="sh-title">{{ orderStatusLabel(order.status) }}</text>
+          <text class="sh-sub">{{ statusHint }}</text>
+        </view>
+      </view>
+      <view class="sh-deadline" v-if="order.status === 'PENDING_PAYMENT' && order.payDeadline">
+        请在 {{ formatTime(order.payDeadline) }} 前完成支付
+      </view>
     </view>
 
     <view class="block">
@@ -88,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getOrder, payOrder, confirmReceipt, refundApply, reorder, cancelOrder } from '@/api/order'
 import { submitReview } from '@/api/review'
@@ -99,6 +119,35 @@ const order = ref(null)
 const showReview = ref(false)
 const reviewRating = ref(5)
 const reviewContent = ref('')
+
+// 自定义导航栏要自己让开状态栏
+const statusBarHeight = ref((uni.getSystemInfoSync().statusBarHeight) || 20)
+
+// 状态块：图标 + 一句人话，别让用户只看到一个干巴巴的「待发货」
+const STATUS_VIEW = {
+  PENDING_PAYMENT: { icon: '⏰', hint: '尽快完成支付，超时订单会自动关闭' },
+  PAID: { icon: '📦', hint: '商家正在拣货打包，发货后会有通知' },
+  SHIPPED: { icon: '🚚', hint: '包裹已发出，收货后记得确认' },
+  COMPLETED: { icon: '✅', hint: '交易已完成，有问题可申请售后' },
+  CANCELED: { icon: '⚪', hint: '订单已取消，金额已按原路退回' },
+  CLOSED: { icon: '⚪', hint: '订单已关闭' }
+}
+
+const statusIcon = computed(() => (STATUS_VIEW[order.value?.status] || {}).icon || '📋')
+const statusHint = computed(() => (STATUS_VIEW[order.value?.status] || {}).hint || '')
+
+/**
+ * 返回上一页；但如果是 redirectTo 进来的（页面栈只有自己），
+ * 直接回「我的订单」——否则点了没反应，用户会卡死在详情页。
+ */
+function goBack() {
+  const pages = getCurrentPages()
+  if (pages && pages.length > 1) {
+    uni.navigateBack()
+  } else {
+    uni.switchTab({ url: '/pages/orders/orders' })
+  }
+}
 
 onLoad(async (opts) => {
   order.value = await getOrder(opts.id)
@@ -225,24 +274,107 @@ async function submitReviewOrder() {
 
 <style scoped>
 .od {
-  padding: 16rpx;
+  /* padding-top 由模板内联给出（状态栏 + 44px 导航栏高度），这里只管左右和底部 */
+  padding-left: 16rpx;
+  padding-right: 16rpx;
   padding-bottom: 160rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #FAF8F3;
 }
-.status-bar {
+
+/* ---------- 自定义导航栏 ---------- */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   background: #0F6E56;
-  color: #fff;
-  padding: 24rpx;
-  border-radius: 12rpx;
+}
+.nav-bar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 12rpx;
+}
+.nav-back {
+  min-width: 130rpx;
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+.nav-arrow {
+  font-size: 44rpx;
+  line-height: 1;
+  color: #ffffff;
+  margin-right: 2rpx;
+}
+.nav-back-text {
+  font-size: 26rpx;
+  color: #ffffff;
+}
+.nav-title {
+  flex: 1;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #ffffff;
+}
+/* 右侧占位：让标题真正居中，同时避开微信胶囊按钮 */
+.nav-holder {
+  min-width: 130rpx;
+}
+
+/* ---------- 状态块 ---------- */
+.status-hero {
+  background: linear-gradient(135deg, #12725C 0%, #0F6E56 55%, #0B5A46 100%);
+  border-radius: 16rpx;
+  padding: 26rpx 24rpx;
+  color: #ffffff;
+  box-shadow: 0 6rpx 20rpx rgba(15, 110, 86, 0.18);
+}
+.sh-main {
+  display: flex;
+  align-items: center;
+}
+.sh-ico-wrap {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+}
+.sh-ico {
+  font-size: 38rpx;
+  line-height: 1;
+}
+.sh-text {
+  flex: 1;
   display: flex;
   flex-direction: column;
 }
-.status {
-  font-size: 32rpx;
-  font-weight: bold;
+.sh-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
 }
-.pay-deadline {
-  font-size: 24rpx;
+.sh-sub {
   margin-top: 8rpx;
+  font-size: 23rpx;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.45;
+}
+.sh-deadline {
+  margin-top: 18rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.18);
+  font-size: 23rpx;
+  color: #FFE9B8;
 }
 .block {
   background: #fff;
@@ -316,6 +448,16 @@ async function submitReviewOrder() {
   margin-top: 24rpx;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+/* uni-button 默认 display:block + margin:auto，会吃掉 flex 的对齐，
+   导致 justify-content:flex-end 名存实亡（按钮仍在左边）。
+   显式 flex:0 0 auto 才能让它真正靠右。 */
+.actions .a {
+  flex: 0 0 auto;
+  margin: 0;
 }
 .a {
   font-size: 26rpx;
