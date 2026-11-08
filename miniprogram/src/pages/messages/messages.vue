@@ -59,7 +59,7 @@ async function load(reset = false) {
   }
   loading.value = true
   try {
-    const res = await listMessages({ page: page.value, size: size.value })
+    const res = await listMessages({ page: page.value + 1, size: size.value })
     const items = (res && res.items) ? res.items : []
     total.value = (res && res.total) || 0
     messages.value = page.value === 0 ? items : messages.value.concat(items)

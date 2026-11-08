@@ -75,7 +75,7 @@ async function loadTxns(reset = false) {
   }
   loading.value = true
   try {
-    const res = await listWalletTransactions({ page: page.value, size: size.value })
+    const res = await listWalletTransactions({ page: page.value + 1, size: size.value })
     const items = (res && res.items) ? res.items : []
     total.value = (res && res.total) || 0
     txns.value = page.value === 0 ? items : txns.value.concat(items)

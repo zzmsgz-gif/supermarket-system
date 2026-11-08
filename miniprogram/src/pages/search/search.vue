@@ -84,7 +84,7 @@ async function loadMore() {
     const res = await listProducts({
       keyword: keyword.value || undefined,
       categoryId: activeCat.value || undefined,
-      page: page.value,
+      page: page.value + 1,
       size: size.value
     })
     const items = (res && res.items) ? res.items : []

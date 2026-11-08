@@ -126,9 +126,25 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(ApiResponse.fail(ex.getCode(), toZh(ex.getMessage())));
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, ConstraintViolationException.class})
-    public ResponseEntity<ApiResponse<Void>> handleBadRequest(RuntimeException ex) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(ApiResponse.fail(400, toZh(ex.getMessage())));
+    }
+
+    /**
+     * 请求参数校验失败（@RequestParam / @PathVariable 上的 @Min、@Max、@NotBlank 等）。
+     *
+     * <p>⚠️ 原生 message 长这样：{@code listOrders.page: 最小不能小于1} —— 把**后端方法名和
+     * 参数名**直接暴露到用户界面上（2026-11-08 用户在订单页截到这条 toast，要求"不要出现这种提示"）。
+     * 这类信息只有开发者看得懂，所以详情只进日志，界面统一给一句人话。
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+        String detail = ex.getConstraintViolations() == null ? "" : ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + " " + v.getMessage())
+                .collect(java.util.stream.Collectors.joining("；"));
+        log.warn("请求参数校验失败：{}", detail);
+        return ResponseEntity.badRequest().body(ApiResponse.fail(400, "请求参数不合法，请刷新页面后重试"));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

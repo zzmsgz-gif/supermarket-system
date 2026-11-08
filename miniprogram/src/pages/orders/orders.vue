@@ -96,7 +96,7 @@ async function load(reset = false) {
   }
   loading.value = true
   try {
-    const params = { page: page.value, size: size.value }
+    const params = { page: page.value + 1, size: size.value }
     if (activeTab.value !== 'ALL') params.status = activeTab.value
     const res = await listOrders(params)
     const items = (res && res.items) ? res.items : []
