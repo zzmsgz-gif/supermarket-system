@@ -57,10 +57,28 @@
 
     <view class="block">
       <view class="kv"><text>商品金额</text><text>¥{{ order.totalAmount }}</text></view>
-      <view class="kv" v-if="order.discountAmount"><text>优惠</text><text>-¥{{ order.discountAmount }}</text></view>
+      <view class="kv" v-if="order.discountAmount"><text>优惠</text><text class="minus">-¥{{ order.discountAmount }}</text></view>
+      <view class="kv" v-if="order.activityDiscount"><text>活动优惠</text><text class="minus">-¥{{ order.activityDiscount }}</text></view>
       <view class="kv" v-if="order.freightAmount"><text>运费</text><text>¥{{ order.freightAmount }}</text></view>
-      <view class="kv" v-if="order.pointDiscountAmount"><text>积分抵扣</text><text>-¥{{ order.pointDiscountAmount }}</text></view>
+      <view class="kv" v-if="order.pointsDiscountAmount"><text>积分抵扣</text><text class="minus">-¥{{ order.pointsDiscountAmount }}</text></view>
       <view class="kv total"><text>实付</text><text class="amt">¥{{ order.payAmount }}</text></view>
+    </view>
+
+    <!-- 订单信息：客服对接、售后申诉都要用到订单号，原来这一页完全看不到 -->
+    <view class="block">
+      <view class="kv">
+        <text>订单编号</text>
+        <view class="kv-flex">
+          <text class="order-no">{{ order.orderNo }}</text>
+          <text class="copy" @click="copyOrderNo">复制</text>
+        </view>
+      </view>
+      <view class="kv" v-if="order.createdAt"><text>下单时间</text><text>{{ formatTime(order.createdAt) }}</text></view>
+      <view class="kv" v-if="order.paidAt"><text>支付时间</text><text>{{ formatTime(order.paidAt) }}</text></view>
+      <view class="kv" v-if="order.shippedAt"><text>发货时间</text><text>{{ formatTime(order.shippedAt) }}</text></view>
+      <view class="kv" v-if="order.completedAt"><text>完成时间</text><text>{{ formatTime(order.completedAt) }}</text></view>
+      <view class="kv" v-if="order.canceledAt"><text>取消时间</text><text>{{ formatTime(order.canceledAt) }}</text></view>
+      <view class="kv" v-if="order.remark"><text>订单备注</text><text>{{ order.remark }}</text></view>
     </view>
 
     <view class="actions">
@@ -147,6 +165,16 @@ function goBack() {
   } else {
     uni.switchTab({ url: '/pages/orders/orders' })
   }
+}
+
+// 订单号一键复制（客服/售后沟通要用）
+function copyOrderNo() {
+  const no = (order.value && order.value.orderNo) || ''
+  if (!no) return
+  uni.setClipboardData({
+    data: no,
+    success: () => uni.showToast({ title: '订单号已复制', icon: 'none' })
+  })
 }
 
 onLoad(async (opts) => {
@@ -296,23 +324,23 @@ async function submitReviewOrder() {
   height: 44px;
   display: flex;
   align-items: center;
-  padding: 0 12rpx;
+  padding: 0 24rpx 0 16rpx;
 }
 .nav-back {
-  min-width: 130rpx;
+  min-width: 150rpx;
   display: flex;
   align-items: center;
+  gap: 6rpx;
   height: 44px;
 }
 .nav-arrow {
-  font-size: 44rpx;
+  font-size: 42rpx;
   line-height: 1;
   color: #ffffff;
-  margin-right: 2rpx;
 }
 .nav-back-text {
-  font-size: 26rpx;
-  color: #ffffff;
+  font-size: 27rpx;
+  color: rgba(255, 255, 255, 0.92);
 }
 .nav-title {
   flex: 1;
@@ -323,16 +351,17 @@ async function submitReviewOrder() {
 }
 /* 右侧占位：让标题真正居中，同时避开微信胶囊按钮 */
 .nav-holder {
-  min-width: 130rpx;
+  min-width: 150rpx;
 }
 
 /* ---------- 状态块 ---------- */
 .status-hero {
+  margin-top: 16rpx;
   background: linear-gradient(135deg, #12725C 0%, #0F6E56 55%, #0B5A46 100%);
-  border-radius: 16rpx;
-  padding: 26rpx 24rpx;
+  border-radius: 20rpx;
+  padding: 28rpx 26rpx;
   color: #ffffff;
-  box-shadow: 0 6rpx 20rpx rgba(15, 110, 86, 0.18);
+  box-shadow: 0 8rpx 24rpx rgba(15, 110, 86, 0.16);
 }
 .sh-main {
   display: flex;
@@ -378,15 +407,19 @@ async function submitReviewOrder() {
 }
 .block {
   background: #fff;
-  margin-top: 16rpx;
-  padding: 16rpx 24rpx;
-  border-radius: 12rpx;
+  margin-top: 20rpx;
+  padding: 4rpx 26rpx;
+  border-radius: 20rpx;
+  box-shadow: 0 2rpx 10rpx rgba(31, 41, 55, 0.03);
 }
 .row {
   display: flex;
   align-items: center;
-  padding: 16rpx 0;
-  border-bottom: 1rpx solid #f2f2f2;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #F5F3EE;
+}
+.row:last-child {
+  border-bottom: none;
 }
 .cover {
   width: 120rpx;
@@ -423,26 +456,76 @@ async function submitReviewOrder() {
 .kv {
   display: flex;
   justify-content: space-between;
-  padding: 14rpx 0;
+  align-items: flex-start;
+  /* 标签与值之间留出固定呼吸位：原来没有 gap，地址一长就贴到标签上 */
+  gap: 28rpx;
+  padding: 18rpx 0;
   font-size: 26rpx;
-  border-bottom: 1rpx solid #f2f2f2;
+  border-bottom: 1rpx solid #F5F3EE;
 }
-.kv .addr {
-  max-width: 480rpx;
+/* 左侧标签：固定宽度不压缩，颜色弱化 */
+.kv > text:first-child {
+  flex: 0 0 auto;
+  width: 150rpx;
+  color: #8A8578;
+  line-height: 1.5;
+}
+/* 右侧值：右对齐、可换行 */
+.kv > text:last-child {
+  flex: 1;
+  min-width: 0;
   text-align: right;
+  color: #1F2937;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.kv:last-child {
+  border-bottom: none;
 }
 .kv.total {
   font-weight: bold;
   border-bottom: none;
 }
+.kv.total > text:first-child {
+  color: #1F2937;
+}
+/* 订单号那一行：值区是 flex，号码 + 复制按钮 */
+.kv-flex {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12rpx;
+}
+.order-no {
+  font-size: 25rpx;
+  color: #1F2937;
+  word-break: break-all;
+  text-align: right;
+  line-height: 1.5;
+}
+.copy {
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #0F6E56;
+  border: 1rpx solid #CBDED6;
+  border-radius: 20rpx;
+  padding: 2rpx 14rpx;
+  line-height: 1.6;
+}
+.minus {
+  color: #C0392B;
+}
+.amt {
+  color: #C0392B;
+  font-size: 32rpx;
+  font-weight: 700;
+}
 .code {
   color: #0F6E56;
   font-weight: bold;
   letter-spacing: 2rpx;
-}
-.amt {
-  color: #C0392B;
-  font-weight: bold;
 }
 .actions {
   margin-top: 24rpx;
