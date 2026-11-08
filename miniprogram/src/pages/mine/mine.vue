@@ -75,8 +75,17 @@ const walletBalance = ref('0.00')
 const profile = ref(null)
 const unread = ref(0)
 
+// tabBar 页面只能用 switchTab 打开：用 navigateTo 跳 tabBar 页会**静默失败**
+// （不报错也不跳，用户表现为"点了没反应"）——「我的订单」就是这个坑（2026-11-08 用户反馈）
+const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
+
 function go(page) {
-  uni.navigateTo({ url: '/pages/' + page + '/' + page })
+  const url = '/pages/' + page + '/' + page
+  if (TAB_PAGES.indexOf(page) !== -1) {
+    uni.switchTab({ url })
+    return
+  }
+  uni.navigateTo({ url })
 }
 function goLegal(docKey) {
   uni.navigateTo({ url: '/pages/legal/legal?docKey=' + docKey })
