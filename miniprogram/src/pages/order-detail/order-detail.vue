@@ -34,8 +34,17 @@
           <view class="name">{{ it.productName }}</view>
           <view class="spec" v-if="it.skuSpec">{{ it.skuSpec }}</view>
           <view class="meta">¥{{ it.productPrice }} × {{ it.quantity }}</view>
+          <!-- 该商品行的售后进度：一笔订单里不同商品可以各走各的售后 -->
+          <view class="line-ret" v-if="returnOfItem(it.id)" @click.stop="goReturns">
+            <text class="lr-tag" :class="statusClass(returnOfItem(it.id).status)">
+              {{ returnOfItem(it.id).statusLabel || returnOfItem(it.id).status }}
+            </text>
+            <text class="lr-more">查看进度 ›</text>
+          </view>
         </view>
         <view class="sub">¥{{ it.subtotalAmount }}</view>
+        <!-- 按行申请售后：只在该行没有在途售后时出现 -->
+        <view class="line-op" v-if="canApplyItem(it.id)" @click.stop="applyRefund(it)">售后</view>
       </view>
     </view>
 
@@ -128,7 +137,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { getOrder, payOrder, confirmReceipt, refundApply, reorder, cancelOrder } from '@/api/order'
+import { getOrder, payOrder, confirmReceipt, reorder, cancelOrder } from '@/api/order'
+import { applyReturn, listReturnsByOrder } from '@/api/returns'
 import { submitReview } from '@/api/review'
 import { orderStatusLabel, fulfillmentLabel, formatTime } from '@/utils/format'
 import { fullUrl } from '@/config'
@@ -137,6 +147,38 @@ const order = ref(null)
 const showReview = ref(false)
 const reviewRating = ref(5)
 const reviewContent = ref('')
+// 本单的全部售后单（按商品行并行售后时会有多条），用于在商品行上显示进度
+const itemReturns = ref([])
+
+// 没有「在途」售后的商品行才允许申请（已驳回的可以重新申请）
+const IN_FLIGHT = ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED']
+
+function returnOfItem(itemId) {
+  if (!itemId) return null
+  return itemReturns.value.find((r) => Number(r.orderItemId) === Number(itemId)) || null
+}
+function canApplyItem(itemId) {
+  if (!order.value || order.value.status !== 'COMPLETED') return false
+  const r = returnOfItem(itemId)
+  return !r || r.status === 'REJECTED'
+}
+function statusClass(s) {
+  if (s === 'REJECTED') return 'lr-reject'
+  if (s === 'APPROVED') return 'lr-done'
+  return 'lr-wait'
+}
+function goReturns() {
+  uni.navigateTo({ url: '/pages/returns/returns' })
+}
+
+async function loadItemReturns() {
+  if (!order.value) return
+  try {
+    itemReturns.value = (await listReturnsByOrder(order.value.id)) || []
+  } catch (e) {
+    itemReturns.value = []
+  }
+}
 
 // 自定义导航栏要自己让开状态栏
 const statusBarHeight = ref((uni.getSystemInfoSync().statusBarHeight) || 20)
@@ -179,19 +221,13 @@ function copyOrderNo() {
 
 onLoad(async (opts) => {
   order.value = await getOrder(opts.id)
+  // 售后单单独拉，失败不影响订单主体展示
+  loadItemReturns()
 })
 
-async function pay() {
-  uni.showLoading({ title: '支付中' })
-  try {
-    await payOrder(order.value.id)
-    uni.hideLoading()
-    uni.showToast({ title: '支付成功', icon: 'success' })
-    order.value = await getOrder(order.value.id)
-  } catch (e) {
-    uni.hideLoading()
-    uni.showToast({ title: (e && e.message) || '支付失败', icon: 'none' })
-  }
+// 详情页「去支付」统一进收银台：能看倒计时和余额，余额不足可先去充值
+function pay() {
+  uni.navigateTo({ url: '/pages/pay/pay?id=' + order.value.id })
 }
 
 async function confirm() {
@@ -236,9 +272,12 @@ function cancelOrderAction() {
 // 直接当原因提交会存进一句废话，所以要和 placeholder 对比。
 const AFTERSALES_PLACEHOLDER = '填写售后原因（必填），如：商品破损 / 少件 / 质量问题'
 
-function applyRefund() {
+function applyRefund(item) {
+  // 传商品行 => 按行售后（只退这一件）；不传 => 整单
+  const target = item && item.id ? item : null
+  const shortName = target ? String(target.productName || '').slice(0, 10) : ''
   uni.showModal({
-    title: '申请售后',
+    title: target ? `售后：${shortName}` : '申请售后（整单）',
     content: '',
     editable: true,
     placeholderText: AFTERSALES_PLACEHOLDER,
@@ -250,9 +289,15 @@ function applyRefund() {
         return
       }
       try {
-        await refundApply(order.value.id, { reason })
+        await applyReturn({
+          orderId: order.value.id,
+          orderItemId: target ? target.id : null,
+          reason,
+          type: 'REFUND'
+        })
         uni.showToast({ title: '已提交售后申请', icon: 'none' })
         order.value = await getOrder(order.value.id)
+        await loadItemReturns()
       } catch (e) {
         uni.showToast({ title: (e && e.message) || '操作失败', icon: 'none' })
       }
@@ -420,6 +465,46 @@ async function submitReviewOrder() {
 }
 .row:last-child {
   border-bottom: none;
+}
+/* 商品行上的售后进度 + 按行申请按钮 */
+.line-ret {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 8rpx;
+}
+.lr-tag {
+  font-size: 19rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  color: #B26A00;
+  background: #FFF4E5;
+}
+.lr-reject {
+  color: #6B7280;
+  background: #F1F2F4;
+}
+.lr-done {
+  color: #0F6E56;
+  background: #E9F4EF;
+}
+.lr-wait {
+  color: #C0392B;
+  background: #FDECEA;
+}
+.lr-more {
+  font-size: 20rpx;
+  color: #0F6E56;
+}
+.line-op {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  padding: 6rpx 18rpx;
+  font-size: 22rpx;
+  color: #0F6E56;
+  border: 1rpx solid #CBDED6;
+  border-radius: 24rpx;
+  line-height: 1.4;
 }
 .cover {
   width: 120rpx;

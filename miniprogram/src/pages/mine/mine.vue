@@ -28,6 +28,9 @@
       <view class="m-item" @click="go('orders')">
         <text class="mi-ic">📦</text><text class="mi-t">我的订单</text><text class="mi-ar">›</text>
       </view>
+      <view class="m-item" @click="go('returns')">
+        <text class="mi-ic">🧾</text><text class="mi-t">我的售后</text><text class="mi-ar">›</text>
+      </view>
       <view class="m-item" @click="go('favorites')">
         <text class="mi-ic">❤</text><text class="mi-t">我的收藏</text><text class="mi-ar">›</text>
       </view>
@@ -55,6 +58,34 @@
       <view class="m-item" @click="goLegal('privacy')">
         <text class="mi-ic">🔒</text><text class="mi-t">隐私政策</text><text class="mi-ar">›</text>
       </view>
+      <view class="m-item" @click="openPwd">
+        <text class="mi-ic">🔑</text><text class="mi-t">修改密码</text><text class="mi-ar">›</text>
+      </view>
+    </view>
+
+    <!-- 修改密码弹层 -->
+    <view class="mask" v-if="pwdOpen" @click="pwdOpen = false">
+      <view class="sheet" @click.stop>
+        <text class="sheet-title">修改密码</text>
+        <view class="field">
+          <text class="f-label">原密码</text>
+          <input class="f-input" password v-model="pwdForm.currentPassword" placeholder="请输入当前密码" />
+        </view>
+        <view class="field">
+          <text class="f-label">新密码</text>
+          <input class="f-input" password v-model="pwdForm.newPassword" placeholder="8 位以上，含字母和数字" />
+        </view>
+        <view class="field">
+          <text class="f-label">确认新密码</text>
+          <input class="f-input" password v-model="pwdForm.confirmPassword" placeholder="再次输入新密码" />
+        </view>
+        <view class="sheet-ops">
+          <button class="sbtn ghost" @click="pwdOpen = false">取消</button>
+          <button class="sbtn main" :disabled="pwdSubmitting" @click="submitPwd">
+            {{ pwdSubmitting ? '提交中…' : '确认修改' }}
+          </button>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -66,6 +97,7 @@ import { getStoredUser, clearAuth, isLoggedIn } from '@/store/auth'
 import { getWallet } from '@/api/wallet'
 import { getMemberProfile } from '@/api/member'
 import { unreadCount } from '@/api/message'
+import { changePassword } from '@/api/auth'
 import { fullUrl } from '@/config'
 
 const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
@@ -78,6 +110,58 @@ const unread = ref(0)
 // tabBar 页面只能用 switchTab 打开：用 navigateTo 跳 tabBar 页会**静默失败**
 // （不报错也不跳，用户表现为"点了没反应"）——「我的订单」就是这个坑（2026-11-08 用户反馈）
 const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
+
+// —— 修改密码 ——
+const pwdOpen = ref(false)
+const pwdSubmitting = ref(false)
+const pwdForm = reactive({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+function openPwd() {
+  pwdForm.currentPassword = ''
+  pwdForm.newPassword = ''
+  pwdForm.confirmPassword = ''
+  pwdOpen.value = true
+}
+
+async function submitPwd() {
+  const cur = (pwdForm.currentPassword || '').trim()
+  const nw = (pwdForm.newPassword || '').trim()
+  const cf = (pwdForm.confirmPassword || '').trim()
+  if (!cur) {
+    uni.showToast({ title: '请输入原密码', icon: 'none' })
+    return
+  }
+  if (nw.length < 6) {
+    uni.showToast({ title: '新密码至少 6 位', icon: 'none' })
+    return
+  }
+  if (nw === cur) {
+    uni.showToast({ title: '新密码不能与原密码相同', icon: 'none' })
+    return
+  }
+  if (nw !== cf) {
+    uni.showToast({ title: '两次输入的新密码不一致', icon: 'none' })
+    return
+  }
+  pwdSubmitting.value = true
+  try {
+    await changePassword({
+      currentPassword: cur,
+      newPassword: nw,
+      confirmPassword: cf
+    })
+    pwdOpen.value = false
+    uni.showToast({ title: '密码已修改', icon: 'success' })
+  } catch (e) {
+    uni.showToast({ title: (e && e.message) || '修改失败', icon: 'none' })
+  } finally {
+    pwdSubmitting.value = false
+  }
+}
 
 function go(page) {
   const url = '/pages/' + page + '/' + page
@@ -237,5 +321,72 @@ onShow(() => {
 .mi-ar {
   color: #ccc;
   font-size: 32rpx;
+}
+
+/* ---------- 修改密码弹层 ---------- */
+.mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  z-index: 999;
+}
+.sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 30rpx 28rpx calc(30rpx + env(safe-area-inset-bottom));
+}
+.sheet-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.field {
+  margin-top: 24rpx;
+}
+.f-label {
+  font-size: 24rpx;
+  color: #8A8578;
+}
+.f-input {
+  margin-top: 10rpx;
+  height: 80rpx;
+  background: #F7F5F0;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+  font-size: 26rpx;
+  color: #1F2937;
+}
+.sheet-ops {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 30rpx;
+}
+.sbtn {
+  flex: 1;
+  height: 84rpx;
+  line-height: 84rpx;
+  text-align: center;
+  border-radius: 42rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  margin: 0;
+}
+.sbtn.ghost {
+  background: #fff;
+  color: #666;
+  border: 1rpx solid #ddd;
+}
+.sbtn.main {
+  background: #0F6E56;
+  color: #fff;
+}
+.sbtn.main[disabled] {
+  background: #C9D5D0;
 }
 </style>

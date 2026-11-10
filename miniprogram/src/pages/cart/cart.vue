@@ -58,8 +58,22 @@
     </view>
 
     <view class="footer" v-if="items.length">
-      <text class="sum">合计 ¥{{ total }}</text>
-      <button class="checkout" @click="goCheckout">去结算</button>
+      <!-- 凑单进度：往结算栏上方塞一条，达标前后文案同源（与结算实付同一活动） -->
+      <view class="promo-bar" v-if="actProgress">
+        <view class="pb-track">
+          <view class="pb-fill" :style="{ width: actProgress.percent + '%' }"></view>
+        </view>
+        <text class="pb-text" v-if="!actProgress.reachedTop">
+          再买 <text class="pb-strong">¥{{ actProgress.gap }}</text> 可 {{ actProgress.benefit }}
+        </text>
+        <text class="pb-text" v-else>
+          已享 <text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ actProgress.threshold }}）
+        </text>
+      </view>
+      <view class="footer-line">
+        <text class="sum">合计 ¥{{ total }}</text>
+        <button class="checkout" @click="goCheckout">去结算</button>
+      </view>
     </view>
   </view>
 </template>
@@ -68,6 +82,8 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCart, updateCartItem, removeCartItem } from '@/api/cart'
+import { listActiveActivities } from '@/api/activity'
+import { cartActivityProgress } from '@/utils/activity'
 import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
@@ -83,6 +99,18 @@ const total = computed(() =>
     0
   )
 )
+
+// 凑单进度只看「非秒杀」商品小计：秒杀商品不参与满减（与 web 的 cartNonFlashTotal 同口径）
+const nonFlashTotal = computed(() =>
+  items.value
+    .filter((it) => !it.flashSaleId)
+    .reduce(
+      (s, it) => s + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
+      0
+    )
+)
+const activities = ref([])
+const actProgress = computed(() => cartActivityProgress(activities.value, nonFlashTotal.value))
 
 function showOrigin(it) {
   return it.productOriginalPrice != null && Number(it.productOriginalPrice) > Number(it.productPrice)
@@ -142,6 +170,14 @@ function goCheckout() {
 
 onShow(async () => {
   await load()
+  // 活动只在有商品时需要（凑单进度条），失败不影响购物车本身
+  if (items.value.length && !activities.value.length) {
+    try {
+      activities.value = (await listActiveActivities()) || []
+    } catch (e) {
+      activities.value = []
+    }
+  }
   // 空车才去拉推荐（有商品时不浪费一次请求）
   if (items.value.length === 0) loadRecommends()
 })
@@ -149,7 +185,8 @@ onShow(async () => {
 
 <style scoped>
 .cart {
-  padding-bottom: 120rpx;
+  /* 底部固定栏现在含「凑单进度 + 结算行」两段，比原来高，留足空间别压住最后一件商品 */
+  padding-bottom: 210rpx;
 }
 .row {
   display: flex;
@@ -364,12 +401,45 @@ onShow(async () => {
      var(--window-bottom) 是 uni-app 提供的变量：H5 = tabBar 高度，小程序 = 0（原生 tabBar 不占页面）*/
   bottom: var(--window-bottom, 0);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16rpx 24rpx;
+  flex-direction: column;
   background: #fff;
   border-top: 1rpx solid #eee;
   z-index: 10;
+}
+/* 结算行：原来 .footer 自己是 flex row，现在让位给「凑单条 + 结算行」两段式 */
+.footer-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+}
+
+/* ---------- 凑单进度条 ---------- */
+.promo-bar {
+  padding: 14rpx 24rpx 10rpx;
+  background: #FFF7F0;
+}
+.pb-track {
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: #FFE0C7;
+  overflow: hidden;
+}
+.pb-fill {
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: linear-gradient(90deg, #FFA94D 0%, #E8590C 100%);
+  transition: width 0.25s ease;
+}
+.pb-text {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #A03A00;
+}
+.pb-strong {
+  font-weight: 700;
+  color: #E8590C;
 }
 .sum {
   font-size: 32rpx;

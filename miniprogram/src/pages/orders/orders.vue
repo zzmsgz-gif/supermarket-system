@@ -231,20 +231,9 @@ function goDetail(id) {
   uni.navigateTo({ url: '/pages/order-detail/order-detail?id=' + id })
 }
 
-async function pay(o) {
-  uni.showLoading({ title: '支付中' })
-  try {
-    await payOrder(o.id)
-    uni.hideLoading()
-    uni.showToast({ title: '支付成功', icon: 'success' })
-    // 支付成功后进订单详情：能看到「待发货」和后续进度，比停在列表更有反馈
-    setTimeout(() => {
-      uni.navigateTo({ url: '/pages/order-detail/order-detail?id=' + o.id })
-    }, 500)
-  } catch (e) {
-    uni.hideLoading()
-    uni.showToast({ title: (e && e.message) || '支付失败', icon: 'none' })
-  }
+function pay(o) {
+  // 统一进收银台（有倒计时 + 余额校验），不再在列表里直接扣款
+  uni.navigateTo({ url: '/pages/pay/pay?id=' + o.id })
 }
 
 /**

@@ -213,6 +213,8 @@
 import { ref, reactive, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { getProduct, listProducts } from '@/api/product'
+import { listActiveActivities } from '@/api/activity'
+import { productActivityTag } from '@/utils/activity'
 import { addToCart } from '@/api/cart'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { listProductReviews } from '@/api/review'
@@ -222,6 +224,8 @@ import { fullUrl } from '@/config'
 import { starString, formatTime } from '@/utils/format'
 
 const product = ref(null)
+// 生效中的活动（商品角标用）
+const activities = ref([])
 const quantity = ref(1)
 const selectedSpec = reactive({})
 const faved = ref(false)
@@ -270,11 +274,15 @@ function previewGallery(i) {
 // —— 卖点标签（后端存的是逗号分隔字符串）——
 const tagList = computed(() => {
   const raw = product.value?.tags || ''
-  return String(raw)
+  const tags = String(raw)
     .split(/[,，]/)
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 4)
+  // 活动标签放最前（取「减免最大」的那条，与结算实付同一口径）；
+  // 只对限定了分类/单品的活动显示，全场活动在首页横幅统一宣传
+  const act = productActivityTag(activities.value, product.value)
+  return act ? [act, ...tags].slice(0, 5) : tags
 })
 
 // —— 价格 ——
@@ -490,6 +498,9 @@ onLoad(async (opts) => {
   loadReviews()
   loadRatingSummary()
   loadRecommends()
+  listActiveActivities()
+    .then((list) => { activities.value = list || [] })
+    .catch(() => { activities.value = [] })
 })
 
 async function add() {

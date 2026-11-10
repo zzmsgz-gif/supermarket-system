@@ -14,3 +14,10 @@ export function getMemberProfile() {
 export function listMemberDays() {
   return request('/member-days', { auth: false })
 }
+
+// 积分明细（分页）。返回 PageResponse<PointLedgerResponse>：
+//   type、amount（正负）、balanceAfter、refOrderId、remark、createdAt
+// 这是「积分花到哪去了」的唯一数据源，web /points 页用的也是它。
+export function listPointLedger(params = {}) {
+  return request('/member/ledger', { data: params })
+}

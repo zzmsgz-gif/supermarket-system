@@ -2,7 +2,10 @@
   <view class="member">
     <view class="hero">
       <view class="lv">{{ profile ? profile.levelName : '普通会员' }}</view>
-      <view class="pts">{{ profile ? profile.points : 0 }} 积分</view>
+      <view class="pts-row">
+        <text class="pts">{{ profile ? profile.points : 0 }} 积分</text>
+        <text class="pts-more" @click="goPoints">明细 ›</text>
+      </view>
       <view class="disc" v-if="profile && profile.discountRate">
         会员折扣 {{ (profile.discountRate * 10).toFixed(1) }} 折
       </view>
@@ -51,6 +54,11 @@ const profile = ref(null)
 const levels = ref([])
 const memberDays = ref([])
 
+// 积分明细（「积分花哪了」的入口）
+function goPoints() {
+  uni.navigateTo({ url: '/pages/points/points' })
+}
+
 const progressPct = computed(() => {
   const p = profile.value && profile.value.progressToNext
   if (typeof p !== 'number') return 0
@@ -96,9 +104,19 @@ onShow(load)
   font-size: 36rpx;
   font-weight: bold;
 }
+.pts-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+}
 .pts {
   font-size: 28rpx;
   margin-top: 12rpx;
+}
+.pts-more {
+  font-size: 22rpx;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: underline;
 }
 .disc {
   font-size: 24rpx;

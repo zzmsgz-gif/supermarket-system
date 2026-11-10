@@ -91,7 +91,7 @@
       class="pay"
       :disabled="!canSubmit || submitting"
       @click="submit"
-    >提交订单并支付</button>
+    >提交订单</button>
   </view>
 
   <view class="empty" v-else>没有可结算的商品</view>
@@ -313,15 +313,10 @@ async function submit() {
     }
 
     const order = mode.value === 'quick' ? await quickBuy(payload) : await createOrder(payload)
-    await payOrder(order.id)
     uni.hideLoading()
-    uni.showToast({ title: '支付成功', icon: 'success' })
-    // ⚠️ 原来这里是 redirectTo('/pages/orders/orders') —— 但 orders 是 tabBar 页，
-    // redirectTo / navigateTo 跳 tabBar 页都会**静默失败**（不报错也不跳），
-    // 用户看到的就是"支付成功但页面没动"。payOrder 成功后应该进订单详情看后续状态。
-    setTimeout(() => {
-      uni.redirectTo({ url: '/pages/order-detail/order-detail?id=' + order.id })
-    }, 500)
+    // 下单成功 → 进收银台（不再在这一步直接扣款）：
+    // 用户能看到待付金额、15 分钟倒计时，余额不足还能先去充值，对齐 web 的 /pay/:id。
+    uni.redirectTo({ url: '/pages/pay/pay?id=' + order.id })
   } catch (e) {
     uni.hideLoading()
     uni.showToast({ title: (e && e.message) || '下单失败', icon: 'none' })

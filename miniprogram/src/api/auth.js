@@ -17,4 +17,10 @@ export function logout() {
   clearAuth()
 }
 
+// 修改密码（需登录）。后端校验：原密码正确 / 新密码≠原密码 / 两次新密码一致。
+// 说明：微信一键登录建的账号没有密码，这个入口主要给「账号密码登录」的用户用。
+export function changePassword(payload) {
+  return request('/auth/change-password', { method: 'POST', data: payload })
+}
+
 export { getStoredUser }
