@@ -326,6 +326,13 @@ onShow(() => {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
+  // 从个人中心「我的订单」四宫格进来时带了预选 tab：
+  // orders 是 tabBar 页，switchTab 不支持参数，所以用 Storage 中转，取一次就清掉
+  const pending = uni.getStorageSync('orders_pending_tab')
+  if (pending) {
+    uni.removeStorageSync('orders_pending_tab')
+    if (tabs.some((t) => t.key === pending)) activeTab.value = pending
+  }
   load(true)
 })
 

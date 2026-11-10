@@ -98,32 +98,37 @@
       </view>
     </view>
 
-    <!-- ===== 限时秒杀（A 方案的红底块） ===== -->
+    <!-- ===== 限时秒杀：白卡容器 + 横滑商品卡（对齐用户给的参考样式） ===== -->
     <view class="flash" v-if="flashSales.length">
       <view class="flash-head">
-        <view class="flash-title">
+        <view class="flash-title-wrap">
+          <text class="flash-fire">🔥</text>
           <text class="flash-t">限时秒杀</text>
-          <text class="flash-sub" v-if="flashEndLabel">{{ flashEndLabel }}</text>
+          <text class="flash-sub" v-if="flashCountdown">{{ flashCountdown }}</text>
+          <text class="flash-sub2" v-else-if="flashEndLabel">{{ flashEndLabel }}</text>
         </view>
-        <text class="flash-cd" v-if="flashCountdown">{{ flashCountdown }}</text>
+        <text class="flash-more" @click="goFlashAll">查看更多 ›</text>
       </view>
+
       <scroll-view scroll-x class="flash-scroll" :show-scrollbar="false">
         <view v-for="f in flashSales" :key="f.id" class="fcard" @click="goFlash(f)">
-          <image class="f-cover" :src="fullUrl(f.productCoverUrl)" mode="aspectFill" />
+          <view class="f-cover-wrap">
+            <image class="f-cover" :src="fullUrl(f.productCoverUrl)" mode="aspectFill" />
+            <text class="f-badge" v-if="f.state === 'RUNNING'">已抢 {{ f.progressPercent || 0 }}%</text>
+            <text class="f-badge f-badge-soon" v-else>{{ flashStateLabel(f.state) }}</text>
+          </view>
           <view class="f-info">
             <text class="f-name">{{ f.productName }}</text>
-            <view class="f-price-row">
-              <text class="f-price">¥{{ f.flashPrice }}</text>
-              <text class="f-origin">¥{{ f.price }}</text>
+            <view class="f-foot">
+              <view class="f-price-box">
+                <text class="f-price"><text class="f-yen">¥</text>{{ f.flashPrice }}</text>
+                <text class="f-origin">¥{{ f.price }}</text>
+              </view>
+              <view class="f-add" @click.stop="goFlash(f)">＋</view>
             </view>
-            <view class="f-bar" v-if="f.state === 'RUNNING'">
-              <view class="f-bar-in" :style="{ width: (f.progressPercent || 0) + '%' }"></view>
-            </view>
-            <text class="f-state" v-if="f.state === 'RUNNING'">已抢 {{ f.progressPercent || 0 }}%</text>
-            <text class="f-state" v-else>{{ flashStateLabel(f.state) }}</text>
           </view>
         </view>
-        <view class="fcard fcard-ghost" v-if="flashSales.length > 1"></view>
+        <view class="flash-tail"></view>
       </scroll-view>
     </view>
 
@@ -309,7 +314,11 @@ const quickCats = computed(() => {
 // 秒杀头部：倒计时只显示「进行中最早结束」的那一场，避免一排数字挤在一起
 const flashCountdown = computed(() => {
   const running = flashSales.value.find((f) => f.state === 'RUNNING' && f.remaining > 0)
-  return running ? formatCountdown(running.remaining) : ''
+  if (!running) return ''
+  const s = Number(running.remaining) || 0
+  // 场次还剩几十天时显示 HH:MM:SS 会变成「1200:58:44」这种没意义的数字，改成按天
+  if (s >= 86400) return '剩 ' + Math.floor(s / 86400) + ' 天'
+  return formatCountdown(s)
 })
 const flashEndLabel = computed(() => {
   const upcoming = flashSales.value.find((f) => f.state === 'UPCOMING')
@@ -512,6 +521,11 @@ function onBanner(b) {
 
 function goFlash(f) {
   goDetail(f.productId || f.linkProductId)
+}
+
+/** 秒杀「查看更多」：小程序暂无秒杀独立列表页，去全部分类让用户自己逛 */
+function goFlashAll() {
+  uni.navigateTo({ url: '/pages/category/category' })
 }
 
 /** 圆形品类入口：进分类页并定位到该分类；「全部」不带参数，分类页落在第一个分类 */
@@ -867,108 +881,146 @@ onUnmounted(() => {
 }
 
 /* ---------- 秒杀红底块 ---------- */
+/* ---------- 限时秒杀（白卡 + 横滑，对齐参考样式） ---------- */
 .flash {
   margin: 22rpx 24rpx 0;
-  background: #C0392B;
+  background: #ffffff;
   border-radius: 22rpx;
-  padding: 20rpx 20rpx 22rpx;
+  padding: 22rpx 0 22rpx 22rpx;
+  box-shadow: 0 2rpx 12rpx rgba(31, 41, 55, 0.04);
 }
 .flash-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16rpx;
+  padding-right: 22rpx;
+  margin-bottom: 18rpx;
 }
-.flash-title {
+.flash-title-wrap {
   display: flex;
   align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+.flash-fire {
+  font-size: 34rpx;
+  line-height: 1;
 }
 .flash-t {
-  font-size: 30rpx;
-  color: #ffffff;
-  font-weight: 500;
-  margin-right: 12rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1F2937;
+  letter-spacing: 1rpx;
 }
 .flash-sub {
-  font-size: 22rpx;
-  color: #FFD9D3;
+  font-size: 21rpx;
+  font-weight: 600;
+  color: #C0392B;
+  background: #FDECEA;
+  border-radius: 8rpx;
+  padding: 3rpx 10rpx;
 }
-.flash-cd {
-  font-size: 28rpx;
-  color: #ffffff;
-  font-weight: 500;
+.flash-sub2 {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #C0392B;
+}
+.flash-more {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  color: #9CA3AF;
 }
 .flash-scroll {
   white-space: nowrap;
 }
 .fcard {
   display: inline-block;
-  width: 344rpx;
-  background: #ffffff;
+  width: 232rpx;
+  background: #FAF8F3;
   border-radius: 16rpx;
-  padding: 12rpx;
   margin-right: 16rpx;
+  overflow: hidden;
   vertical-align: top;
 }
-.fcard-ghost {
-  width: 8rpx;
-  background: transparent;
-  padding: 0;
+.f-cover-wrap {
+  position: relative;
+  width: 232rpx;
+  height: 232rpx;
 }
 .f-cover {
-  width: 92rpx;
-  height: 92rpx;
-  border-radius: 12rpx;
-  background: #F3D9D4;
-  display: inline-block;
-  vertical-align: top;
+  width: 232rpx;
+  height: 232rpx;
+  background: #F1EDE5;
+}
+.f-badge {
+  position: absolute;
+  left: 10rpx;
+  top: 10rpx;
+  font-size: 18rpx;
+  color: #ffffff;
+  background: rgba(192, 57, 43, 0.9);
+  border-radius: 6rpx;
+  padding: 2rpx 8rpx;
+}
+.f-badge-soon {
+  background: rgba(107, 114, 128, 0.85);
 }
 .f-info {
-  display: inline-block;
-  width: 216rpx;
-  margin-left: 14rpx;
-  vertical-align: top;
+  padding: 12rpx 14rpx 16rpx;
 }
 .f-name {
-  display: block;
-  font-size: 24rpx;
-  color: #374151;
+  font-size: 23rpx;
+  color: #1F2937;
+  line-height: 1.35;
+  height: 62rpx;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
 }
-.f-price-row {
+.f-foot {
+  margin-top: 8rpx;
   display: flex;
-  align-items: baseline;
-  margin-top: 4rpx;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.f-price-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 .f-price {
-  font-size: 30rpx;
+  font-size: 32rpx;
+  font-weight: 700;
   color: #C0392B;
-  font-weight: 500;
+  line-height: 1.1;
+}
+.f-yen {
+  font-size: 22rpx;
 }
 .f-origin {
-  font-size: 20rpx;
+  font-size: 19rpx;
   color: #9CA3AF;
   text-decoration: line-through;
-  margin-left: 8rpx;
+  margin-top: 2rpx;
 }
-.f-bar {
-  height: 8rpx;
-  background: #F0D6D1;
-  border-radius: 4rpx;
-  margin-top: 8rpx;
-  overflow: hidden;
+.f-add {
+  width: 46rpx;
+  height: 46rpx;
+  line-height: 44rpx;
+  text-align: center;
+  border-radius: 50%;
+  background: #0F6E56;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  flex-shrink: 0;
 }
-.f-bar-in {
-  height: 8rpx;
-  background: #C0392B;
-}
-.f-state {
-  display: block;
-  font-size: 20rpx;
-  color: #9CA3AF;
-  margin-top: 6rpx;
+.flash-tail {
+  display: inline-block;
+  width: 8rpx;
+  height: 2rpx;
 }
 
 /* ---------- 热搜 ---------- */

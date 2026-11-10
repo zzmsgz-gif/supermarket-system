@@ -1,67 +1,103 @@
 <template>
   <view class="mine">
+    <!-- 头部：头像 + 昵称 + 等级标签 -->
     <view class="header">
       <image class="avatar" :src="user.avatarUrl ? fullUrl(user.avatarUrl) : defaultAvatar" mode="aspectFill" />
       <view class="uinfo">
         <view class="uname">{{ user.username || '微信用户' }}</view>
-        <view class="ulevel" v-if="profile">{{ profile.levelName || ('Lv.' + (profile.memberLevel || 1)) }}</view>
+        <view class="utag" v-if="profile">{{ profile.levelName || ('Lv.' + (profile.memberLevel || 1)) }}</view>
+        <view class="utag utag-guest" v-else>普通用户</view>
       </view>
-      <view class="logout" @click="doLogout">退出</view>
+      <view class="uhead-ops">
+        <view class="uop" @click="go('member')">会员中心 ›</view>
+      </view>
     </view>
 
+    <!-- 三宫格数据：积分 / 余额 / 优惠券 -->
     <view class="stats">
-      <view class="stat" @click="go('wallet')">
-        <text class="num">¥{{ walletBalance }}</text>
-        <text class="lab">账户余额</text>
-      </view>
-      <view class="stat" @click="go('member')">
-        <text class="num">{{ profile ? profile.points : '-' }}</text>
+      <view class="stat" @click="go('points')">
+        <text class="num">{{ profile ? (profile.points || 0) : 0 }}</text>
         <text class="lab">积分</text>
       </view>
-      <view class="stat" @click="go('member')">
-        <text class="num">{{ profile && profile.discountRate ? (profile.discountRate * 10).toFixed(1) + '折' : '-' }}</text>
-        <text class="lab">会员折扣</text>
+      <view class="stat-div"></view>
+      <view class="stat" @click="go('wallet')">
+        <text class="num">{{ walletBalance }}</text>
+        <text class="lab">余额（元）</text>
+      </view>
+      <view class="stat-div"></view>
+      <view class="stat" @click="go('coupons')">
+        <text class="num">{{ couponCount }}</text>
+        <text class="lab">优惠券（张）</text>
       </view>
     </view>
 
-    <view class="menu">
-      <view class="m-item" @click="go('orders')">
-        <text class="mi-ic">📦</text><text class="mi-t">我的订单</text><text class="mi-ar">›</text>
+    <!-- 我的订单：四宫格，带各状态待办数 -->
+    <view class="card">
+      <view class="card-head">
+        <text class="card-t">我的订单</text>
+        <text class="card-more" @click="go('orders')">全部订单 ›</text>
       </view>
-      <view class="m-item" @click="go('returns')">
-        <text class="mi-ic">🧾</text><text class="mi-t">我的售后</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('favorites')">
-        <text class="mi-ic">❤</text><text class="mi-t">我的收藏</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('coupons')">
-        <text class="mi-ic">🎫</text><text class="mi-t">优惠券</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('addresses')">
-        <text class="mi-ic">📍</text><text class="mi-t">收货地址</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('member')">
-        <text class="mi-ic">👑</text><text class="mi-t">会员中心</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('wallet')">
-        <text class="mi-ic">💰</text><text class="mi-t">我的钱包</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="go('messages')">
-        <text class="mi-ic">🔔</text>
-        <text class="mi-t">消息中心</text>
-        <text class="mi-badge" v-if="unread > 0">{{ unread }}</text>
-        <text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="goLegal('terms')">
-        <text class="mi-ic">📄</text><text class="mi-t">用户协议</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="goLegal('privacy')">
-        <text class="mi-ic">🔒</text><text class="mi-t">隐私政策</text><text class="mi-ar">›</text>
-      </view>
-      <view class="m-item" @click="openPwd">
-        <text class="mi-ic">🔑</text><text class="mi-t">修改密码</text><text class="mi-ar">›</text>
+      <view class="grid4">
+        <view class="g4" @click="goOrderTab('ALL')">
+          <text class="g4-ic">📦</text>
+          <text class="g4-t">全部订单</text>
+        </view>
+        <view class="g4" @click="goOrderTab('SHIPPED')">
+          <text class="g4-ic">🚚</text>
+          <text class="g4-t">待收货</text>
+          <text class="g4-badge" v-if="orderCounts.SHIPPED">{{ orderCounts.SHIPPED }}</text>
+        </view>
+        <view class="g4" @click="goOrderTab('PENDING_PAYMENT')">
+          <text class="g4-ic">💳</text>
+          <text class="g4-t">待付款</text>
+          <text class="g4-badge" v-if="orderCounts.PENDING_PAYMENT">{{ orderCounts.PENDING_PAYMENT }}</text>
+        </view>
+        <view class="g4" @click="goOrderTab('COMPLETED')">
+          <text class="g4-ic">✅</text>
+          <text class="g4-t">已完成</text>
+        </view>
       </view>
     </view>
+
+    <!-- 功能网格：两列 -->
+    <view class="card">
+      <view class="grid2">
+        <view class="g2" @click="go('returns')">
+          <text class="g2-ic">🧾</text><text class="g2-t">我的售后</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="go('favorites')">
+          <text class="g2-ic">❤</text><text class="g2-t">我的收藏</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="go('coupons')">
+          <text class="g2-ic">🎫</text><text class="g2-t">优惠券</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="go('wallet')">
+          <text class="g2-ic">💰</text><text class="g2-t">我的钱包</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="go('addresses')">
+          <text class="g2-ic">📍</text><text class="g2-t">收货地址</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="go('messages')">
+          <text class="g2-ic">🔔</text><text class="g2-t">消息中心</text>
+          <text class="g2-badge" v-if="unread > 0">{{ unread }}</text>
+          <text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="openPwd">
+          <text class="g2-ic">🔑</text><text class="g2-t">修改密码</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="goLegal('terms')">
+          <text class="g2-ic">📄</text><text class="g2-t">用户协议</text><text class="g2-ar">›</text>
+        </view>
+        <view class="g2" @click="goLegal('privacy')">
+          <text class="g2-ic">🔒</text><text class="g2-t">隐私政策</text><text class="g2-ar">›</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="logout" @click="doLogout">退出登录</view>
+
+    <!-- 2026-11-10 旧列表式菜单已重构为「我的订单四宫格 + 功能两列网格」，入口一个没少：
+         订单/售后/收藏/优惠券/地址/会员(头部)/钱包/消息/协议/隐私/改密 -->
 
     <!-- 修改密码弹层 -->
     <view class="mask" v-if="pwdOpen" @click="pwdOpen = false">
@@ -98,6 +134,8 @@ import { getWallet } from '@/api/wallet'
 import { getMemberProfile } from '@/api/member'
 import { unreadCount } from '@/api/message'
 import { changePassword } from '@/api/auth'
+import { listMyCoupons } from '@/api/coupon'
+import { listOrders } from '@/api/order'
 import { fullUrl } from '@/config'
 
 const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
@@ -110,6 +148,24 @@ const unread = ref(0)
 // tabBar 页面只能用 switchTab 打开：用 navigateTo 跳 tabBar 页会**静默失败**
 // （不报错也不跳，用户表现为"点了没反应"）——「我的订单」就是这个坑（2026-11-08 用户反馈）
 const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
+
+// —— 首页三宫格 / 订单四宫格需要的数据 ——
+const couponCount = ref(0)
+const orderCounts = ref({ PENDING_PAYMENT: 0, SHIPPED: 0 })
+
+/**
+ * 跳「我的订单」并预选 tab。
+ * ⚠️ orders 是 tabBar 页，switchTab **不支持带参数**，
+ * 所以用 Storage 中转，orders.vue 的 onShow 里取一次就清掉。
+ */
+function goOrderTab(status) {
+  if (status && status !== 'ALL') {
+    uni.setStorageSync('orders_pending_tab', status)
+  } else {
+    uni.removeStorageSync('orders_pending_tab')
+  }
+  uni.switchTab({ url: '/pages/orders/orders' })
+}
 
 // —— 修改密码 ——
 const pwdOpen = ref(false)
@@ -192,6 +248,26 @@ async function load() {
     unread.value = (c && c.count) || 0
   } catch (e) {
     unread.value = 0
+  }
+  // 可用券数量（只数 UNUSED，已用/过期的没意义）
+  try {
+    const cs = await listMyCoupons()
+    couponCount.value = (cs || []).filter((c) => c.status === 'UNUSED').length
+  } catch (e) {
+    couponCount.value = 0
+  }
+  // 订单待办数：只查「待付款 / 待收货」两个 tab 的总数（各 1 条即可拿 total），失败不影响页面
+  try {
+    const [pending, shipped] = await Promise.all([
+      listOrders({ status: 'PENDING_PAYMENT', page: 1, size: 1 }).catch(() => null),
+      listOrders({ status: 'SHIPPED', page: 1, size: 1 }).catch(() => null)
+    ])
+    orderCounts.value = {
+      PENDING_PAYMENT: (pending && pending.total) || 0,
+      SHIPPED: (shipped && shipped.total) || 0
+    }
+  } catch (e) {
+    orderCounts.value = { PENDING_PAYMENT: 0, SHIPPED: 0 }
   }
 }
 
@@ -388,5 +464,214 @@ onShow(() => {
 }
 .sbtn.main[disabled] {
   background: #C9D5D0;
+}
+/* ===== 2026-11-10 个人中心重构（头部+三宫格数据 / 订单四宫格 / 功能两列网格） =====
+   旧列表式样式（.menu/.m-item/.mi-*）已无引用，保留在下方不影响渲染；
+   同名类在这里重定义，后写覆盖前面的。 */
+.mine {
+  min-height: 100vh;
+  background: #FAF8F3;
+  padding-bottom: 40rpx;
+}
+.header {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #12725C 0%, #0F6E56 60%, #0B5A46 100%);
+  padding: 40rpx 32rpx 52rpx;
+}
+.avatar {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: #fff;
+  flex-shrink: 0;
+}
+.uinfo {
+  flex: 1;
+  min-width: 0;
+  margin-left: 24rpx;
+  color: #fff;
+}
+.uname {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+.utag {
+  display: inline-block;
+  margin-top: 10rpx;
+  font-size: 21rpx;
+  color: #A9822B;
+  background: #FDF3DC;
+  border-radius: 20rpx;
+  padding: 3rpx 16rpx;
+}
+.utag-guest {
+  color: #E6F4EF;
+  background: rgba(255, 255, 255, 0.18);
+}
+.uhead-ops {
+  flex-shrink: 0;
+}
+.uop {
+  font-size: 22rpx;
+  color: #E6F4EF;
+  border: 1rpx solid rgba(255, 255, 255, 0.35);
+  border-radius: 24rpx;
+  padding: 6rpx 16rpx;
+}
+
+/* 三宫格数据：负 margin 上移，压住头部下沿 */
+.stats {
+  display: flex;
+  align-items: center;
+  margin: -30rpx 24rpx 0;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 26rpx 0;
+  box-shadow: 0 4rpx 16rpx rgba(31, 41, 55, 0.06);
+}
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6rpx;
+}
+.stat-div {
+  width: 1rpx;
+  height: 56rpx;
+  background: #F0EDE6;
+}
+.num {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: #1F2937;
+}
+.lab {
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
+
+.card {
+  margin: 20rpx 24rpx 0;
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 8rpx 24rpx 20rpx;
+  box-shadow: 0 2rpx 10rpx rgba(31, 41, 55, 0.03);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0 12rpx;
+}
+.card-t {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.card-more {
+  font-size: 23rpx;
+  color: #9CA3AF;
+}
+
+/* 订单四宫格 */
+.grid4 {
+  display: flex;
+  padding-top: 6rpx;
+}
+.g4 {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 14rpx 0;
+}
+.g4-ic {
+  font-size: 42rpx;
+  line-height: 1;
+}
+.g4-t {
+  font-size: 23rpx;
+  color: #4B5563;
+}
+.g4-badge {
+  position: absolute;
+  top: 4rpx;
+  right: 50%;
+  margin-right: -46rpx;
+  min-width: 30rpx;
+  height: 30rpx;
+  line-height: 30rpx;
+  text-align: center;
+  border-radius: 15rpx;
+  background: #C0392B;
+  color: #fff;
+  font-size: 18rpx;
+  padding: 0 6rpx;
+}
+
+/* 功能两列网格 */
+.grid2 {
+  display: flex;
+  flex-wrap: wrap;
+}
+.g2 {
+  width: 50%;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #F7F5F0;
+  box-sizing: border-box;
+}
+.g2:nth-child(odd) {
+  padding-right: 12rpx;
+}
+.g2:nth-child(even) {
+  padding-left: 12rpx;
+  border-left: 1rpx solid #F7F5F0;
+}
+.g2-ic {
+  font-size: 34rpx;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.g2-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #1F2937;
+}
+.g2-badge {
+  min-width: 30rpx;
+  height: 30rpx;
+  line-height: 30rpx;
+  text-align: center;
+  border-radius: 15rpx;
+  background: #C0392B;
+  color: #fff;
+  font-size: 18rpx;
+  padding: 0 6rpx;
+}
+.g2-ar {
+  font-size: 26rpx;
+  color: #C4C0B6;
+  flex-shrink: 0;
+}
+
+/* 退出登录 */
+.logout {
+  margin: 30rpx 24rpx 0;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  background: #fff;
+  color: #C0392B;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  font-weight: 600;
 }
 </style>
