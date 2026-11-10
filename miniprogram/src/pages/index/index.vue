@@ -47,10 +47,7 @@
           </block>
         </view>
       </view>
-      <view class="deliver">
-        <view class="d-dot"></view>
-        <text class="d-text">最快 30 分钟送达 · 满 99 免运费</text>
-      </view>
+      <!-- 2026-11-10 按用户要求移除「最快 30 分钟送达 · 满 99 免运费」那行 -->
 
       <!-- 系统公告：后台「内容管理 → 公告」维护，多条竖向轮播；点开看全文 -->
       <view class="notice" v-if="noticeList.length" @click="openNotice">
@@ -88,12 +85,8 @@
       </swiper-item>
     </swiper>
 
-    <!-- 全站活动横幅：取「满额减免力度最大」的那条，与结算实际生效的活动同一口径 -->
-    <view class="promo" v-if="topAct" @click="goPromo">
-      <text class="p-tag">限时活动</text>
-      <text class="p-text">{{ activityNoticeText(topAct) }}</text>
-      <text class="p-more">去逛逛 ›</text>
-    </view>
+    <!-- 2026-11-10 按用户要求移除首页活动横幅。
+         活动仍在「购物车凑单进度条」与「商品详情活动标签」展示，口径逻辑在 utils/activity.js。 -->
 
     <!-- ===== 圆形品类入口 ===== -->
     <view class="quick" v-if="quickCats.length">
@@ -222,8 +215,6 @@ import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
-import { listActiveActivities } from '@/api/activity'
-import { pickTopActivity, activityNoticeText } from '@/utils/activity'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
@@ -240,14 +231,6 @@ const popId = ref(null)
 // 系统公告（后台「内容管理 → 公告」维护）：顶部竖向轮播条 + 点击看全文
 const noticeList = ref([])
 const noticeOpen = ref(false)
-// 生效中的满减/折扣活动（首页横幅 + 商品角标共用）
-const activities = ref([])
-const topAct = computed(() => pickTopActivity(activities.value))
-
-function goPromo() {
-  // 没有独立活动页，拉到「全部商品」让用户凑单最直接
-  uni.navigateTo({ url: '/pages/category/category' })
-}
 
 function openNotice() {
   if (!noticeList.value.length) return
@@ -358,18 +341,17 @@ function salesText(p) {
 async function load() {
   // 热搜已从首页移除，不再请求 /hot-searches（少一次网络往返）
   // 公告失败不阻塞首页：单独 catch 成空数组
-  const [cats, bn, fs, nts, acts] = await Promise.all([
+  // 活动横幅也已移除，首页不再拉 /activities（购物车与商品详情各自按需拉）
+  const [cats, bn, fs, nts] = await Promise.all([
     listCategories(),
     listBanners(),
     listFlashSales(),
-    listAnnouncements().catch(() => []),
-    listActiveActivities().catch(() => [])
+    listAnnouncements().catch(() => [])
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
-  activities.value = acts || []
 
   // 分类楼层：每个分类取前 8 件（按 categoryId 分组现场取，避免只用分页第一页截断）
   const floorsData = []
@@ -724,22 +706,7 @@ onUnmounted(() => {
   border-radius: 8rpx;
   background: #F1F2F4;
 }
-.deliver {
-  display: flex;
-  align-items: center;
-  margin-top: 16rpx;
-}
-.d-dot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: #8FD3BC;
-  margin-right: 10rpx;
-}
-.d-text {
-  font-size: 22rpx;
-  color: #B7E0D1;
-}
+/* 2026-11-10 删除「最快30分钟送达·满99免运费」后，.deliver/.d-dot/.d-text 一并移除 */
 
 /* ---------- 系统公告条（头部内，竖向轮播） ---------- */
 .notice {
@@ -866,42 +833,9 @@ onUnmounted(() => {
   height: 300rpx;
 }
 
-/* ---------- 全站活动横幅 ---------- */
-.promo {
-  margin: 20rpx 24rpx 0;
-  height: 80rpx;
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  padding: 0 20rpx;
-  border-radius: 16rpx;
-  background: linear-gradient(90deg, #FFF3E9 0%, #FFE3CD 100%);
-  border: 1rpx solid #FFD6B8;
-}
-.p-tag {
-  flex-shrink: 0;
-  font-size: 20rpx;
-  font-weight: 600;
-  color: #ffffff;
-  background: #E8590C;
-  border-radius: 8rpx;
-  padding: 3rpx 12rpx;
-}
-.p-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 25rpx;
-  font-weight: 600;
-  color: #A03A00;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.p-more {
-  flex-shrink: 0;
-  font-size: 22rpx;
-  color: #E8590C;
-}
+/* 2026-11-10 首页活动横幅已按用户要求移除（.promo/.p-more + 横幅专用的 .p-tag/.p-text 已删）。
+   注意：下面第 1063 行附近的 .p-tag 是**商品卡卖点标签**的另一套样式，模板里 tagOf(p) 在用，别误删。
+   活动仍在购物车凑单条与商品详情标签展示，逻辑见 utils/activity.js */
 
 /* ---------- 圆形品类 ---------- */
 .quick {
