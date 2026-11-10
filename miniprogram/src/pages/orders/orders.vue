@@ -129,9 +129,12 @@ const tabs = [
   { key: 'PENDING_PAYMENT', label: '待付款' },
   { key: 'PAID', label: '待发货' },
   { key: 'SHIPPED', label: '待收货' },
-  { key: 'COMPLETED', label: '已完成' },
-  // 售后不是订单状态，而是 refundStatus != NONE —— 后端 buildUserOrderSpec 已支持这个特殊值
-  { key: 'AFTER_SALE', label: '售后' }
+  { key: 'COMPLETED', label: '已完成' }
+  // 2026-11-10 按用户要求去掉「售后」tab：
+  // 它与个人中心的「我的售后」看的是同一批数据，入口重复容易让用户犹豫点哪个。
+  // 「我的售后」是售后单维度（进度/驳回原因/寄回物流），信息更全，保留它作为唯一入口。
+  // 订单列表里仍会在订单卡上显示「售后审核中」红标，不影响感知。
+  // （后端 buildUserOrderSpec 的 status=AFTER_SALE 逻辑保留，接口能力不删）
 ]
 
 // 退款/售后状态中文（对应后端 7 值：NONE / APPLYING / APPROVED / REJECTED /

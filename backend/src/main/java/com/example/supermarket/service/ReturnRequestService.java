@@ -169,6 +169,24 @@ public class ReturnRequestService {
                 throw new BusinessException(409, "该订单已申请过售后，请勿重复提交。");
             }
             r.setRefundAmount(order.getPayAmount());
+            // ⚠️ 2026-11-10 补：整单分支原来**从不写商品快照**，导致售后列表里看不到商品图和名称
+            // （线上 141 条老售后全是空的，前端只能显示「× · ¥/件」这种残缺行）。
+            // 整单没有单一商品，用「整单退款（共 N 种 / M 件）」+ 首个商品封面表达。
+            // itemUnitPrice 留 null：多商品没有统一单价，填任何一个都会算错钱。
+            java.util.List<OrderItem> wholeItems = orderItemRepository.findByOrderIdOrderByIdAsc(order.getId());
+            if (!wholeItems.isEmpty()) {
+                OrderItem firstItem = wholeItems.get(0);
+                int totalQty = wholeItems.stream()
+                        .mapToInt(it -> it.getQuantity() == null ? 1 : it.getQuantity())
+                        .sum();
+                r.setItemProductName(wholeItems.size() == 1
+                        ? firstItem.getProductName()
+                        : "整单退款（共 " + wholeItems.size() + " 种商品 / " + totalQty + " 件）");
+                r.setItemCoverUrl(firstItem.getProductCoverUrl());
+                r.setItemQuantity(totalQty);
+                r.setItemUnitPrice(null);
+                r.setItemSubtotal(order.getPayAmount());
+            }
             r.setReason(req.getReason());
             r.setRemark(req.getRemark());
         }

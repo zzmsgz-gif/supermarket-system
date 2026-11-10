@@ -23,10 +23,18 @@
       </view>
 
       <view class="item">
-        <image class="cover" :src="fullUrl(r.itemCoverUrl)" mode="aspectFill" />
+        <image
+          v-if="r.itemCoverUrl"
+          class="cover"
+          :src="fullUrl(r.itemCoverUrl)"
+          mode="aspectFill"
+        />
+        <view v-else class="cover cover-empty"><text class="ce-t">整单</text></view>
         <view class="info">
-          <text class="name">{{ r.itemProductName }}</text>
-          <text class="qty">× {{ r.itemQuantity }} · ¥{{ r.itemUnitPrice }}/件</text>
+          <text class="name">{{ r.itemProductName || '整单退款（未指定单件商品）' }}</text>
+          <text class="qty" v-if="r.itemQuantity && r.itemUnitPrice">× {{ r.itemQuantity }} · ¥{{ r.itemUnitPrice }}/件</text>
+          <text class="qty" v-else-if="r.itemQuantity">共 {{ r.itemQuantity }} 件</text>
+          <text class="qty" v-else>早期整单售后，未记录具体商品</text>
         </view>
         <view class="amt">
           <text class="amt-label">退款</text>
@@ -312,6 +320,17 @@ onReachBottom(() => {
   background: #f2efe8;
   flex-shrink: 0;
   margin-right: 18rpx;
+}
+/* 整单售后没有商品图时的占位（早期数据没存商品快照） */
+.cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F4F1EA;
+}
+.ce-t {
+  font-size: 22rpx;
+  color: #B0A88F;
 }
 .info {
   flex: 1;
