@@ -6,13 +6,13 @@
         <view class="name">{{ it.productName }}</view>
         <view class="spec" v-if="it.skuSpec">{{ specText(it.skuSpec) }}</view>
         <view class="price" v-if="it.flashSaleId">
-          <text class="now">¥{{ it.productPrice }}</text>
-          <text class="origin" v-if="showOrigin(it)">¥{{ it.productOriginalPrice }}</text>
+          <text class="now">¥{{ fmt(it.productPrice) }}</text>
+          <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
           <text class="flash">秒杀</text>
         </view>
         <view class="price" v-else>
-          <text class="now">¥{{ it.productPrice }}</text>
-          <text class="origin" v-if="showOrigin(it)">¥{{ it.productOriginalPrice }}</text>
+          <text class="now">¥{{ fmt(it.productPrice) }}</text>
+          <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
         </view>
         <view class="off" v-if="!it.onSale">已下架 / 无货</view>
       </view>
@@ -57,7 +57,7 @@
           <view class="reco-body">
             <text class="reco-name">{{ p.name }}</text>
             <view class="reco-foot">
-              <text class="reco-price">¥{{ p.price }}</text>
+              <text class="reco-price">¥{{ fmt(p.price) }}</text>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
           </view>
@@ -66,20 +66,37 @@
     </view>
 
     <view class="footer" v-if="items.length">
-      <!-- 凑单进度：往结算栏上方塞一条，达标前后文案同源（与结算实付同一活动） -->
+      <!-- ① 满减凑单进度（活动门槛）：只按**普通商品**小计算，秒杀商品不计入 -->
       <view class="promo-bar" v-if="actProgress">
         <view class="pb-track">
           <view class="pb-fill" :style="{ width: actProgress.percent + '%' }"></view>
         </view>
         <text class="pb-text" v-if="!actProgress.reachedTop">
-          再买 <text class="pb-strong">¥{{ actProgress.gap }}</text> 可 {{ actProgress.benefit }}
+          再买 <text class="pb-strong">¥{{ fmt(actProgress.gap) }}</text> 可 {{ actProgress.benefit }}
         </text>
         <text class="pb-text" v-else>
-          已享 <text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ actProgress.threshold }}）
+          已享 <text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ fmt(actProgress.threshold) }}）
         </text>
+        <text class="pb-note">满减仅按普通商品计算，秒杀商品不计入</text>
       </view>
+
+      <!-- ② 满 ¥99 免运费进度：与①是两条**互不相关**的门槛，必须分开显示，
+           否则用户分不清「满99减X」和「满99免邮」。运费按整车（含秒杀商品）算。 -->
+      <view class="promo-bar freight" v-if="freightProgress">
+        <view class="pb-track">
+          <view class="pb-fill blue" :style="{ width: freightProgress.percent + '%' }"></view>
+        </view>
+        <text class="pb-text" v-if="!freightProgress.reachedTop">
+          再买 <text class="pb-strong blue-t">¥{{ fmt(freightProgress.gap) }}</text>，即可免 ¥{{ fmt(freightProgress.freight) }} 运费
+        </text>
+        <text class="pb-text" v-else>
+          已满足满 ¥{{ fmt(freightProgress.threshold) }} 免运费
+        </text>
+        <text class="pb-note">运费按整车（含秒杀商品）计算</text>
+      </view>
+
       <view class="footer-line">
-        <text class="sum">合计 ¥{{ total }}</text>
+        <text class="sum">合计 ¥{{ fmt(total) }}</text>
         <button class="checkout" @click="goCheckout">去结算</button>
       </view>
     </view>
@@ -97,6 +114,7 @@ import { cartActivityProgress } from '@/utils/activity'
 import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
+import { formatAmount } from '@/utils/format'
 
 const items = ref([])
 
@@ -121,6 +139,33 @@ const nonFlashTotal = computed(() =>
 )
 const activities = ref([])
 const actProgress = computed(() => cartActivityProgress(activities.value, nonFlashTotal.value))
+
+/**
+ * 满 ¥99 免运费进度。
+ * ⚠️ 门槛/运费必须与后端 OrderService.EXPRESS_FREE_THRESHOLD / EXPRESS_FREIGHT 保持一致。
+ * 与满减进度是两个独立门槛：满减只看**普通商品**，运费按**整车（含秒杀）**，所以这里用 total。
+ */
+const EXPRESS_FREE_THRESHOLD = 99
+const EXPRESS_FREIGHT = 8
+
+const freightProgress = computed(() => {
+  const subtotal = Number(total.value) || 0
+  if (subtotal <= 0) return null
+  return {
+    threshold: EXPRESS_FREE_THRESHOLD,
+    freight: EXPRESS_FREIGHT,
+    gap: Math.max(EXPRESS_FREE_THRESHOLD - subtotal, 0),
+    percent: Math.min(100, Math.round((subtotal / EXPRESS_FREE_THRESHOLD) * 100)),
+    reachedTop: subtotal >= EXPRESS_FREE_THRESHOLD
+  }
+})
+
+/**
+ * 金额统一保留两位小数。
+ * 不格式化会出现 `¥45.19999999999999` 这种浮点误差（45.2 - 0.00000000000006 之类），
+ * 用户截图里就是这个问题。web 端有 money() 干这事，小程序要自己来。
+ */
+const fmt = (n) => formatAmount(n)
 
 function showOrigin(it) {
   return it.productOriginalPrice != null && Number(it.productOriginalPrice) > Number(it.productPrice)
@@ -496,6 +541,35 @@ onShow(async () => {
 .pb-strong {
   font-weight: 700;
   color: #E8590C;
+}
+/* 门槛说明（满减只算普通商品 / 运费含秒杀）—— 没有它用户不知道该凑哪一类商品 */
+.pb-note {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #B4886B;
+  line-height: 1.4;
+}
+
+/* 运费进度条：蓝色系，与满减（橙色）在视觉上分开，避免误看成同一个门槛 */
+.promo-bar.freight {
+  background: #F4F6FF;
+  border-top: 1rpx solid #EDEFFB;
+}
+.promo-bar.freight .pb-track {
+  background: #DDE3FF;
+}
+.promo-bar.freight .pb-text {
+  color: #2C3E8F;
+}
+.promo-bar.freight .pb-note {
+  color: #7E88B8;
+}
+.pb-fill.blue {
+  background: linear-gradient(90deg, #7C8CF8 0%, #4F6EF7 100%);
+}
+.blue-t {
+  color: #4F6EF7;
 }
 .sum {
   font-size: 32rpx;
