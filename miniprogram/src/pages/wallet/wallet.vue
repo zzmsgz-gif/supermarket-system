@@ -88,15 +88,28 @@ async function loadTxns(reset = false) {
   }
 }
 
+// editable 弹窗的占位文案。⚠️ 必须放 placeholderText，不能放 content ——
+// uni.showModal 在 editable:true 时会把 content 当作**输入框初始值**（而不是提示），
+// 用户点进去就看到"输入充值金额（元）"这几个字，得先手动按退格删掉才能输入。
+// （2026-11-15 用户反馈「这种提示文字在点击后不应该还留在那里」）
+const RECHARGE_PLACEHOLDER = '输入充值金额（元），如 100'
+
 function doRecharge() {
   uni.showModal({
     title: '充值',
-    content: '输入充值金额（元）',
+    // 留空：内容由用户输入
+    content: '',
     editable: true,
-    placeholderText: '如 100',
+    placeholderText: RECHARGE_PLACEHOLDER,
     success: async (r) => {
       if (!r.confirm) return
-      const amt = Number(r.content)
+      const raw = String(r.content || '').trim()
+      // H5 下没输入时 res.content 会回填 placeholderText（这个坑之前踩过），要排除
+      if (!raw || raw === RECHARGE_PLACEHOLDER) {
+        uni.showToast({ title: '请输入充值金额', icon: 'none' })
+        return
+      }
+      const amt = Number(raw)
       if (!amt || amt <= 0) {
         uni.showToast({ title: '金额无效', icon: 'none' })
         return

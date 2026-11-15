@@ -14,7 +14,12 @@
       <!-- 昵称：按视觉宽度校验（中文 2 列 / 英文 1 列，上限 12 列） -->
       <view class="row">
         <text class="lbl">昵称</text>
-        <input class="inp" v-model="form.nickname" placeholder="给自己起个名字" maxlength="30" />
+        <input
+          class="inp"
+          v-model="form.nickname"
+          placeholder="给自己起个名字"
+          maxlength="30"
+        />
       </view>
       <view class="hint" :class="{ warn: nickOver }">{{ nickHint }}</view>
 
@@ -125,20 +130,34 @@ function onBirthday(e) {
   form.birthday = e.detail.value
 }
 
+// —— 昵称 ——
+// 后端建微信账号时会把昵称写成「微信用户」（AuthService.wechatLogin 的默认值），
+// 那是系统占位词而不是用户起的名字。如果原样回填到输入框，用户点进去看到
+// 「微信用户」杵在框里还得先删掉才能输入（用户反馈：「这种提示文字在点击后不应该还留在那里」）。
+// 所以：**把默认昵称视为「未设置」→ 框里留空 + 显示 placeholder 提示**；
+// 保存时如果用户没填，就不提交 nickname 字段（后端 hasText 才更新），保持原值不动。
+const DEFAULT_NICKNAME = '微信用户'
+
 // —— 昵称宽度 ——
 const nickColumns = computed(() => nicknameColumns(form.nickname))
 const nickOver = computed(() => nickColumns.value > NICKNAME_MAX_COLUMNS)
-const nickHint = computed(() =>
-  nickOver.value ? NICKNAME_TOO_WIDE : `已用 ${nickColumns.value}/${NICKNAME_MAX_COLUMNS} 列（中文算 2 列）`
-)
+const nickHint = computed(() => {
+  if (!String(form.nickname || '').trim()) return '留空则保持原昵称不变'
+  return nickOver.value ? NICKNAME_TOO_WIDE : `已用 ${nickColumns.value}/${NICKNAME_MAX_COLUMNS} 列（中文算 2 列）`
+})
 
 // —— 加载 ——
+// 记住服务端的原始昵称：用于判断"用户是不是把原本有的昵称清空了"
+const originalNickname = ref('')
+
 onLoad(async () => {
   try {
     const me = await fetchMe()
     if (!me) return
     account.value = me.username || ''
-    form.nickname = me.nickname || ''
+    originalNickname.value = me.nickname || ''
+    // 系统默认昵称「微信用户」视作未设置 → 输入框留空，显示 placeholder
+    form.nickname = (me.nickname && me.nickname !== DEFAULT_NICKNAME) ? me.nickname : ''
     form.avatarUrl = me.avatarUrl || ''
     form.gender = normalizeGender(me.gender)
     form.birthday = me.birthday || ''
@@ -193,7 +212,10 @@ async function save() {
     uni.showToast({ title: NICKNAME_TOO_WIDE, icon: 'none' })
     return
   }
-  if (!String(form.nickname || '').trim()) {
+  const trimmedNick = String(form.nickname || '').trim()
+  // 昵称为空允许提交（用于"原本就是系统默认昵称、只想改别的字段"），
+  // 但如果原本有一个真实昵称、用户却把它清空了，要拦住，避免误清。
+  if (!trimmedNick && originalNickname.value && originalNickname.value !== DEFAULT_NICKNAME) {
     uni.showToast({ title: '昵称不能为空', icon: 'none' })
     return
   }
@@ -207,14 +229,17 @@ async function save() {
     // 手机号不传：后端对 phone 有"必须带 verifyToken 才能换绑"的硬限制，
     // 项目暂无短信通道，所以这一项做成只读、不参与提交。
     const payload = {
-      nickname: String(form.nickname).trim(),
       avatarUrl: form.avatarUrl || '',
       // gender 不能发空串（后端 @Pattern 只认 MALE/FEMALE/SECRET），"保密"就是 SECRET
       gender: form.gender || 'SECRET',
       birthday: form.birthday || '',
       email: String(form.email || '').trim()
     }
+    // 昵称留空就不传 —— 后端 hasText 才更新，等于保持原值（不会把「微信用户」变成空）
+    if (trimmedNick) payload.nickname = trimmedNick
     const updated = await updateProfile(payload)
+    // 记下新的原始值，供本次页面内后续保存判断
+    originalNickname.value = updated.nickname || ''
     // 同步本地缓存 —— 否则返回个人中心还显示旧昵称，用户会以为没保存成功
     updateStoredUser({
       nickname: updated.nickname,
