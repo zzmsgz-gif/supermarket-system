@@ -14,6 +14,12 @@
           <text class="now">¥{{ fmt(it.productPrice) }}</text>
           <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
         </view>
+        <!-- 单行小计：单价 × 件数。只显示单价的话用户得自己心算，
+             也看不出合计是怎么来的（尤其件数多时）。
+             数量为 1 时不显示 —— 此时单价就是小计，重复没意义。 -->
+        <view class="subtotal" v-if="it.quantity > 1">
+          小计 <text class="sub-amt">¥{{ fmt(subtotalOf(it)) }}</text>
+        </view>
         <view class="off" v-if="!it.onSale">已下架 / 无货</view>
       </view>
       <view class="qty">
@@ -121,6 +127,13 @@ const items = ref([])
 // 后端 CartResponse.items 为扁平字段：productName / productPrice / productOriginalPrice /
 // productCoverUrl / skuSpec / quantity / subtotalAmount / flashSaleId / onSale ...
 // subtotalAmount 已是「按秒杀价拆分后的精确小计」，直接用它与即可
+// 单行小计：优先后端 subtotalAmount（已按秒杀价拆分），兜底「单价 × 件数」
+function subtotalOf(it) {
+  const byApi = Number(it.subtotalAmount)
+  if (byApi) return byApi
+  return (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)
+}
+
 const total = computed(() =>
   items.value.reduce(
     (s, it) => s + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
@@ -283,6 +296,16 @@ onShow(async () => {
   font-size: 22rpx;
   color: #999;
   margin-top: 4rpx;
+}
+/* 单行小计（单价 × 件数） */
+.subtotal {
+  margin-top: 6rpx;
+  font-size: 21rpx;
+  color: #8A8578;
+}
+.sub-amt {
+  font-weight: 600;
+  color: #4B5563;
 }
 .price {
   margin-top: 12rpx;

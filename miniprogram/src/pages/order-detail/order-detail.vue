@@ -33,7 +33,7 @@
         <view class="info">
           <view class="name">{{ it.productName }}</view>
           <view class="spec" v-if="it.skuSpec">{{ it.skuSpec }}</view>
-          <view class="meta">¥{{ it.productPrice }} × {{ it.quantity }}</view>
+          <view class="meta">¥{{ fmt(it.productPrice) }} × {{ it.quantity }}</view>
           <!-- 该商品行的售后进度：一笔订单里不同商品可以各走各的售后 -->
           <view class="line-ret" v-if="returnOfItem(it.id)" @click.stop="goReturns">
             <text class="lr-tag" :class="statusClass(returnOfItem(it.id).status)">
@@ -42,7 +42,7 @@
             <text class="lr-more">查看进度 ›</text>
           </view>
         </view>
-        <view class="sub">¥{{ it.subtotalAmount }}</view>
+        <view class="sub">¥{{ fmt(it.subtotalAmount) }}</view>
         <!-- 按行申请售后：只在该行没有在途售后时出现 -->
         <view class="line-op" v-if="canApplyItem(it.id)" @click.stop="applyRefund(it)">售后</view>
       </view>
@@ -65,12 +65,12 @@
     </view>
 
     <view class="block">
-      <view class="kv"><text>商品金额</text><text>¥{{ order.totalAmount }}</text></view>
-      <view class="kv" v-if="order.discountAmount"><text>优惠</text><text class="minus">-¥{{ order.discountAmount }}</text></view>
-      <view class="kv" v-if="order.activityDiscount"><text>活动优惠</text><text class="minus">-¥{{ order.activityDiscount }}</text></view>
-      <view class="kv" v-if="order.freightAmount"><text>运费</text><text>¥{{ order.freightAmount }}</text></view>
-      <view class="kv" v-if="order.pointsDiscountAmount"><text>积分抵扣</text><text class="minus">-¥{{ order.pointsDiscountAmount }}</text></view>
-      <view class="kv total"><text>实付</text><text class="amt">¥{{ order.payAmount }}</text></view>
+      <view class="kv"><text>商品金额</text><text>¥{{ fmt(order.totalAmount) }}</text></view>
+      <view class="kv" v-if="order.discountAmount"><text>优惠</text><text class="minus">-¥{{ fmt(order.discountAmount) }}</text></view>
+      <view class="kv" v-if="order.activityDiscount"><text>活动优惠</text><text class="minus">-¥{{ fmt(order.activityDiscount) }}</text></view>
+      <view class="kv" v-if="order.freightAmount"><text>运费</text><text>¥{{ fmt(order.freightAmount) }}</text></view>
+      <view class="kv" v-if="order.pointsDiscountAmount"><text>积分抵扣</text><text class="minus">-¥{{ fmt(order.pointsDiscountAmount) }}</text></view>
+      <view class="kv total"><text>实付</text><text class="amt">¥{{ fmt(order.payAmount) }}</text></view>
     </view>
 
     <!-- 订单信息：客服对接、售后申诉都要用到订单号，原来这一页完全看不到 -->
@@ -140,8 +140,11 @@ import { onLoad } from '@dcloudio/uni-app'
 import { getOrder, payOrder, confirmReceipt, reorder, cancelOrder } from '@/api/order'
 import { applyReturn, listReturnsByOrder } from '@/api/returns'
 import { submitReview } from '@/api/review'
-import { orderStatusLabel, fulfillmentLabel, formatTime } from '@/utils/format'
+import { orderStatusLabel, fulfillmentLabel, formatTime, formatAmount } from '@/utils/format'
 import { fullUrl } from '@/config'
+
+// 金额统一两位小数（后端 BigDecimal 转成 number 后可能有浮点尾巴）
+const fmt = (n) => formatAmount(n)
 
 const order = ref(null)
 const showReview = ref(false)

@@ -8,7 +8,9 @@
         <view class="info">
           <view class="name">{{ it.productName }}</view>
           <view class="spec" v-if="it.skuSpec">{{ it.skuSpec }}</view>
-          <view class="meta">¥{{ it.productPrice }} × {{ it.quantity }}</view>
+          <view class="meta">¥{{ fmt(it.productPrice) }} × {{ it.quantity }}
+            <text class="meta-sum" v-if="it.quantity > 1">= ¥{{ fmt(it.subtotalAmount) }}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -85,7 +87,7 @@
       </view>
     </view>
 
-    <view class="total">合计 ¥{{ total }}</view>
+    <view class="total">合计 ¥{{ fmt(total) }}</view>
     <view class="channel">支付方式：钱包余额</view>
     <button
       class="pay"
@@ -108,6 +110,10 @@ import { listAddresses } from '@/api/address'
 import { listDeliverySlots } from '@/api/fulfillment'
 import { getProduct } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
+import { formatAmount } from '@/utils/format'
+
+// 金额统一两位小数，避免 151.79999999999998 这类浮点尾巴
+const fmt = (n) => formatAmount(n)
 import { fullUrl } from '@/config'
 
 const modeList = [
@@ -197,7 +203,9 @@ async function loadCart() {
     productName: it.productName,
     skuSpec: it.skuSpec,
     productPrice: it.productPrice,
-    quantity: it.quantity
+    quantity: it.quantity,
+    // 单行小计：后端已按秒杀价拆分好，直接带上；没有就按单价×件数兜底
+    subtotalAmount: Number(it.subtotalAmount) || (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)
   }))
 }
 
@@ -211,7 +219,8 @@ async function loadQuick(opts) {
     productName: product.name,
     skuSpec: opts.skuSpec,
     productPrice: price,
-    quantity: qty
+    quantity: qty,
+    subtotalAmount: (Number(price) || 0) * qty
   }]
 }
 
@@ -378,6 +387,10 @@ async function submit() {
   font-size: 24rpx;
   color: #C0392B;
   margin-top: 8rpx;
+}
+/* 「= ¥小计」比单价弱一档，避免一行里两处红色抢眼 */
+.meta-sum {
+  color: #8A8578;
 }
 .modes {
   display: flex;
