@@ -23,4 +23,18 @@ export function changePassword(payload) {
   return request('/auth/change-password', { method: 'POST', data: payload })
 }
 
+/**
+ * 更新个人资料（需登录）。后端 PUT /auth/me，返回更新后的完整用户对象。
+ *
+ * 后端校验（前端应提前拦，别等报错）：
+ * - 昵称按「视觉宽度」≤12 列（中文算 2 列 → 最多 6 个字；英文算 1 列 → 12 个字母）
+ * - 生日不能晚于今天
+ * - 邮箱 / 手机号不能与其他账号重复（409）
+ * - **换绑手机号必须带 verifyToken** —— 项目暂无短信通道，
+ *   所以资料页把手机号做成只读，不给改，免得用户点进去只能看到"需要验证"。
+ */
+export function updateProfile(payload) {
+  return request('/auth/me', { method: 'PUT', data: payload })
+}
+
 export { getStoredUser }

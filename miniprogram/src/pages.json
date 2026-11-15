@@ -19,6 +19,7 @@
     { "path": "pages/wallet/wallet", "style": { "navigationBarTitleText": "我的钱包" } },
     { "path": "pages/returns/returns", "style": { "navigationBarTitleText": "我的售后" } },
     { "path": "pages/points/points", "style": { "navigationBarTitleText": "积分明细" } },
+    { "path": "pages/profile/profile", "style": { "navigationBarTitleText": "个人资料" } },
     { "path": "pages/legal/legal", "style": { "navigationBarTitleText": "协议" } }
   ],
   "globalStyle": {

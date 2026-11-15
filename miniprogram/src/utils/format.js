@@ -85,3 +85,35 @@ export function formatCountdown(sec) {
   const p = (x) => (x < 10 ? '0' + x : '' + x)
   return h > 0 ? p(h) + ':' + p(m) + ':' + p(s) : p(m) + ':' + p(s)
 }
+
+/**
+ * 昵称「视觉宽度」计算 —— 必须与后端 util/TextWidth.java 的 columns() 同一套规则，
+ * 也必须与 web 端 frontend/src/utils/format.js 的 nicknameColumns() 一致，
+ * 否则会出现「前端放行、后端拒」或反过来。
+ *
+ * 约定：汉字/假名/韩文/全角 = 2 列，英文数字与半角符号 = 1 列。
+ * 为什么按宽度而不是字符数：12 个汉字占 24 列会把订单行、评价撑折行，而 12 个字母还很宽松；
+ * 按字符数定两套规则（中文 ≤6、英文 ≤12）又判不了「小明Tom」这种混合昵称。
+ */
+export const NICKNAME_MAX_COLUMNS = 12
+
+export function nicknameColumns(value) {
+  const text = String(value || '')
+  let width = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)
+    const wide =
+      (cp >= 0x1100 && cp <= 0x115f) ||
+      (cp >= 0x2e80 && cp <= 0xa4cf) ||
+      (cp >= 0xac00 && cp <= 0xd7a3) ||
+      (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0xfe30 && cp <= 0xfe4f) ||
+      (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6)
+    width += wide ? 2 : 1
+  }
+  return width
+}
+
+/** 昵称超限的统一文案（与后端 TextWidth.NICKNAME_TOO_WIDE 一致） */
+export const NICKNAME_TOO_WIDE = '昵称过长：中文不超过 6 个字，英文不超过 12 个字母'

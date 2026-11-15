@@ -1,10 +1,12 @@
 <template>
   <view class="mine">
-    <!-- 头部：头像 + 昵称 + 等级标签 -->
+    <!-- 头部：头像 + 昵称 + 等级标签；点这一块进「个人资料」改头像/昵称/性别/生日/邮箱 -->
     <view class="header">
-      <image class="avatar" :src="user.avatarUrl ? fullUrl(user.avatarUrl) : defaultAvatar" mode="aspectFill" />
-      <view class="uinfo">
-        <view class="uname">{{ user.username || '微信用户' }}</view>
+      <image class="avatar" :src="user.avatarUrl ? fullUrl(user.avatarUrl) : defaultAvatar" mode="aspectFill" @click="go('profile')" />
+      <view class="uinfo" @click="go('profile')">
+        <!-- 优先显示昵称：昵称才是用户能改的"名字"，username 是登录标识。
+             改完资料回来看不到变化 = 用户以为没保存成功，所以这里必须优先 nickname。 -->
+        <view class="uname">{{ user.nickname || user.username || '微信用户' }}</view>
         <view class="utag" v-if="profile">{{ profile.levelName || ('Lv.' + (profile.memberLevel || 1)) }}</view>
         <view class="utag utag-guest" v-else>普通用户</view>
       </view>
@@ -39,6 +41,9 @@
     <!-- 功能网格：两列 -->
     <view class="card">
       <view class="grid2">
+        <view class="g2" @click="go('profile')">
+          <text class="g2-ic">👤</text><text class="g2-t">个人资料</text><text class="g2-ar">›</text>
+        </view>
         <view class="g2" @click="go('returns')">
           <text class="g2-ic">🧾</text><text class="g2-t">我的售后</text><text class="g2-ar">›</text>
         </view>
@@ -253,9 +258,14 @@ onShow(() => {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
-  if (!user.username || user.username === '微信用户') {
-    const u = getStoredUser()
-    if (u) Object.assign(user, u)
+  // 每次进入都从本地缓存同步一次资料字段。
+  // 原来只在「username 为空或等于微信用户」时才同步 —— 结果在「个人资料」页改完昵称/头像后
+  // 返回这里仍显示旧值（user 是 reactive 快照，页面没重建就不会变），看着像没保存成功。
+  const cached = getStoredUser()
+  if (cached) {
+    user.username = cached.username || user.username
+    user.nickname = cached.nickname || ''
+    user.avatarUrl = cached.avatarUrl || ''
   }
   load()
   // tab 页每次切回来都对一次角标（内部有 1.2s 节流，不会因为连点 tab 反复请求）
