@@ -32,26 +32,32 @@
     </view>
 
     <!-- 我的订单：四宫格，带各状态待办数 -->
-    <!-- 我的订单：四宫格，带各状态待办数。
-         2026-11-15 去掉右上角「全部订单 ›」—— 四宫格第一格就是「全部订单」，入口重复。 -->
+    <!-- 我的订单：四宫格 = 四个待办状态，按流程顺序排列。
+         2026-11-15 两处调整（用户反馈「全部订单」入口冗余）：
+         1) 去掉四宫格里的「全部订单」格 —— 它和标题行右侧的「全部订单 ›」重复；
+            右上角那个留作唯一入口（电商通用布局：标题 + "全部订单 >"，下面全是状态）。
+         2) 该格换成原本缺失的「待发货」(PAID) —— 用户付完款后最想看的恰恰是这个状态，
+            之前四宫格里没有入口，只能靠订单页 tab。 -->
     <view class="card">
       <view class="card-head">
         <text class="card-t">我的订单</text>
+        <text class="card-more" @click="goOrderTab('ALL')">全部订单 ›</text>
       </view>
       <view class="grid4">
-        <view class="g4" @click="goOrderTab('ALL')">
+        <view class="g4" @click="goOrderTab('PENDING_PAYMENT')">
+          <text class="g4-ic">💳</text>
+          <text class="g4-t">待付款</text>
+          <text class="g4-badge" v-if="orderCounts.PENDING_PAYMENT">{{ orderCounts.PENDING_PAYMENT }}</text>
+        </view>
+        <view class="g4" @click="goOrderTab('PAID')">
           <text class="g4-ic">📦</text>
-          <text class="g4-t">全部订单</text>
+          <text class="g4-t">待发货</text>
+          <text class="g4-badge" v-if="orderCounts.PAID">{{ orderCounts.PAID }}</text>
         </view>
         <view class="g4" @click="goOrderTab('SHIPPED')">
           <text class="g4-ic">🚚</text>
           <text class="g4-t">待收货</text>
           <text class="g4-badge" v-if="orderCounts.SHIPPED">{{ orderCounts.SHIPPED }}</text>
-        </view>
-        <view class="g4" @click="goOrderTab('PENDING_PAYMENT')">
-          <text class="g4-ic">💳</text>
-          <text class="g4-t">待付款</text>
-          <text class="g4-badge" v-if="orderCounts.PENDING_PAYMENT">{{ orderCounts.PENDING_PAYMENT }}</text>
         </view>
         <view class="g4" @click="goOrderTab('COMPLETED')">
           <text class="g4-ic">✅</text>
@@ -166,7 +172,7 @@ const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
 
 // —— 首页三宫格 / 订单四宫格需要的数据 ——
 const couponCount = ref(0)
-const orderCounts = ref({ PENDING_PAYMENT: 0, SHIPPED: 0 })
+const orderCounts = ref({ PENDING_PAYMENT: 0, PAID: 0, SHIPPED: 0 })
 
 /**
  * 跳「我的订单」并预选 tab。
@@ -271,18 +277,21 @@ async function load() {
   } catch (e) {
     couponCount.value = 0
   }
-  // 订单待办数：只查「待付款 / 待收货」两个 tab 的总数（各 1 条即可拿 total），失败不影响页面
+  // 订单待办数：只查「待付款 / 待发货 / 待收货」三个 tab 的总数（各 1 条即可拿 total），失败不影响页面
+  // 已完成不需要红数字（没有"待办"含义），省一次请求
   try {
-    const [pending, shipped] = await Promise.all([
+    const [pending, paid, shipped] = await Promise.all([
       listOrders({ status: 'PENDING_PAYMENT', page: 1, size: 1 }).catch(() => null),
+      listOrders({ status: 'PAID', page: 1, size: 1 }).catch(() => null),
       listOrders({ status: 'SHIPPED', page: 1, size: 1 }).catch(() => null)
     ])
     orderCounts.value = {
       PENDING_PAYMENT: (pending && pending.total) || 0,
+      PAID: (paid && paid.total) || 0,
       SHIPPED: (shipped && shipped.total) || 0
     }
   } catch (e) {
-    orderCounts.value = { PENDING_PAYMENT: 0, SHIPPED: 0 }
+    orderCounts.value = { PENDING_PAYMENT: 0, PAID: 0, SHIPPED: 0 }
   }
 }
 
