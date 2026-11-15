@@ -5,6 +5,8 @@
   "scripts": {
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",
+    "verify:mp": "node scripts/verify-build.js",
+    "build:mp-weixin:checked": "uni build -p mp-weixin && node scripts/verify-build.js",
     "dev:h5": "uni",
     "build:h5": "uni build"
   },
