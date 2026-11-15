@@ -122,6 +122,7 @@ import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder, refundApply
 import { listHotProducts } from '@/api/product'
 import { orderStatusLabel, fulfillmentLabel } from '@/utils/format'
 import { isLoggedIn } from '@/store/auth'
+import { syncCartBadge } from '@/utils/cartBadge'
 import { fullUrl } from '@/config'
 
 const tabs = [
@@ -337,6 +338,8 @@ onShow(() => {
     if (tabs.some((t) => t.key === pending)) activeTab.value = pending
   }
   load(true)
+  // tab 页切回来时对一次购物车角标（内部有 1.2s 节流）
+  syncCartBadge()
 })
 
 onReachBottom(() => {

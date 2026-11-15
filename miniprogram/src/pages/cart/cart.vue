@@ -82,6 +82,7 @@
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCart, updateCartItem, removeCartItem } from '@/api/cart'
+import { applyCartBadge } from '@/utils/cartBadge'
 import { listActiveActivities } from '@/api/activity'
 import { cartActivityProgress } from '@/utils/activity'
 import { listHotProducts } from '@/api/product'
@@ -131,6 +132,9 @@ async function load() {
   }
   const res = await getCart()
   items.value = (res && res.items) ? res.items : []
+  // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
+  // 改数量 / 删除 / 从别的页面切回来都会走 load，所以这一处就覆盖了全部路径。
+  applyCartBadge(items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0))
 }
 
 // —— 空车时的"大家都在买"推荐 ——

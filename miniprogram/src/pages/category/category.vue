@@ -93,6 +93,7 @@ import { ref, computed, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { addToCart, getCart } from '@/api/cart'
+import { syncCartBadge } from '@/utils/cartBadge'
 import { fullUrl } from '@/config'
 
 const PAGE_SIZE = 20
@@ -220,19 +221,8 @@ function goCartFromTip() {
   uni.switchTab({ url: '/pages/cart/cart' })
 }
 
-async function refreshCartBadge() {
-  try {
-    const cart = await getCart()
-    const list = (cart && cart.items) || (Array.isArray(cart) ? cart : [])
-    const n = list.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
-    if (n > 0) uni.setTabBarBadge({ index: 1, text: n > 99 ? '99+' : String(n) })
-    else uni.removeTabBarBadge({ index: 1 })
-    return n
-  } catch (e) {
-    // 角标失败不影响主流程
-    return 0
-  }
-}
+// 购物车角标统一走 utils/cartBadge（全局唯一实现）
+const refreshCartBadge = () => syncCartBadge(true)
 
 function goSearch() {
   uni.navigateTo({ url: '/pages/search/search' })

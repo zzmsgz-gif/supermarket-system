@@ -32,10 +32,11 @@
     </view>
 
     <!-- 我的订单：四宫格，带各状态待办数 -->
+    <!-- 我的订单：四宫格，带各状态待办数。
+         2026-11-15 去掉右上角「全部订单 ›」—— 四宫格第一格就是「全部订单」，入口重复。 -->
     <view class="card">
       <view class="card-head">
         <text class="card-t">我的订单</text>
-        <text class="card-more" @click="go('orders')">全部订单 ›</text>
       </view>
       <view class="grid4">
         <view class="g4" @click="goOrderTab('ALL')">
@@ -82,7 +83,7 @@
           <text class="g2-badge" v-if="unread > 0">{{ unread }}</text>
           <text class="g2-ar">›</text>
         </view>
-        <view class="g2" @click="openPwd">
+        <view class="g2" v-if="canChangePassword" @click="openPwd">
           <text class="g2-ic">🔑</text><text class="g2-t">修改密码</text><text class="g2-ar">›</text>
         </view>
         <view class="g2" @click="goLegal('terms')">
@@ -127,7 +128,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getStoredUser, clearAuth, isLoggedIn } from '@/store/auth'
 import { getWallet } from '@/api/wallet'
@@ -136,6 +137,7 @@ import { unreadCount } from '@/api/message'
 import { changePassword } from '@/api/auth'
 import { listMyCoupons } from '@/api/coupon'
 import { listOrders } from '@/api/order'
+import { syncCartBadge, clearCartBadge } from '@/utils/cartBadge'
 import { fullUrl } from '@/config'
 
 const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
@@ -143,6 +145,19 @@ const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy5
 const user = reactive(getStoredUser() || { username: '微信用户' })
 const walletBalance = ref('0.00')
 const profile = ref(null)
+
+/**
+ * 「修改密码」只在账号密码用户里显示。
+ *
+ * 微信一键登录的账号 username 是后端自动生成的 `wx_<openid>`，
+ * 密码写的是随机 UUID（见 AuthService.wechatLogin）—— 用户根本不知道原密码是什么，
+ * 点进去输任何值都会被「原密码错误」拒掉，是个死入口。
+ * 而账号密码注册的用户仍然需要改密，所以不能一刀切删掉，只能按账号类型条件显示。
+ */
+const canChangePassword = computed(() => {
+  const u = String(user.username || '')
+  return !!u && u !== '微信用户' && !u.startsWith('wx_')
+})
 const unread = ref(0)
 
 // tabBar 页面只能用 switchTab 打开：用 navigateTo 跳 tabBar 页会**静默失败**
@@ -278,6 +293,8 @@ function doLogout() {
     success: (r) => {
       if (!r.confirm) return
       clearAuth()
+      // 退出后角标必须清掉，否则下一个登录的账号会先看到上一个账号的购物车数字
+      clearCartBadge()
       uni.reLaunch({ url: '/pages/index/index' })
     }
   })
@@ -293,6 +310,8 @@ onShow(() => {
     if (u) Object.assign(user, u)
   }
   load()
+  // tab 页每次切回来都对一次角标（内部有 1.2s 节流，不会因为连点 tab 反复请求）
+  syncCartBadge()
 })
 </script>
 

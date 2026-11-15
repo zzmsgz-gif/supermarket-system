@@ -216,6 +216,7 @@ import { getProduct, listProducts } from '@/api/product'
 import { listActiveActivities } from '@/api/activity'
 import { productActivityTag } from '@/utils/activity'
 import { addToCart } from '@/api/cart'
+import { syncCartBadge } from '@/utils/cartBadge'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { listProductReviews } from '@/api/review'
 import { request } from '@/api/request'
@@ -514,6 +515,8 @@ async function add() {
   }
   try {
     await addToCart(product.value.id, quantity.value, skuSpecText.value)
+    // 详情页不是 tabBar 页，但角标要在用户切回 tab 页时是对的 —— 这里主动刷新一次
+    syncCartBadge(true)
     uni.showToast({ title: '已加入购物车', icon: 'success' })
   } catch (e) {
     uni.showToast({ title: (e && e.message) || '加购失败，请重试', icon: 'none' })

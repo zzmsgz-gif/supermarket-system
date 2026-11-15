@@ -237,6 +237,7 @@ import { addToCart } from '@/api/cart'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl, BRAND_NAME } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
+import { syncCartBadge } from '@/utils/cartBadge'
 
 const categories = ref([])
 const banners = ref([])
@@ -489,23 +490,9 @@ function goCartFromTip() {
   uni.switchTab({ url: '/pages/cart/cart' })
 }
 
-async function refreshCartBadge() {
-  try {
-    const { getCart } = await import('@/api/cart')
-    const cart = await getCart()
-    const list = (cart && cart.items) || (Array.isArray(cart) ? cart : [])
-    const n = list.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
-    if (n > 0) {
-      uni.setTabBarBadge({ index: 1, text: n > 99 ? '99+' : String(n) })
-    } else {
-      uni.removeTabBarBadge({ index: 1 })
-    }
-    return n
-  } catch (e) {
-    // 角标失败不影响主流程
-    return 0
-  }
-}
+// 购物车角标统一走 utils/cartBadge（全局唯一实现）：
+// 加购后要立刻生效，所以 force=true 跳过节流
+const refreshCartBadge = () => syncCartBadge(true)
 
 // —— 首页原地搜索：边打字边出结果，点结果直接进详情；
 //    只有点「搜索」或「查看全部结果」才进搜索页（原来点搜索框整块跳页，用户反馈不该这样）

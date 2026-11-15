@@ -1,9 +1,19 @@
 <script>
+import { syncCartBadge } from '@/utils/cartBadge'
+import { isLoggedIn } from '@/store/auth'
+
 export default {
   onLaunch() {
     // 启动时可在此尝试用本地 token 静默刷新登录态
   },
-  onShow() {}
+  onShow() {
+    // 每次小程序回到前台都对齐一次购物车角标：
+    // 用户可能在别的小程序/网页里加过购，也可能只是切出去又回来，
+    // tabBar 角标是"当前事实"而不是"上次操作的残留"。
+    // 延时一点：冷启动时 tabBar 还没渲染完，setTabBarBadge 会失败。
+    if (!isLoggedIn()) return
+    setTimeout(() => { syncCartBadge(true) }, 300)
+  }
 }
 </script>
 

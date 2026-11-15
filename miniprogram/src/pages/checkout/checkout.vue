@@ -101,6 +101,7 @@
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
+import { syncCartBadge } from '@/utils/cartBadge'
 import { createOrder, payOrder, quickBuy } from '@/api/order'
 import { listStores } from '@/api/store'
 import { listAddresses } from '@/api/address'
@@ -313,6 +314,9 @@ async function submit() {
     }
 
     const order = mode.value === 'quick' ? await quickBuy(payload) : await createOrder(payload)
+    // 下单会把购物车里的这些行扣掉，角标要跟着减
+    // （不刷新的话用户切回购物车 tab 还看到旧数字，以为没下单成功）
+    syncCartBadge(true)
     uni.hideLoading()
     // 下单成功 → 进收银台（不再在这一步直接扣款）：
     // 用户能看到待付金额、15 分钟倒计时，余额不足还能先去充值，对齐 web 的 /pay/:id。
