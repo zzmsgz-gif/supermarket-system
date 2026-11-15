@@ -31,40 +31,10 @@
       </view>
     </view>
 
-    <!-- 我的订单：四宫格，带各状态待办数 -->
-    <!-- 我的订单：四宫格 = 四个待办状态，按流程顺序排列。
-         2026-11-15 两处调整（用户反馈「全部订单」入口冗余）：
-         1) 去掉四宫格里的「全部订单」格 —— 它和标题行右侧的「全部订单 ›」重复；
-            右上角那个留作唯一入口（电商通用布局：标题 + "全部订单 >"，下面全是状态）。
-         2) 该格换成原本缺失的「待发货」(PAID) —— 用户付完款后最想看的恰恰是这个状态，
-            之前四宫格里没有入口，只能靠订单页 tab。 -->
-    <view class="card">
-      <view class="card-head">
-        <text class="card-t">我的订单</text>
-        <text class="card-more" @click="goOrderTab('ALL')">全部订单 ›</text>
-      </view>
-      <view class="grid4">
-        <view class="g4" @click="goOrderTab('PENDING_PAYMENT')">
-          <text class="g4-ic">💳</text>
-          <text class="g4-t">待付款</text>
-          <text class="g4-badge" v-if="orderCounts.PENDING_PAYMENT">{{ orderCounts.PENDING_PAYMENT }}</text>
-        </view>
-        <view class="g4" @click="goOrderTab('PAID')">
-          <text class="g4-ic">📦</text>
-          <text class="g4-t">待发货</text>
-          <text class="g4-badge" v-if="orderCounts.PAID">{{ orderCounts.PAID }}</text>
-        </view>
-        <view class="g4" @click="goOrderTab('SHIPPED')">
-          <text class="g4-ic">🚚</text>
-          <text class="g4-t">待收货</text>
-          <text class="g4-badge" v-if="orderCounts.SHIPPED">{{ orderCounts.SHIPPED }}</text>
-        </view>
-        <view class="g4" @click="goOrderTab('COMPLETED')">
-          <text class="g4-ic">✅</text>
-          <text class="g4-t">已完成</text>
-        </view>
-      </view>
-    </view>
+    <!-- 2026-11-15 用户要求删除整张「我的订单」卡片：
+         底部 tabBar 已有「订单」入口，个人中心再来一整块订单四宫格属于重复。
+         订单相关入口统一走底部 tab（页面内的各状态 tab 也都还在），
+         所以 orderCounts / goOrderTab / 待办数查询一并移除，少 3 次请求。 -->
 
     <!-- 功能网格：两列 -->
     <view class="card">
@@ -142,7 +112,6 @@ import { getMemberProfile } from '@/api/member'
 import { unreadCount } from '@/api/message'
 import { changePassword } from '@/api/auth'
 import { listMyCoupons } from '@/api/coupon'
-import { listOrders } from '@/api/order'
 import { syncCartBadge, clearCartBadge } from '@/utils/cartBadge'
 import { fullUrl } from '@/config'
 
@@ -170,23 +139,9 @@ const unread = ref(0)
 // （不报错也不跳，用户表现为"点了没反应"）——「我的订单」就是这个坑（2026-11-08 用户反馈）
 const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
 
-// —— 首页三宫格 / 订单四宫格需要的数据 ——
+// —— 三宫格数据 ——
+// 2026-11-15 删掉「我的订单」卡片后，orderCounts / goOrderTab 一并移除（订单走底部 tab）
 const couponCount = ref(0)
-const orderCounts = ref({ PENDING_PAYMENT: 0, PAID: 0, SHIPPED: 0 })
-
-/**
- * 跳「我的订单」并预选 tab。
- * ⚠️ orders 是 tabBar 页，switchTab **不支持带参数**，
- * 所以用 Storage 中转，orders.vue 的 onShow 里取一次就清掉。
- */
-function goOrderTab(status) {
-  if (status && status !== 'ALL') {
-    uni.setStorageSync('orders_pending_tab', status)
-  } else {
-    uni.removeStorageSync('orders_pending_tab')
-  }
-  uni.switchTab({ url: '/pages/orders/orders' })
-}
 
 // —— 修改密码 ——
 const pwdOpen = ref(false)
@@ -276,22 +231,6 @@ async function load() {
     couponCount.value = (cs || []).filter((c) => c.status === 'UNUSED').length
   } catch (e) {
     couponCount.value = 0
-  }
-  // 订单待办数：只查「待付款 / 待发货 / 待收货」三个 tab 的总数（各 1 条即可拿 total），失败不影响页面
-  // 已完成不需要红数字（没有"待办"含义），省一次请求
-  try {
-    const [pending, paid, shipped] = await Promise.all([
-      listOrders({ status: 'PENDING_PAYMENT', page: 1, size: 1 }).catch(() => null),
-      listOrders({ status: 'PAID', page: 1, size: 1 }).catch(() => null),
-      listOrders({ status: 'SHIPPED', page: 1, size: 1 }).catch(() => null)
-    ])
-    orderCounts.value = {
-      PENDING_PAYMENT: (pending && pending.total) || 0,
-      PAID: (paid && paid.total) || 0,
-      SHIPPED: (shipped && shipped.total) || 0
-    }
-  } catch (e) {
-    orderCounts.value = { PENDING_PAYMENT: 0, PAID: 0, SHIPPED: 0 }
   }
 }
 
@@ -587,59 +526,9 @@ onShow(() => {
   padding: 8rpx 24rpx 20rpx;
   box-shadow: 0 2rpx 10rpx rgba(31, 41, 55, 0.03);
 }
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20rpx 0 12rpx;
-}
-.card-t {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #1F2937;
-}
-.card-more {
-  font-size: 23rpx;
-  color: #9CA3AF;
-}
 
-/* 订单四宫格 */
-.grid4 {
-  display: flex;
-  padding-top: 6rpx;
-}
-.g4 {
-  position: relative;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-  padding: 14rpx 0;
-}
-.g4-ic {
-  font-size: 42rpx;
-  line-height: 1;
-}
-.g4-t {
-  font-size: 23rpx;
-  color: #4B5563;
-}
-.g4-badge {
-  position: absolute;
-  top: 4rpx;
-  right: 50%;
-  margin-right: -46rpx;
-  min-width: 30rpx;
-  height: 30rpx;
-  line-height: 30rpx;
-  text-align: center;
-  border-radius: 15rpx;
-  background: #C0392B;
-  color: #fff;
-  font-size: 18rpx;
-  padding: 0 6rpx;
-}
+/* 2026-11-15 「我的订单」整卡已删除，.card-head/.card-t/.card-more 与
+   .grid4/.g4/.g4-ic/.g4-t/.g4-badge 一并移除（订单入口走底部 tabBar） */
 
 /* 功能两列网格 */
 .grid2 {
