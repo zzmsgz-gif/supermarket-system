@@ -19,11 +19,25 @@ function authHeader() {
  */
 export function request(path, options = {}) {
   const { method = 'GET', data = {}, auth = true, raw = false } = options
+  // GET 时把 undefined / null / '' 的键剔掉。
+  // 为什么必须做：uni.request 会把 `{ categoryId: undefined }` 拼成 `categoryId=`（空值）而不是省略，
+  // 后端 `Long categoryId` 收到空串 → MethodArgumentTypeMismatchException →
+  // 报「请求参数类型错误」，用户看到的就是"搜索页没结果 + 这个报错"（2026-11-15 实测复现）。
+  // 放在封装层统一处理，省得每个页面各自判空。
+  let payload = data
+  if (method === 'GET' && payload && typeof payload === 'object') {
+    payload = {}
+    for (const k of Object.keys(data)) {
+      const v = data[k]
+      if (v === undefined || v === null || v === '') continue
+      payload[k] = v
+    }
+  }
   return new Promise((resolve, reject) => {
     uni.request({
       url: API_BASE + path,
       method,
-      data,
+      data: payload,
       header: auth ? authHeader() : { 'Content-Type': 'application/json' },
       success: (res) => {
         if (res.statusCode === 401) {

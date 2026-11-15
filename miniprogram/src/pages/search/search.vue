@@ -108,9 +108,27 @@ function goDetail(id) {
   uni.navigateTo({ url: '/pages/product/detail?id=' + id })
 }
 
+/**
+ * 解码 URL 参数。
+ * ⚠️ 跨端不一致：H5 拿到的 opts.keyword 已经是解码后的明文，**小程序拿到的是原始编码串**
+ * （实测小程序输入框里会显示 `%E8%8B%B9%E6%9E%9C` 而不是「苹果」）。
+ * 所以统一 decode 一次：明文再 decode 是幂等的；遇到含 % 的异常串用 try-catch 兜底。
+ */
+function safeDecode(s) {
+  if (!s) return ''
+  try {
+    return decodeURIComponent(s)
+  } catch (e) {
+    return s
+  }
+}
+
 onLoad(async (opts) => {
-  if (opts.keyword) keyword.value = opts.keyword
-  if (opts.categoryId) activeCat.value = Number(opts.categoryId)
+  if (opts.keyword) keyword.value = safeDecode(opts.keyword)
+  // 只在确实是数字时才设分类，避免 Number('abc') = NaN 传到后端触发"参数类型错误"
+  if (opts.categoryId && !isNaN(Number(opts.categoryId))) {
+    activeCat.value = Number(opts.categoryId)
+  }
   listCategories().then((cs) => (categories.value = cs || [])).catch(() => (categories.value = []))
   doSearch()
 })

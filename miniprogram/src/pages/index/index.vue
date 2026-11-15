@@ -859,6 +859,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 内部有 padding 子元素，统一按 border-box 算宽，避免 100% + padding 撑破右侧 */
+  box-sizing: border-box;
 }
 .ns-head {
   display: flex;
@@ -866,6 +868,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 26rpx 28rpx;
   border-bottom: 1rpx solid #F0EDE6;
+  box-sizing: border-box;
 }
 .ns-title {
   font-size: 30rpx;
@@ -876,14 +879,20 @@ onUnmounted(() => {
   font-size: 30rpx;
   color: #9CA3AF;
   padding: 0 8rpx;
+  flex-shrink: 0;
 }
 .ns-body {
   flex: 1;
   padding: 8rpx 28rpx 24rpx;
+  box-sizing: border-box;
+  /* scroll-view 在 flex 里必须允许收缩，否则内容会把自身撑宽 */
+  min-width: 0;
 }
 .ns-item {
   padding: 22rpx 0;
   border-bottom: 1rpx solid #F5F2EC;
+  box-sizing: border-box;
+  min-width: 0;
 }
 .ns-item:last-child {
   border-bottom: none;
@@ -893,17 +902,25 @@ onUnmounted(() => {
   align-items: baseline;
   justify-content: space-between;
   gap: 12rpx;
+  min-width: 0;
 }
 .ns-item-title {
   flex: 1;
+  /* ⭐ 关键：flex 子项默认 min-width:auto，长标题会拒绝收缩，
+     把右侧日期一路挤出弹层（实测日期右边缘超出面板 16px，被 overflow 裁成「2026-09-」） */
+  min-width: 0;
   font-size: 27rpx;
   font-weight: 600;
   color: #1F2937;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .ns-item-time {
   font-size: 20rpx;
   color: #C4C0B6;
   flex-shrink: 0;
+  /* 日期永远一行完整显示，别被压成「2026-09-」 */
+  white-space: nowrap;
 }
 .ns-item-content {
   display: block;
@@ -911,6 +928,9 @@ onUnmounted(() => {
   font-size: 25rpx;
   color: #4B5563;
   line-height: 1.7;
+  /* 公告常混英文/长串（"App"、期号），不加这两条会横向顶出面板 */
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- 轮播 ---------- */
