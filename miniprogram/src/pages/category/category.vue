@@ -94,6 +94,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { addToCart, getCart } from '@/api/cart'
 import { syncCartBadge } from '@/utils/cartBadge'
+import { requireLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
 const PAGE_SIZE = 20
@@ -188,6 +189,8 @@ async function loadCategories() {
 
 async function quickAdd(p) {
   if (addingId.value) return
+  // 游客点加号 → 弹「需要登录」，取消就留在列表继续逛
+  if (!requireLogin('加入购物车')) return
   if ((p.stock || 0) <= 0) {
     uni.showToast({ title: '这件已售罄，看看别的', icon: 'none' })
     return

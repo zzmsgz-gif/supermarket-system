@@ -83,7 +83,15 @@
     </view>
 
     <!-- 空态：不再是干巴巴一行「暂无订单」，给一句贴合当前 tab 的话 + 出口 -->
-    <view class="empty-wrap" v-if="!loading && !orders.length">
+    <!-- 未登录：留在本页给登录引导，不强制跳转 -->
+    <view class="login-tip" v-if="needLogin">
+      <view class="lt-ico">🔒</view>
+      <text class="lt-title">登录后查看订单</text>
+      <text class="lt-sub">登录即可查看订单进度、物流和售后</text>
+      <view class="lt-btn" @click="goLogin">去登录</view>
+    </view>
+
+    <view class="empty-wrap" v-if="!needLogin && !loading && !orders.length">
       <view class="empty-ico">📋</view>
       <text class="empty-title">{{ emptyTitle }}</text>
       <text class="empty-sub">{{ emptySub }}</text>
@@ -123,6 +131,7 @@ import { listHotProducts } from '@/api/product'
 import { orderStatusLabel, fulfillmentLabel } from '@/utils/format'
 import { isLoggedIn } from '@/store/auth'
 import { syncCartBadge } from '@/utils/cartBadge'
+import { goLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
 const tabs = [
@@ -194,6 +203,8 @@ function openProduct(p) {
 
 const activeTab = ref('ALL')
 const orders = ref([])
+// 未登录标记：订单页是 tabBar 页，游客点进来不该被弹走，改为页内给登录引导
+const needLogin = ref(false)
 const page = ref(0)
 const size = ref(20)
 const total = ref(0)
@@ -201,6 +212,11 @@ const loading = ref(false)
 const hasMore = ref(false)
 
 async function load(reset = false) {
+  // 未登录不请求（否则 401 会把登录态清掉、弹"登录已过期"，体验很差）
+  if (!isLoggedIn()) {
+    needLogin.value = true
+    return
+  }
   if (loading.value) return
   if (reset) {
     page.value = 0
@@ -326,10 +342,13 @@ async function reorderOrder(o) {
 }
 
 onShow(() => {
+  // 未登录也允许进来（游客从 tabBar 点进来不该被弹走），页面里显示登录引导
   if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
+    needLogin.value = true
+    orders.value = []
     return
   }
+  needLogin.value = false
   // 从个人中心「我的订单」四宫格进来时带了预选 tab：
   // orders 是 tabBar 页，switchTab 不支持参数，所以用 Storage 中转，取一次就清掉
   const pending = uni.getStorageSync('orders_pending_tab')
@@ -469,6 +488,42 @@ onReachBottom(() => {
   border: 1rpx solid #ddd;
 }
 /* ---------- 空态（不再是一行灰字） ---------- */
+/* 未登录引导 */
+.login-tip {
+  padding: 120rpx 48rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lt-ico {
+  font-size: 96rpx;
+  line-height: 1.2;
+}
+.lt-title {
+  margin-top: 24rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.lt-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #8A8578;
+  text-align: center;
+  line-height: 1.6;
+}
+.lt-btn {
+  margin-top: 36rpx;
+  padding: 0 64rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 38rpx;
+  background: #0F6E56;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
 .empty-wrap {
   padding: 90rpx 60rpx 40rpx;
   display: flex;

@@ -245,7 +245,7 @@ import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
-import { isLoggedIn } from '@/store/auth'
+import { requireLogin } from '@/utils/authGuard'
 import { fullUrl, BRAND_NAME } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
 import { syncCartBadge } from '@/utils/cartBadge'
@@ -441,6 +441,8 @@ function stopTimer() {
 /** 一步加购：不跳详情页，加完弹底部轻提示条（可去结算）并同步 tabBar 角标 */
 async function quickAdd(p) {
   if (addingId.value) return
+  // 游客点加号 → 弹「需要登录」，取消就留在原地继续逛
+  if (!requireLogin('加入购物车')) return
   if ((p.stock || 0) <= 0) {
     uni.showToast({ title: '这件已售罄，看看别的', icon: 'none' })
     return
@@ -474,6 +476,8 @@ async function quickAdd(p) {
  */
 async function quickAddFlash(f) {
   if (addingId.value) return
+  // 游客点秒杀加号 → 先要求登录（秒杀名额是按账号算的，没有账号无法校验限购）
+  if (!requireLogin('参加秒杀')) return
   if (f.state !== 'RUNNING') {
     uni.showToast({ title: (flashStateLabel(f.state) || '活动未开始') + '，暂时不能购买', icon: 'none' })
     return
@@ -614,12 +618,11 @@ onMounted(() => {
 })
 
 onShow(() => {
-  if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
-    return
-  }
+  // 游客也能逛首页：不再强制跳登录页。
+  // 登录只在实际动作（加购/下单/看订单）时要求，见 utils/authGuard.requireLogin
   load()
   startTimer()
+  // 未登录时 syncCartBadge 内部会直接清掉角标并返回 0，不发请求
   refreshCartBadge()
 })
 

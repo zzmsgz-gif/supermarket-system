@@ -24,7 +24,15 @@
     </view>
 
     <!-- ===== 空购物车：不只是"一句话"，给引导 + 推荐，别让整屏空着 ===== -->
-    <view class="empty-wrap" v-if="items.length === 0">
+    <!-- 未登录：留在本页给登录引导，不强制跳转 -->
+    <view class="login-tip" v-if="needLogin">
+      <view class="lt-ico">🔒</view>
+      <text class="lt-title">登录后查看购物车</text>
+      <text class="lt-sub">购物车会同步到你的账号，换个设备也能接着买</text>
+      <view class="lt-btn" @click="goLogin">去登录</view>
+    </view>
+
+    <view class="empty-wrap" v-if="!needLogin && items.length === 0">
       <view class="empty-ico">🛒</view>
       <text class="empty-title">购物车还是空的</text>
       <text class="empty-sub">挑点新鲜的放进来吧，满 ¥99 免运费</text>
@@ -83,6 +91,7 @@ import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCart, updateCartItem, removeCartItem } from '@/api/cart'
 import { applyCartBadge } from '@/utils/cartBadge'
+import { goLogin } from '@/utils/authGuard'
 import { listActiveActivities } from '@/api/activity'
 import { cartActivityProgress } from '@/utils/activity'
 import { listHotProducts } from '@/api/product'
@@ -125,11 +134,18 @@ function specText(s) {
   return /[:：]/.test(s) ? s : '规格：' + s
 }
 
+// 未登录时不再一脚踢去登录页：留在购物车 tab 里给一个"去登录"的引导，
+// 用户取消后还能继续逛（电商标准做法）
+const needLogin = ref(false)
+
 async function load() {
   if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
+    needLogin.value = true
+    items.value = []
+    applyCartBadge(0)
     return
   }
+  needLogin.value = false
   const res = await getCart()
   items.value = (res && res.items) ? res.items : []
   // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
@@ -269,6 +285,42 @@ onShow(async () => {
   padding: 0 20rpx;
 }
 /* ---------- 空购物车（不是一句话，给引导 + 服务承诺） ---------- */
+/* 未登录引导（与空态同版式，但主按钮是"去登录"） */
+.login-tip {
+  padding: 100rpx 48rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lt-ico {
+  font-size: 96rpx;
+  line-height: 1.2;
+}
+.lt-title {
+  margin-top: 24rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.lt-sub {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #8A8578;
+  text-align: center;
+  line-height: 1.6;
+}
+.lt-btn {
+  margin-top: 36rpx;
+  padding: 0 64rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 38rpx;
+  background: #0F6E56;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
 .empty-wrap {
   padding: 100rpx 48rpx 40rpx;
   display: flex;

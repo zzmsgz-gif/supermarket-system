@@ -216,6 +216,7 @@ import { getProduct, listProducts } from '@/api/product'
 import { listActiveActivities } from '@/api/activity'
 import { productActivityTag } from '@/utils/activity'
 import { addToCart } from '@/api/cart'
+import { requireLogin } from '@/utils/authGuard'
 import { syncCartBadge } from '@/utils/cartBadge'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { listProductReviews } from '@/api/review'
@@ -389,10 +390,8 @@ async function loadFav() {
 }
 
 async function toggleFav() {
-  if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
-    return
-  }
+  // 游客点收藏 → 弹「需要登录」，取消就留在原页继续看
+  if (!requireLogin('收藏商品')) return
   try {
     if (faved.value) {
       await removeFavorite(product.value.id)
@@ -505,10 +504,7 @@ onLoad(async (opts) => {
 })
 
 async function add() {
-  if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
-    return
-  }
+  if (!requireLogin('加入购物车')) return
   if (soldOut.value) {
     uni.showToast({ title: '这件已售罄', icon: 'none' })
     return
@@ -524,10 +520,7 @@ async function add() {
 }
 
 function buyNow() {
-  if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
-    return
-  }
+  if (!requireLogin('立即购买')) return
   if (soldOut.value) {
     uni.showToast({ title: '这件已售罄', icon: 'none' })
     return

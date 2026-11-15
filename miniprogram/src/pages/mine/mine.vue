@@ -1,13 +1,12 @@
 <template>
   <view class="mine">
-    <!-- 头部：头像 + 昵称 + 等级标签；点这一块进「个人资料」改头像/昵称/性别/生日/邮箱 -->
+    <!-- 头部：头像 + 昵称 + 等级标签。未登录时整块变成登录入口。 -->
     <view class="header">
-      <image class="avatar" :src="user.avatarUrl ? fullUrl(user.avatarUrl) : defaultAvatar" mode="aspectFill" @click="go('profile')" />
-      <view class="uinfo" @click="go('profile')">
-        <!-- 优先显示昵称：昵称才是用户能改的"名字"，username 是登录标识。
-             改完资料回来看不到变化 = 用户以为没保存成功，所以这里必须优先 nickname。 -->
-        <view class="uname">{{ user.nickname || user.username || '微信用户' }}</view>
-        <view class="utag" v-if="profile">{{ profile.levelName || ('Lv.' + (profile.memberLevel || 1)) }}</view>
+      <image class="avatar" :src="user.avatarUrl ? fullUrl(user.avatarUrl) : defaultAvatar" mode="aspectFill" @click="onUserClick" />
+      <view class="uinfo" @click="onUserClick">
+        <view class="uname">{{ loggedIn ? (user.nickname || user.username || '微信用户') : '点击登录' }}</view>
+        <view class="utag" v-if="loggedIn && profile">{{ profile.levelName || ('Lv.' + (profile.memberLevel || 1)) }}</view>
+        <view class="utag utag-guest" v-else-if="!loggedIn">未登录</view>
         <view class="utag utag-guest" v-else>普通用户</view>
       </view>
       <view class="uhead-ops">
@@ -76,7 +75,7 @@
       </view>
     </view>
 
-    <view class="logout" @click="doLogout">退出登录</view>
+    <view class="logout" v-if="loggedIn" @click="doLogout">退出登录</view>
 
     <!-- 2026-11-10 旧列表式菜单已重构为「我的订单四宫格 + 功能两列网格」，入口一个没少：
          订单/售后/收藏/优惠券/地址/会员(头部)/钱包/消息/协议/隐私/改密 -->
@@ -118,11 +117,14 @@ import { unreadCount } from '@/api/message'
 import { changePassword } from '@/api/auth'
 import { listMyCoupons } from '@/api/coupon'
 import { syncCartBadge, clearCartBadge } from '@/utils/cartBadge'
+import { requireLogin, goLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
 const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
 
 const user = reactive(getStoredUser() || { username: '微信用户' })
+// 是否已登录：未登录时整页显示登录引导，而不是把人弹去登录页
+const loggedIn = ref(false)
 const walletBalance = ref('0.00')
 const profile = ref(null)
 
@@ -200,13 +202,27 @@ async function submitPwd() {
   }
 }
 
+// 协议类页面游客也能看，不需要登录
+const NO_LOGIN_PAGES = ['legal']
+
 function go(page) {
+  // 未登录点功能入口 → 弹「需要登录」，取消就留在原地（不再一进个人中心就被踢去登录页）
+  if (NO_LOGIN_PAGES.indexOf(page) === -1 && !requireLogin('使用该功能')) return
   const url = '/pages/' + page + '/' + page
   if (TAB_PAGES.indexOf(page) !== -1) {
     uni.switchTab({ url })
     return
   }
   uni.navigateTo({ url })
+}
+
+/** 头部点击：未登录去登录页，已登录去个人资料 */
+function onUserClick() {
+  if (!loggedIn.value) {
+    goLogin()
+    return
+  }
+  go('profile')
 }
 function goLegal(docKey) {
   uni.navigateTo({ url: '/pages/legal/legal?docKey=' + docKey })
@@ -254,8 +270,13 @@ function doLogout() {
 }
 
 onShow(() => {
-  if (!isLoggedIn()) {
-    uni.navigateTo({ url: '/pages/login/login' })
+  loggedIn.value = isLoggedIn()
+  // 游客也能进个人中心（tabBar 页不该把人弹走），整页显示登录引导
+  if (!loggedIn.value) {
+    profile.value = null
+    walletBalance.value = '0.00'
+    couponCount.value = 0
+    unread.value = 0
     return
   }
   // 每次进入都从本地缓存同步一次资料字段。
