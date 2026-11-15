@@ -124,7 +124,19 @@
                 <text class="f-price"><text class="f-yen">¥</text>{{ f.flashPrice }}</text>
                 <text class="f-origin">¥{{ f.price }}</text>
               </view>
-              <view class="f-add" @click.stop="goFlash(f)">＋</view>
+              <!-- ＋ 一步加购（不进详情）：秒杀限购/名额后端在 addItem 里已经校验，
+                   前端只做售罄与"已买满"的提前拦截，避免点了才弹错 -->
+              <view
+                class="f-add"
+                :class="{
+                  'f-add-busy': addingId === f.productId,
+                  'f-add-pop': popId === f.productId,
+                  'f-add-off': f.state !== 'RUNNING' || (f.remainingQuota || 0) <= 0
+                }"
+                @click.stop="quickAddFlash(f)"
+              >
+                <text class="f-add-ico">{{ (f.state !== 'RUNNING' || (f.remainingQuota || 0) <= 0) ? '·' : '+' }}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -410,6 +422,52 @@ async function quickAdd(p) {
     await addToCart(p.id, 1, '')
     const n = await refreshCartBadge()
     showCartTip(n)
+  } catch (err) {
+    uni.showToast({ title: (err && err.message) || '加购失败，请重试', icon: 'none' })
+  } finally {
+    addingId.value = null
+  }
+}
+
+/**
+ * 秒杀卡「＋」一步加购（不进详情页）。
+ *
+ * 几个必须守住的点：
+ * - 加购用 f.productId（秒杀商品自己的商品 id），不是 f.id（那秒杀场次 id）。
+ * - 后端 CartService.addItem 里已有 validateFlashQuota：按运行中的场次查每人已买/待付件数，
+ *   超限直接抛 409 + 具体文案。所以前端不重复算，只做三件"点了注定失败"的提前拦截。
+ * - 秒杀行在购物车和结算里不参与满减活动、不可用券（后端按 flashSaleId 拆分），
+ *   这里不需要任何活动逻辑。
+ * - 加完要静默重拉一次场次列表：一是让「已抢 X%」跟上，二是让 myRemainingQuota 更新
+ *   （否则同一个商品连点第二次，前端还以为没买满）。
+ */
+async function quickAddFlash(f) {
+  if (addingId.value) return
+  if (f.state !== 'RUNNING') {
+    uni.showToast({ title: (flashStateLabel(f.state) || '活动未开始') + '，暂时不能购买', icon: 'none' })
+    return
+  }
+  if ((f.remainingQuota || 0) <= 0) {
+    uni.showToast({ title: '这件已经被抢完了', icon: 'none' })
+    return
+  }
+  // myRemainingQuota = 后端算好的「本账号还能买几件」（已扣掉已付 + 待付占用的名额）
+  if (typeof f.myRemainingQuota === 'number' && f.myRemainingQuota <= 0) {
+    uni.showToast({ title: `每人限 ${f.perUserLimit} 件，你已买满`, icon: 'none' })
+    return
+  }
+  addingId.value = f.productId
+  popId.value = f.productId
+  setTimeout(() => { if (popId.value === f.productId) popId.value = null }, 460)
+  try {
+    await addToCart(f.productId, 1, '')
+    const n = await refreshCartBadge()
+    showCartTip(n)
+    // 静默刷新场次：名额进度与 myRemainingQuota 都要更新
+    try {
+      const fs = await listFlashSales()
+      flashSales.value = (fs || []).map((x) => ({ ...x, remaining: x.countdownSeconds || 0 }))
+    } catch (e) { /* 刷新失败不影响已成功的加购 */ }
   } catch (err) {
     uni.showToast({ title: (err && err.message) || '加购失败，请重试', icon: 'none' })
   } finally {
@@ -1008,14 +1066,30 @@ onUnmounted(() => {
 .f-add {
   width: 46rpx;
   height: 46rpx;
-  line-height: 44rpx;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   background: #0F6E56;
+  flex-shrink: 0;
+  /* 与商品卡的 .p-add 同一手感：按下回弹 */
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+}
+.f-add-ico {
   color: #ffffff;
   font-size: 30rpx;
   font-weight: 600;
-  flex-shrink: 0;
+  line-height: 1;
+}
+/* 复用商品卡的 p-add-pop 关键帧 */
+.f-add-pop {
+  animation: p-add-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.f-add-busy {
+  background: #1D9E75;
+}
+.f-add-off {
+  background: #E5E7EB;
 }
 .flash-tail {
   display: inline-block;
