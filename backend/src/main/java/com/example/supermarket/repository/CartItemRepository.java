@@ -33,4 +33,14 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     @Query("delete from CartItem c where c.userId = :userId and c.id in :ids")
     int deleteByUserIdAndIds(@Param("userId") Long userId, @Param("ids") Collection<Long> ids);
 
+    /**
+     * 清空某用户的购物车（一键清空）。
+     *
+     * <p>用一条 DELETE 而不是前端逐条删：商品多时逐条删要发 N 个请求，中途失败还会留下残行。
+     * 清空这种「全有全无」的操作必须落在一次数据库语句里。
+     */
+    @Modifying
+    @Query("delete from CartItem c where c.userId = :userId")
+    int deleteAllByUserId(@Param("userId") Long userId);
+
 }

@@ -1,33 +1,47 @@
 <template>
   <view class="cart">
-    <view v-for="it in items" :key="it.id" class="row">
-      <image class="cover" :src="fullUrl(it.productCoverUrl)" mode="aspectFill" />
-      <view class="info">
-        <view class="name">{{ it.productName }}</view>
-        <view class="spec" v-if="it.skuSpec">{{ specText(it.skuSpec) }}</view>
-        <view class="price" v-if="it.flashSaleId">
-          <text class="now">¥{{ fmt(it.productPrice) }}</text>
-          <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
-          <text class="flash">秒杀</text>
+    <!-- 骨架屏：首次加载时先把版式占住，避免"白屏 → 内容突然弹出"的跳动 -->
+    <CartSkeleton v-if="loading" :rows="3" />
+
+    <block v-if="!loading">
+      <!-- 工具条：件数汇总 + 一键清空 -->
+      <view class="tools" v-if="!needLogin && items.length">
+        <text class="tools-count">共 {{ items.length }} 种 · {{ totalQty }} 件</text>
+        <view class="tools-clear" @click="clearAll">
+          <text class="tc-ico">🗑</text>
+          <text>清空</text>
         </view>
-        <view class="price" v-else>
-          <text class="now">¥{{ fmt(it.productPrice) }}</text>
-          <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
-        </view>
-        <!-- 单行小计：单价 × 件数。只显示单价的话用户得自己心算，
-             也看不出合计是怎么来的（尤其件数多时）。
-             数量为 1 时不显示 —— 此时单价就是小计，重复没意义。 -->
-        <view class="subtotal" v-if="it.quantity > 1">
-          小计 <text class="sub-amt">¥{{ fmt(subtotalOf(it)) }}</text>
-        </view>
-        <view class="off" v-if="!it.onSale">已下架 / 无货</view>
       </view>
-      <view class="qty">
-        <text class="btn" @click="dec(it)">-</text>
-        <text class="num">{{ it.quantity }}</text>
-        <text class="btn" @click="inc(it)">+</text>
+
+      <view v-for="it in items" :key="it.id" class="row">
+        <image class="cover" :src="fullUrl(it.productCoverUrl)" mode="aspectFill" />
+        <view class="info">
+          <view class="name">{{ it.productName }}</view>
+          <view class="spec" v-if="it.skuSpec">{{ specText(it.skuSpec) }}</view>
+          <view class="price" v-if="it.flashSaleId">
+            <text class="now">¥{{ fmt(it.productPrice) }}</text>
+            <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
+            <text class="flash">秒杀</text>
+          </view>
+          <view class="price" v-else>
+            <text class="now">¥{{ fmt(it.productPrice) }}</text>
+            <text class="origin" v-if="showOrigin(it)">¥{{ fmt(it.productOriginalPrice) }}</text>
+          </view>
+          <!-- 单行小计：单价 × 件数。只显示单价的话用户得自己心算，
+               也看不出合计是怎么来的（尤其件数多时）。
+               数量为 1 时不显示 —— 此时单价就是小计，重复没意义。 -->
+          <view class="subtotal" v-if="it.quantity > 1">
+            小计 <text class="sub-amt">¥{{ fmt(subtotalOf(it)) }}</text>
+          </view>
+          <view class="off" v-if="!it.onSale">已下架 / 无货</view>
+        </view>
+        <view class="qty">
+          <text class="btn" @click="dec(it)">-</text>
+          <text class="num">{{ it.quantity }}</text>
+          <text class="btn" @click="inc(it)">+</text>
+        </view>
       </view>
-    </view>
+    </block>
 
     <!-- ===== 空购物车：不只是"一句话"，给引导 + 推荐，别让整屏空着 ===== -->
     <!-- 未登录：留在本页给登录引导，不强制跳转 -->
@@ -38,7 +52,8 @@
       <view class="lt-btn" @click="goLogin">去登录</view>
     </view>
 
-    <view class="empty-wrap" v-if="!needLogin && items.length === 0">
+    <!-- 空态也要排除 loading：否则骨架屏和"购物车还是空的"会同时出现（items 初值是 []） -->
+    <view class="empty-wrap" v-if="!loading && !needLogin && items.length === 0">
       <view class="empty-ico">🛒</view>
       <text class="empty-title">购物车还是空的</text>
       <text class="empty-sub">挑点新鲜的放进来吧，满 ¥99 免运费</text>
@@ -50,8 +65,9 @@
       </view>
     </view>
 
-    <!-- 空车推荐：大家都在买（点进去能直接加购，别让用户空手离开） -->
-    <view class="reco" v-if="items.length === 0 && recommends.length">
+    <!-- 空车推荐：大家都在买（点进去能直接加购，别让用户空手离开）
+         同样要排除 loading，否则上一次会话缓存的推荐会和骨架屏叠在一起 -->
+    <view class="reco" v-if="!loading && items.length === 0 && recommends.length">
       <view class="reco-head">
         <text class="reco-line"></text>
         <text class="reco-title">大家都在买</text>
@@ -112,7 +128,9 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { getCart, updateCartItem, removeCartItem } from '@/api/cart'
+import { getCart, updateCartItem, removeCartItem, clearCart } from '@/api/cart'
+// 骨架屏组件（也可走 easycom 自动引入，这里显式 import 更明确）
+import CartSkeleton from '@/components/CartSkeleton/CartSkeleton.vue'
 import { applyCartBadge } from '@/utils/cartBadge'
 import { goLogin } from '@/utils/authGuard'
 import { listActiveActivities } from '@/api/activity'
@@ -123,6 +141,15 @@ import { fullUrl } from '@/config'
 import { formatAmount } from '@/utils/format'
 
 const items = ref([])
+
+// 首屏加载态：初值取 true，避免刚进页面时先闪一下"空购物车"再弹内容。
+// 骨架屏靠它控制，见模板顶部 <CartSkeleton v-if="loading" />。
+const loading = ref(true)
+
+// 件数汇总（工具条上显示"共 N 件"）
+const totalQty = computed(() =>
+  items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0)
+)
 
 // 后端 CartResponse.items 为扁平字段：productName / productPrice / productOriginalPrice /
 // productCoverUrl / skuSpec / quantity / subtotalAmount / flashSaleId / onSale ...
@@ -197,18 +224,59 @@ function specText(s) {
 const needLogin = ref(false)
 
 async function load() {
-  if (!isLoggedIn()) {
-    needLogin.value = true
+  loading.value = true
+  try {
+    if (!isLoggedIn()) {
+      needLogin.value = true
+      items.value = []
+      applyCartBadge(0)
+      return
+    }
+    needLogin.value = false
+    const res = await getCart()
+    items.value = (res && res.items) ? res.items : []
+    // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
+    // 改数量 / 删除 / 从别的页面切回来都会走 load，所以这一处就覆盖了全部路径。
+    applyCartBadge(items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0))
+  } catch (e) {
+    // 必须 catch：失败也要把骨架屏收掉，否则页面会永远停在骨架状态
+    items.value = []
+    uni.showToast({ title: (e && e.message) || '购物车加载失败', icon: 'none' })
+  } finally {
+    loading.value = false
+  }
+}
+
+/**
+ * 一键清空购物车。
+ * 二次确认文案里带上件数，让用户清楚"要删多少"；确认按钮用红色，
+ * 并且**不做**"5 秒内可撤销"这种假设 —— 后端是物理删除，如实告知"无法恢复"。
+ */
+async function clearAll() {
+  if (!items.value.length) return
+  const confirmed = await new Promise((resolve) => {
+    uni.showModal({
+      title: '清空购物车',
+      content: `确定清空这 ${items.value.length} 件商品吗？清空后无法恢复。`,
+      confirmText: '清空',
+      confirmColor: '#C0392B',
+      cancelText: '再想想',
+      success: (r) => resolve(!!r.confirm),
+      fail: () => resolve(false)
+    })
+  })
+  if (!confirmed) return
+  uni.showLoading({ title: '清空中', mask: true })
+  try {
+    await clearCart()
     items.value = []
     applyCartBadge(0)
-    return
+    uni.hideLoading()
+    uni.showToast({ title: '已清空', icon: 'success' })
+  } catch (e) {
+    uni.hideLoading()
+    uni.showToast({ title: (e && e.message) || '清空失败，请重试', icon: 'none' })
   }
-  needLogin.value = false
-  const res = await getCart()
-  items.value = (res && res.items) ? res.items : []
-  // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
-  // 改数量 / 删除 / 从别的页面切回来都会走 load，所以这一处就覆盖了全部路径。
-  applyCartBadge(items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0))
 }
 
 // —— 空车时的"大家都在买"推荐 ——
@@ -266,6 +334,30 @@ onShow(async () => {
   /* 底部固定栏现在含「凑单进度 + 结算行」两段，比原来高，留足空间别压住最后一件商品 */
   padding-bottom: 210rpx;
 }
+/* 工具条：件数 + 一键清空 */
+.tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 28rpx 10rpx;
+}
+.tools-count {
+  font-size: 23rpx;
+  color: #8A8578;
+}
+.tools-clear {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 6rpx 10rpx;
+  font-size: 23rpx;
+  color: #C0392B;
+}
+.tc-ico {
+  font-size: 22rpx;
+  line-height: 1;
+}
+
 .row {
   display: flex;
   align-items: center;

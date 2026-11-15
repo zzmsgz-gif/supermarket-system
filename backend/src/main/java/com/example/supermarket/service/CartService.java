@@ -190,6 +190,18 @@ public class CartService {
         return getCart(userId);
     }
 
+    /**
+     * 一键清空购物车。
+     *
+     * <p>只删该用户的行（{@code where userId=}），一条语句完成 —— 不循环单条删除。
+     * 清空后重新读一次购物车返回，让前端直接拿到空车结构（而不是自己造空态）。
+     */
+    @Transactional
+    public CartResponse clearCart(Long userId) {
+        cartItemRepository.deleteAllByUserId(userId);
+        return getCart(userId);
+    }
+
     private CartResponse buildCartResponse(Long userId, List<CartItem> cartItems) {
         if (cartItems.isEmpty()) {
             return new CartResponse(List.of(), 0, BigDecimal.ZERO, BigDecimal.ZERO, null, BigDecimal.ZERO);

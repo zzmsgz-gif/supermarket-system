@@ -67,5 +67,15 @@ public class CartController {
         return ApiResponse.ok(cartService.updateSelection(currentUser.getId(), request));
     }
 
+    /**
+     * 一键清空购物车（DELETE /cart）。
+     *
+     * <p>刻意用 {@code DELETE /cart} 而不是 {@code DELETE /cart/items}：
+     * 后者读起来像"删一批指定项"，本意是"清空当前用户的整个购物车"，路径要能自解释。
+     */
+    @DeleteMapping
+    public ApiResponse<CartResponse> clearCart(@AuthenticationPrincipal CurrentUser currentUser) {
+        return ApiResponse.ok(cartService.clearCart(currentUser.getId()));
+    }
 
 }

@@ -20,3 +20,13 @@ export function updateCartItem(id, quantity) {
 export function removeCartItem(id) {
   return request('/cart/items/' + id, { method: 'DELETE' })
 }
+
+/**
+ * 一键清空购物车（DELETE /cart）。
+ * 后端用一条 `delete from cart_item where user_id=?` 完成，
+ * 不是前端循环逐条删 —— 后者商品多时要发 N 个请求，中途失败还会留下残行。
+ * 返回清空后的购物车结构。
+ */
+export function clearCart() {
+  return request('/cart', { method: 'DELETE' })
+}
