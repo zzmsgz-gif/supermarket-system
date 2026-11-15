@@ -68,6 +68,17 @@
       </view>
     </view>
 
+    <!-- 加载失败提示：接口一件数据都没拿到时显示，把原因和重试入口摆出来。
+         没有它的话页面只剩头部 + "已经到底啦"，用户完全不知道是网络问题还是没商品。 -->
+    <view class="load-err" v-if="loadError">
+      <text class="le-ico">⚠️</text>
+      <view class="le-body">
+        <text class="le-t">首页内容加载失败</text>
+        <text class="le-sub">{{ loadError }}</text>
+      </view>
+      <text class="le-btn" @click="load">重试</text>
+    </view>
+
     <!-- ===== 主轮播 ===== -->
     <swiper
       v-if="banners.length"
@@ -241,6 +252,8 @@ import { syncCartBadge } from '@/utils/cartBadge'
 
 const categories = ref([])
 const banners = ref([])
+// 首页加载失败原因（分类一件都没拿到时用它把问题摆出来，而不是留一片空白）
+const loadError = ref('')
 const flashSales = ref([])
 const floors = ref([])
 const addingId = ref(null)
@@ -361,14 +374,26 @@ function salesText(p) {
 }
 
 async function load() {
-  // 热搜已从首页移除，不再请求 /hot-searches（少一次网络往返）
-  // 公告失败不阻塞首页：单独 catch 成空数组
-  // 活动横幅也已移除，首页不再拉 /activities（购物车与商品详情各自按需拉）
+  loadError.value = ''
+  // ⚠️ 这里原来是 `Promise.all([listCategories(), listBanners(), listFlashSales()])` 一把梭，
+  // 只有公告带了 .catch。结果任意一个请求失败（最常见：真机/线上没配 request 合法域名，
+  // 报 `request:fail url not in domain list`）→ 整个 Promise.all 抛错 →
+  // 首页只渲染静态头部，数据区全空、底部显示"已经到底啦"，**且没有任何错误提示**，
+  // 现场很难判断是网络问题还是没数据。改为逐个 catch：一个挂了不影响其他，并记录首个错误用于提示。
+  const errors = []
+  const grab = async (promise, fallback, label) => {
+    try {
+      return await promise
+    } catch (e) {
+      errors.push(`${label}：${(e && e.message) || '请求失败'}`)
+      return fallback
+    }
+  }
   const [cats, bn, fs, nts] = await Promise.all([
-    listCategories(),
-    listBanners(),
-    listFlashSales(),
-    listAnnouncements().catch(() => [])
+    grab(listCategories(), [], '分类'),
+    grab(listBanners(), [], '轮播'),
+    grab(listFlashSales(), [], '秒杀'),
+    grab(listAnnouncements(), [], '公告')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
@@ -386,6 +411,11 @@ async function load() {
     }
   }
   floors.value = floorsData
+
+  // 分类是首页骨架：一件都拿不到就说明接口根本没通，把原因明确摆给用户（可点重试）
+  if (categories.value.length === 0 && errors.length) {
+    loadError.value = errors[0]
+  }
 }
 
 function startTimer() {
@@ -881,6 +911,51 @@ onUnmounted(() => {
 }
 
 /* ---------- 轮播 ---------- */
+/* ---------- 首页加载失败提示 ---------- */
+.load-err {
+  margin: 20rpx 24rpx 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 14rpx;
+  padding: 22rpx 20rpx;
+  border-radius: 16rpx;
+  background: #FFF6F4;
+  border: 1rpx solid #F6D5CE;
+}
+.le-ico {
+  font-size: 30rpx;
+  line-height: 1.2;
+}
+.le-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.le-t {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #A03A00;
+}
+/* 错误原文可能很长（如 request:fail url not in domain list），允许折行不截断 */
+.le-sub {
+  font-size: 21rpx;
+  color: #B4746A;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.le-btn {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #ffffff;
+  background: #C0392B;
+  border-radius: 30rpx;
+  padding: 8rpx 24rpx;
+}
+
 .banner {
   height: 300rpx;
   margin: 20rpx 24rpx 0;

@@ -14,10 +14,19 @@
 //   所以拆成 API_ORIGIN（资源用）与 API_BASE（接口用）两个常量。
 export const PROD_API_HOST = 'https://haomart.xyz'
 
-const IS_BROWSER = typeof window !== 'undefined'
-
-// 接口基址：浏览器走同源 /api 代理；小程序运行时没有 window → 走线上 域名+/api
-export const API_BASE = IS_BROWSER ? '/api' : PROD_API_HOST + '/api'
+// 接口基址 / 静态资源根，用**条件编译**在编译期确定，不做运行时环境探测。
+//
+// 为什么不写 `typeof window !== 'undefined'`：
+// 那是"猜当前平台"。一旦小程序运行时里存在 window（框架 shim、某些调试容器），
+// 就会误判成 H5 → API_BASE 变成相对路径 '/api' →
+// uni.request 收到非法 url → 所有接口静默失败、页面全空，且线上极难定位。
+// 条件编译由 uni-app 在打包时按平台裁剪，H5 包和小程序包各自只留一份常量，行为确定。
+// #ifdef H5
+export const API_BASE = '/api'
+// #endif
+// #ifndef H5
+export const API_BASE = PROD_API_HOST + '/api'
+// #endif
 
 // 静态资源根（图片等），小程序里用来拼域名
 export const API_ORIGIN = PROD_API_HOST
@@ -40,13 +49,16 @@ export const BRAND_NAME = '超市购物系统'
 export function fullUrl(u) {
   if (!u) return ''
   if (u.startsWith('http')) return u
-  const isBrowser = typeof window !== 'undefined'
-  // 数据里已带 /api 前缀（如后台上传的 banner /api/uploads/...），直接同源用，避免叠成 /api/api
-  if (u.startsWith('/api/')) return isBrowser ? u : API_ORIGIN + u
-  // 前端静态资源前缀：同源根路径（不进 /api）
-  if (u.startsWith('/seed-products') || u.startsWith('/seed-avatars')) {
-    return isBrowser ? u : API_ORIGIN + u
+  // #ifdef H5
+  // H5：同源，原样返回即可（/api/uploads 走 vite 代理，/seed-products 走静态中间件）
+  return u
+  // #endif
+  // #ifndef H5
+  // 小程序：必须拼绝对域名。静态资源挂在域名根，不能叠 /api；
+  // /uploads/** 走后端（context-path = /api）所以要带 /api。
+  if (u.startsWith('/api/') || u.startsWith('/seed-products') || u.startsWith('/seed-avatars')) {
+    return API_ORIGIN + u
   }
-  // 其余（/uploads 等）走后端接口主机（H5 经 /api 代理 → /api/uploads/...）
   return API_BASE + u
+  // #endif
 }
