@@ -67,18 +67,19 @@
           class="a ghost"
           @click="goDetail(o.id)"
         >评价</button>
-        <!-- 售后：后端 applyRefund 只允许「已收货(COMPLETED)」申请
-             （2026-10-07 收紧，未发货请走取消订单），申请中则置灰 -->
+        <!-- 退款/售后入口：**PAID / SHIPPED / COMPLETED 都能申请**（对齐 PC 端与后端口径）。
+             旧逻辑写死 COMPLETED，等于「已付款未发货」想退款在真机上无处可点。
+             点进去直接跳详情页并自动展开原因弹层，省掉「列表点一下 → 详情再找一次」。 -->
         <button
-          v-if="o.status === 'COMPLETED' && o.refundStatus !== 'APPLYING'"
+          v-if="canApplyAfterSale(o)"
           class="a ghost"
-          @click="applyAftersales(o)"
-        >申请售后</button>
+          @click="goRefund(o.id)"
+        >{{ afterSaleLabel(o) }}</button>
         <button
-          v-if="o.status === 'COMPLETED' && o.refundStatus === 'APPLYING'"
+          v-if="afterSaleInFlight(o)"
           class="a ghost"
           disabled
-        >售后审核中</button>
+        >{{ afterSaleInFlightText(o) }}</button>
       </view>
     </view>
 
@@ -126,7 +127,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
-import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder, refundApply } from '@/api/order'
+import { listOrders, payOrder, cancelOrder, confirmReceipt, reorder } from '@/api/order'
 import { listHotProducts } from '@/api/product'
 import { orderStatusLabel, fulfillmentLabel } from '@/utils/format'
 import { isLoggedIn } from '@/store/auth'
@@ -257,38 +258,36 @@ function pay(o) {
 }
 
 /**
- * 申请售后。
- * ⚠️ 后端 applyRefund 只接受「已完成(COMPLETED)」订单（未发货请走取消订单）。
- * ⚠️ uni-app 的 showModal 在 H5 下，用户**没输入**时 res.content 会回填 placeholderText，
- *    直接拿它当原因会存进"请填写售后原因…"这种废话（实测踩到），所以要和 placeholder 比对。
+ * 退款/售后（列表页只做入口与文案，真正的表单在详情页）。
+ * 口径与 PC 端 OrderDetailPage.canApplyRefund 一致：
+ * status ∈ {PAID, SHIPPED, COMPLETED} 且 refundStatus ∈ {NONE, REJECTED}（驳回可重申）。
  */
-const AFTERSALES_PLACEHOLDER = '填写售后原因（必填），如：商品破损 / 少件 / 质量问题'
+function canApplyAfterSale(o) {
+  if (!['PAID', 'SHIPPED', 'COMPLETED'].includes(o.status)) return false
+  const rs = o.refundStatus || 'NONE'
+  return rs === 'NONE' || rs === 'REJECTED'
+}
 
-function applyAftersales(o) {
-  uni.showModal({
-    title: '申请售后',
-    content: '',
-    editable: true,
-    placeholderText: AFTERSALES_PLACEHOLDER,
-    success: async (r) => {
-      if (!r.confirm) return
-      const reason = (r.content || '').trim()
-      if (!reason || reason === AFTERSALES_PLACEHOLDER) {
-        uni.showToast({ title: '请填写售后原因', icon: 'none' })
-        return
-      }
-      uni.showLoading({ title: '提交中' })
-      try {
-        await refundApply(o.id, { reason })
-        uni.hideLoading()
-        uni.showToast({ title: '已提交售后申请', icon: 'none' })
-        load(true)
-      } catch (e) {
-        uni.hideLoading()
-        uni.showToast({ title: (e && e.message) || '提交失败', icon: 'none' })
-      }
-    }
-  })
+/** 未收货叫「申请退款」，已收货叫「申请售后」—— 同一个接口，但用户的心智不同 */
+function afterSaleLabel(o) {
+  return o.status === 'COMPLETED' ? '申请售后' : '申请退款'
+}
+
+function afterSaleInFlight(o) {
+  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED'].includes(o.refundStatus)
+}
+
+function afterSaleInFlightText(o) {
+  const rs = o.refundStatus
+  if (rs === 'WAITING_SHIP') return '待寄回'
+  if (rs === 'SHIPPED_BACK') return '退货中'
+  if (rs === 'APPROVED') return '退款中'
+  return o.status === 'COMPLETED' ? '售后审核中' : '退款审核中'
+}
+
+/** 跳详情并让详情页自动展开原因弹层（详情页 onLoad 消费 refund=1 后清除） */
+function goRefund(id) {
+  uni.navigateTo({ url: '/pages/order-detail/order-detail?id=' + id + '&refund=1' })
 }
 
 async function cancel(o) {

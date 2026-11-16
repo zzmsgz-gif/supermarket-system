@@ -98,17 +98,15 @@
       <button v-if="order.status === 'SHIPPED'" class="a main" @click="confirm">确认收货</button>
       <button v-if="order.status === 'COMPLETED'" class="a main" @click="reorderOrder">再来一单</button>
       <button v-if="order.status === 'COMPLETED'" class="a ghost" @click="openReview">评价</button>
-      <!-- 售后：后端 applyRefund 只允许已收货(COMPLETED)申请，申请中置灰 -->
-      <button
-        v-if="order.status === 'COMPLETED' && order.refundStatus !== 'APPLYING'"
-        class="a ghost"
-        @click="applyRefund"
-      >申请售后</button>
-      <button
-        v-if="order.status === 'COMPLETED' && order.refundStatus === 'APPLYING'"
-        class="a ghost"
-        disabled
-      >售后审核中</button>
+      <!-- 退款/售后入口：**对齐 PC 端** —— PAID / SHIPPED / COMPLETED 都能申请。
+           后端 ReturnRequestService.apply 早就放开了这三种状态（注释写明「改前仅 COMPLETED 可申，
+           导致付完款想退款、收到货前发现问题都没处申诉」），只有小程序 UI 卡在 COMPLETED 没跟上，
+           结果「付了钱还没发货想退款」在真机上根本找不到入口。
+           未收货 → 「申请退款」；已收货 → 「申请售后」；被驳回(REJECTED)可以重申。 -->
+      <button v-if="canApplyAfterSale" class="a ghost" @click="applyRefund()">
+        {{ afterSaleLabel }}
+      </button>
+      <button v-if="afterSaleInFlight" class="a ghost" disabled>{{ afterSaleInFlightText }}</button>
     </view>
 
     <!-- 评价弹层 -->
@@ -131,6 +129,16 @@
         </view>
       </view>
     </view>
+
+    <!-- 退款/售后原因选择弹层 -->
+    <AfterSaleSheet
+      :visible="sheetOpen"
+      :title="sheetTitle"
+      :reasons="afterSaleReasons"
+      :submitting="submitting"
+      @close="sheetOpen = false"
+      @submit="submitAfterSale"
+    />
   </view>
 </template>
 
@@ -142,6 +150,7 @@ import { applyReturn, listReturnsByOrder } from '@/api/returns'
 import { submitReview } from '@/api/review'
 import { orderStatusLabel, fulfillmentLabel, formatTime, formatAmount } from '@/utils/format'
 import { fullUrl } from '@/config'
+import AfterSaleSheet from '@/components/AfterSaleSheet/AfterSaleSheet.vue'
 
 // 金额统一两位小数（后端 BigDecimal 转成 number 后可能有浮点尾巴）
 const fmt = (n) => formatAmount(n)
@@ -226,6 +235,13 @@ onLoad(async (opts) => {
   order.value = await getOrder(opts.id)
   // 售后单单独拉，失败不影响订单主体展示
   loadItemReturns()
+  // 列表页的「申请退款 / 申请售后」带 refund=1 进来 → 直接展开原因弹层。
+  // 必须等 order 到位再判断（canApplyAfterSale 依赖 order.status / refundStatus），
+  // 否则会出现「列表明明能点、进来却不弹」的错位。
+  if (opts && opts.refund === '1' && canApplyAfterSale.value) {
+    sheetItem.value = null
+    sheetOpen.value = true
+  }
 })
 
 // 详情页「去支付」统一进收银台：能看倒计时和余额，余额不足可先去充值
@@ -271,41 +287,83 @@ function cancelOrderAction() {
   })
 }
 
-// ⚠️ uni-app 的 showModal 在 H5 下，用户没输入时 res.content 会回填 placeholderText，
-// 直接当原因提交会存进一句废话，所以要和 placeholder 对比。
-const AFTERSALES_PLACEHOLDER = '填写售后原因（必填），如：商品破损 / 少件 / 质量问题'
+/**
+ * 退款 / 售后入口与原因 —— 对齐 PC 端 OrderDetailPage：
+ * ① 入口：PAID / SHIPPED / COMPLETED 都能申请（后端 ReturnRequestService.apply 早已放开）
+ * ② 未收货 → 「申请退款」+ 未收货原因；已收货 → 「申请售后」+ 已收货原因
+ *    （人还没拿到货，不该看到「商品质量问题 / 配送破损」这种只有收货后才成立的原因）
+ * ③ 被驳回(REJECTED)可以重申；在途状态不给入口，但显示置灰按钮说明进度
+ */
+const canApplyAfterSale = computed(() => {
+  const o = order.value
+  if (!o) return false
+  if (!['PAID', 'SHIPPED', 'COMPLETED'].includes(o.status)) return false
+  const rs = o.refundStatus || 'NONE'
+  return rs === 'NONE' || rs === 'REJECTED'
+})
 
+const afterSaleLabel = computed(() =>
+  order.value && order.value.status === 'COMPLETED' ? '申请售后' : '申请退款'
+)
+
+// 与 PC 端同一套文案（REFUND_REASONS_UNRECEIVED / RECEIVED），改一处要同步另一处
+const REASONS_UNRECEIVED = ['不想要了', '拍错了/多拍了', '商品缺货', '发货时间太长', '其他']
+const REASONS_RECEIVED = ['商品质量问题', '配送破损', '与描述不符', '少发/漏发', '其他']
+const afterSaleReasons = computed(() =>
+  order.value && order.value.status === 'COMPLETED' ? REASONS_RECEIVED : REASONS_UNRECEIVED
+)
+
+// 在途状态用置灰按钮体现，而不是让入口直接消失（消失会让用户以为功能没了）
+const afterSaleInFlight = computed(() => {
+  const rs = order.value && order.value.refundStatus
+  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED'].includes(rs)
+})
+const afterSaleInFlightText = computed(() => {
+  const rs = order.value && order.value.refundStatus
+  if (rs === 'WAITING_SHIP') return '待寄回商品'
+  if (rs === 'SHIPPED_BACK') return '退货中'
+  if (rs === 'APPROVED') return '退款处理中'
+  return order.value && order.value.status === 'COMPLETED' ? '售后审核中' : '退款审核中'
+})
+
+const sheetOpen = ref(false)
+const sheetItem = ref(null)
+const submitting = ref(false)
+const sheetTitle = computed(() => {
+  const name = sheetItem.value ? String(sheetItem.value.productName || '').slice(0, 10) : ''
+  return name ? `${afterSaleLabel.value}：${name}` : `${afterSaleLabel.value}（整单）`
+})
+
+/** 打开原因弹层。传 item => 按行售后（只退这一件）；不传 => 整单 */
 function applyRefund(item) {
-  // 传商品行 => 按行售后（只退这一件）；不传 => 整单
-  const target = item && item.id ? item : null
-  const shortName = target ? String(target.productName || '').slice(0, 10) : ''
-  uni.showModal({
-    title: target ? `售后：${shortName}` : '申请售后（整单）',
-    content: '',
-    editable: true,
-    placeholderText: AFTERSALES_PLACEHOLDER,
-    success: async (r) => {
-      if (!r.confirm) return
-      const reason = (r.content || '').trim()
-      if (!reason || reason === AFTERSALES_PLACEHOLDER) {
-        uni.showToast({ title: '请填写售后原因', icon: 'none' })
-        return
-      }
-      try {
-        await applyReturn({
-          orderId: order.value.id,
-          orderItemId: target ? target.id : null,
-          reason,
-          type: 'REFUND'
-        })
-        uni.showToast({ title: '已提交售后申请', icon: 'none' })
-        order.value = await getOrder(order.value.id)
-        await loadItemReturns()
-      } catch (e) {
-        uni.showToast({ title: (e && e.message) || '操作失败', icon: 'none' })
-      }
-    }
-  })
+  if (!canApplyAfterSale.value) return
+  sheetItem.value = item && item.id ? item : null
+  sheetOpen.value = true
+}
+
+async function submitAfterSale({ reason, remark }) {
+  if (submitting.value) return
+  submitting.value = true
+  try {
+    await applyReturn({
+      orderId: order.value.id,
+      orderItemId: sheetItem.value ? sheetItem.value.id : null,
+      reason,
+      // 后端 ReturnApplyRequest 有独立 remark 字段（max 500）；
+      // 千万不要把备注拼进 reason —— reason 的 @Size 上限只有 60，拼了就 400
+      remark: remark || null,
+      type: 'REFUND'
+    })
+    sheetOpen.value = false
+    sheetItem.value = null
+    uni.showToast({ title: '已提交，等待商家处理', icon: 'none' })
+    order.value = await getOrder(order.value.id)
+    await loadItemReturns()
+  } catch (e) {
+    uni.showToast({ title: (e && e.message) || '提交失败，请重试', icon: 'none' })
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function reorderOrder() {
