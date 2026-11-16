@@ -13,6 +13,18 @@ public class ProductDetailResponse extends ProductSummaryResponse {
     private java.util.List<ProductSkuResponse> skus = new java.util.ArrayList<>();
     private java.util.List<ProductAttributeResponse> attributes = new java.util.ArrayList<>();
 
+    /**
+     * 秒杀信息：仅当该商品此刻有进行中的秒杀场次时才有值。
+     *
+     * <p>为什么要透出：秒杀商品的真实售价在 flash_sale.flash_price，而商品表 price 是原价。
+     * 详情页若只回商品价，用户会看到「详情 ¥199、加购后购物车 ¥139」两个价（线上真实反馈），
+     * 所以在服务端把生效秒杀价直接落到 {@code price} 上，前端不必自己拼口径。
+     */
+    private Long flashSaleId;
+    private java.math.BigDecimal flashPrice;
+    private java.time.LocalDateTime flashEndTime;
+    private Integer flashPerUserLimit;
+
     public ProductDetailResponse() {
     }
 
@@ -102,5 +114,37 @@ public class ProductDetailResponse extends ProductSummaryResponse {
 
     public void setAttributes(java.util.List<ProductAttributeResponse> attributes) {
         this.attributes = attributes;
+    }
+
+    public Long getFlashSaleId() {
+        return flashSaleId;
+    }
+
+    public void setFlashSaleId(Long flashSaleId) {
+        this.flashSaleId = flashSaleId;
+    }
+
+    public java.math.BigDecimal getFlashPrice() {
+        return flashPrice;
+    }
+
+    public void setFlashPrice(java.math.BigDecimal flashPrice) {
+        this.flashPrice = flashPrice;
+    }
+
+    public java.time.LocalDateTime getFlashEndTime() {
+        return flashEndTime;
+    }
+
+    public void setFlashEndTime(java.time.LocalDateTime flashEndTime) {
+        this.flashEndTime = flashEndTime;
+    }
+
+    public Integer getFlashPerUserLimit() {
+        return flashPerUserLimit;
+    }
+
+    public void setFlashPerUserLimit(Integer flashPerUserLimit) {
+        this.flashPerUserLimit = flashPerUserLimit;
     }
 }

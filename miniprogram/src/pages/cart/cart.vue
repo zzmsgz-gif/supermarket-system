@@ -117,8 +117,30 @@
         <text class="pb-note">运费按整车（含秒杀商品）计算</text>
       </view>
 
+      <!-- 金额明细：商品金额 − 活动优惠 = 合计。
+           之前这里只有一个「合计」，满足满减条件时既不显示优惠、合计也不扣减，
+           用户看到的钱和下单实付对不上（用户反馈）。口径与后端 createOrder 保持一致：
+           payAmount = 商品金额 − max(券, 活动) − 积分 + 运费（购物车不涉及券/积分/运费）。 -->
+      <view class="amounts">
+        <view class="amt-row">
+          <text class="amt-lbl">商品金额</text>
+          <text class="amt-val">¥{{ fmt(total) }}</text>
+        </view>
+        <view class="amt-row" v-if="activityDiscount > 0">
+          <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
+          <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+        </view>
+        <view class="amt-row payable">
+          <text class="amt-lbl">合计</text>
+          <text class="amt-val strong">¥{{ fmt(payable) }}</text>
+        </view>
+      </view>
+
       <view class="footer-line">
-        <text class="sum">合计 ¥{{ fmt(total) }}</text>
+        <view class="sum-wrap">
+          <text class="sum">合计 ¥{{ fmt(payable) }}</text>
+          <text class="saved" v-if="activityDiscount > 0">已省 ¥{{ fmt(activityDiscount) }}</text>
+        </view>
         <button class="checkout" @click="goCheckout">去结算</button>
       </view>
     </view>
@@ -181,6 +203,22 @@ const activities = ref([])
 const actProgress = computed(() => cartActivityProgress(activities.value, nonFlashTotal.value))
 
 /**
+ * 活动优惠金额与名称 —— **直接采用后端算好的值**。
+ * 为什么不在前端自己按活动规则算：门槛判定涉及「同一商品多规格合并、秒杀行剔除、
+ * 多活动取最优」等规则，前端复刻一遍迟早和后端下单口径分叉（历史上就出过
+ * 「购物车合计与活动优惠对不上」）。后端的 evaluateBestActivity 是唯一权威。
+ */
+const activityDiscount = ref(0)
+const activityName = ref('')
+
+/** 应付 = 商品金额 − 活动优惠（购物车不涉及券/积分/运费，这三项在结算页才算） */
+const payable = computed(() => {
+  const goods = Number(total.value) || 0
+  const discount = Number(activityDiscount.value) || 0
+  return Math.max(goods - discount, 0)
+})
+
+/**
  * 满 ¥99 免运费进度。
  * ⚠️ 门槛/运费必须与后端 OrderService.EXPRESS_FREE_THRESHOLD / EXPRESS_FREIGHT 保持一致。
  * 与满减进度是两个独立门槛：满减只看**普通商品**，运费按**整车（含秒杀）**，所以这里用 total。
@@ -235,12 +273,17 @@ async function load() {
     needLogin.value = false
     const res = await getCart()
     items.value = (res && res.items) ? res.items : []
+    // 活动优惠由后端计算并随购物车返回，直接采用（详见 activityDiscount 的注释）
+    activityDiscount.value = Number(res && res.activityDiscount) || 0
+    activityName.value = (res && res.activityName) || ''
     // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
     // 改数量 / 删除 / 从别的页面切回来都会走 load，所以这一处就覆盖了全部路径。
     applyCartBadge(items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0))
   } catch (e) {
     // 必须 catch：失败也要把骨架屏收掉，否则页面会永远停在骨架状态
     items.value = []
+    activityDiscount.value = 0
+    activityName.value = ''
     uni.showToast({ title: (e && e.message) || '购物车加载失败', icon: 'none' })
   } finally {
     loading.value = false
@@ -623,6 +666,54 @@ onShow(async () => {
   z-index: 10;
 }
 /* 结算行：原来 .footer 自己是 flex row，现在让位给「凑单条 + 结算行」两段式 */
+/* ---------- 金额明细（商品金额 − 活动优惠 = 合计） ---------- */
+.amounts {
+  padding: 14rpx 28rpx 2rpx;
+  background: #fff;
+  border-top: 1rpx solid #F5F2EC;
+}
+.amt-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7rpx 0;
+}
+.amt-lbl {
+  font-size: 23rpx;
+  color: #8A8578;
+}
+.amt-val {
+  font-size: 24rpx;
+  color: #4B5563;
+}
+.amt-val.minus {
+  color: #C0392B;
+}
+.amt-row.payable {
+  margin-top: 2rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx dashed #F0EDE6;
+}
+.amt-row.payable .amt-lbl {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.amt-val.strong {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #C0392B;
+}
+.sum-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.saved {
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #C0392B;
+}
+
 .footer-line {
   display: flex;
   align-items: center;

@@ -23,6 +23,13 @@
 
     <!-- ===== 2. 价格卡 ===== -->
     <view class="card price-card">
+      <!-- 秒杀标签：后端在秒杀生效时会把 price 换成秒杀价、originalPrice 换成原售价，
+           这里标明来源，避免用户以为「价格突然变了」 -->
+      <view class="flash-row" v-if="product.flashSaleId">
+        <text class="flash-badge">限时秒杀</text>
+        <text class="flash-tip" v-if="product.flashPerUserLimit > 0">每人限 {{ product.flashPerUserLimit }} 件</text>
+        <text class="flash-tip">秒杀商品不参与满减与优惠券</text>
+      </view>
       <view class="price-row">
         <text class="p-now"><text class="p-yen">¥</text>{{ displayPrice }}</text>
         <text class="p-origin" v-if="showOriginal">¥{{ displayOriginal }}</text>
@@ -635,6 +642,26 @@ function buyNow() {
   margin-top: -28rpx;
   position: relative;
   z-index: 2;
+}
+/* 秒杀标识 */
+.flash-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+}
+.flash-badge {
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  background: linear-gradient(90deg, #FF6A3D 0%, #E8342B 100%);
+  color: #fff;
+  font-size: 21rpx;
+  font-weight: 700;
+}
+.flash-tip {
+  font-size: 21rpx;
+  color: #B4746A;
 }
 .price-row {
   display: flex;

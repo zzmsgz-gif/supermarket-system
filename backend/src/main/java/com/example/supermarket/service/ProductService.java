@@ -7,6 +7,7 @@ import com.example.supermarket.dto.ProductImageResponse;
 import com.example.supermarket.dto.ProductSkuResponse;
 import com.example.supermarket.dto.ProductSummaryResponse;
 import com.example.supermarket.entity.PageDwell;
+import com.example.supermarket.entity.FlashSale;
 import com.example.supermarket.entity.Product;
 import com.example.supermarket.entity.ProductCategory;
 import com.example.supermarket.exception.ResourceNotFoundException;
@@ -53,6 +54,8 @@ public class ProductService {
     private final ProductAttributeRepository attributeRepository;
     private final PageDwellRepository dwellRepository;
     private final ProductReviewRepository productReviewRepository;
+    /** 用于详情页透出「此刻进行中」的秒杀价（秒杀价在 flash_sale，不在商品表） */
+    private final FlashSaleService flashSaleService;
 
     public ProductService(
             ProductRepository productRepository,
@@ -61,7 +64,8 @@ public class ProductService {
             ProductSkuRepository skuRepository,
             ProductAttributeRepository attributeRepository,
             PageDwellRepository dwellRepository,
-            ProductReviewRepository productReviewRepository
+            ProductReviewRepository productReviewRepository,
+            FlashSaleService flashSaleService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
@@ -70,6 +74,7 @@ public class ProductService {
         this.attributeRepository = attributeRepository;
         this.dwellRepository = dwellRepository;
         this.productReviewRepository = productReviewRepository;
+        this.flashSaleService = flashSaleService;
     }
 
     /** 全量商品星级聚合（评价数>0 的商品），供商品卡/详情展示平均星级 */
@@ -105,6 +110,12 @@ public class ProductService {
         Product product = productRepository.findByIdAndStatusAndDeleted(id, ON_SALE, NOT_DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         ProductDetailResponse detail = ProductDetailResponse.from(product);
+        // ⚠️ 秒杀生效时，详情页必须显示**秒杀价**。
+        // 秒杀商品的真实售价在 flash_sale.flash_price（如 ¥139），商品表 price 是原价（¥199）。
+        // 之前这里只回商品表价格 → 详情页显示 ¥199，加购后购物车按 ¥139 计价，
+        // 同一件商品两个价（线上真实反馈）。FlashSaleService.runningByProductIds 早就写好了，
+        // 注释写着"用于商品列表/详情透出秒杀价"，但一直没人调用 —— 这里接上。
+        applyRunningFlashPrice(detail, product, id);
         detail.setImages(imageRepository.findByProductIdAndDeletedOrderBySortNoAscIdAsc(id, NOT_DELETED).stream()
                 .map(ProductImageResponse::from).collect(Collectors.toList()));
         detail.setSkus(skuRepository.findByProductIdAndDeletedOrderBySortNoAscIdAsc(id, NOT_DELETED).stream()
@@ -112,6 +123,33 @@ public class ProductService {
         detail.setAttributes(attributeRepository.findByProductIdAndDeletedOrderBySortNoAscIdAsc(id, NOT_DELETED).stream()
                 .map(ProductAttributeResponse::from).collect(Collectors.toList()));
         return detail;
+    }
+
+    /**
+     * 若该商品此刻有进行中的秒杀，把生效秒杀价落到 {@code price} 上，并透出秒杀元信息。
+     *
+     * <p>划线价取「商品原售价」（product.price）而不是商品自带的 originalPrice：
+     * 后者的语义是市场价/吊牌价，用它做划线会变成「¥259 划掉、现价 ¥139」，
+     * 而用户真正省下的是从 ¥199 降到 ¥139，口径不一致会让人怀疑价格。
+     */
+    private void applyRunningFlashPrice(ProductDetailResponse detail, Product product, Long productId) {
+        Map<Long, FlashSale> running = flashSaleService.runningByProductIds(List.of(productId));
+        FlashSale sale = running == null ? null : running.get(productId);
+        if (sale == null || sale.getFlashPrice() == null) {
+            return;
+        }
+        BigDecimal flashPrice = sale.getFlashPrice();
+        BigDecimal normalPrice = product.getPrice();
+        if (normalPrice != null && flashPrice.compareTo(normalPrice) >= 0) {
+            // 秒杀价没有低于原价说明配置有问题，别用一个"更贵的秒杀价"覆盖原价
+            return;
+        }
+        detail.setPrice(flashPrice);
+        detail.setOriginalPrice(normalPrice);
+        detail.setFlashSaleId(sale.getId());
+        detail.setFlashPrice(flashPrice);
+        detail.setFlashEndTime(sale.getEndTime());
+        detail.setFlashPerUserLimit(sale.getPerUserLimit());
     }
 
     // 首页「热门推荐」：排除秒杀独立商品（kind=FLASH）。

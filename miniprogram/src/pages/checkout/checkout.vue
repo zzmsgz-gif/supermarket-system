@@ -79,7 +79,7 @@
         </view>
 
         <view class="freight-tip" v-if="fulfillmentType === 'EXPRESS'">
-          快递配送：订单满 ¥99 免运费，未满收 ¥8 运费（下单后计算）
+          快递配送：订单满 ¥99 免运费，未满收 ¥8 运费
         </view>
         <view class="freight-tip" v-if="fulfillmentType === 'INSTANT'">
           同城配送：免运费，2 小时内送达
@@ -87,7 +87,26 @@
       </view>
     </view>
 
-    <view class="total">合计 ¥{{ fmt(total) }}</view>
+    <!-- 金额明细：口径与后端下单公式一致（商品金额 − 活动优惠 + 运费 = 应付）。
+         之前这里只有一个「合计 = 商品金额」，满足活动条件也看不到任何优惠。 -->
+    <view class="amounts">
+      <view class="amt-row">
+        <text class="amt-lbl">商品金额</text>
+        <text class="amt-val">¥{{ fmt(goodsTotal) }}</text>
+      </view>
+      <view class="amt-row" v-if="hasDiscount">
+        <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
+        <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+      </view>
+      <view class="amt-row" v-if="freight > 0">
+        <text class="amt-lbl">运费</text>
+        <text class="amt-val">+¥{{ fmt(freight) }}</text>
+      </view>
+      <view class="amt-row payable">
+        <text class="amt-lbl">应付</text>
+        <text class="amt-val strong">¥{{ fmt(payable) }}</text>
+      </view>
+    </view>
     <view class="channel">支付方式：钱包余额</view>
     <button
       class="pay"
@@ -140,12 +159,45 @@ const selectedAddress = computed(
   () => addresses.value.find((a) => a.id === selectedAddressId.value) || null
 )
 
-const total = computed(() =>
+/**
+ * 商品金额：优先用后端给的 subtotalAmount（已按秒杀价拆分），兜底单价×件数。
+ * 原来这里一律按 productPrice×quantity 算，秒杀行会算成原价，与购物车/后端都差钱。
+ */
+const goodsTotal = computed(() =>
   items.value.reduce(
-    (s, it) => s + (Number(it.productPrice) || 0) * (Number(it.quantity) || 0),
+    (s, it) => s + (Number(it.subtotalAmount) || (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)),
     0
   )
 )
+
+/**
+ * 活动优惠：直接采用后端 GET /cart 返回的 activityDiscount（evaluateBestActivity 的权威结果）。
+ * 前端不自己算 —— 门槛判定要处理「多规格合并、秒杀行剔除、多活动取最优」，复刻必分叉。
+ */
+const activityDiscount = ref(0)
+const activityName = ref('')
+
+// 运费口径必须与后端 OrderService.freightOf 一致：只有快递收，且按**商品金额**判门槛
+const EXPRESS_FREE_THRESHOLD = 99
+const EXPRESS_FREIGHT = 8
+const freight = computed(() => {
+  if (fulfillmentType.value !== 'EXPRESS') return 0
+  return goodsTotal.value >= EXPRESS_FREE_THRESHOLD ? 0 : EXPRESS_FREIGHT
+})
+
+/**
+ * 应付 = 商品金额 − 活动优惠 + 运费。
+ * 结算页没有券/积分入口（submit 的请求体也不带 userCouponId / usePoints），
+ * 所以这里就是用户最终会被扣的钱：与后端 payAmount 公式同口径。
+ */
+const payable = computed(() => {
+  const goods = Number(goodsTotal.value) || 0
+  const discount = Number(activityDiscount.value) || 0
+  return Math.max(goods - discount, 0) + Number(freight.value || 0)
+})
+
+/** 后端「活动与券互斥取大」的提示：结算页暂无券入口，这里只用于文案 */
+const hasDiscount = computed(() => Number(activityDiscount.value) > 0)
 
 const canSubmit = computed(() => {
   if (!items.value.length) return false
@@ -196,6 +248,9 @@ function resolvePrice(product, skuSpecText) {
 async function loadCart() {
   const res = await getCart()
   const list = (res && res.items) ? res.items : []
+  // 活动优惠随购物车一起返回（后端权威值），这里接住用于金额明细
+  activityDiscount.value = Number(res && res.activityDiscount) || 0
+  activityName.value = (res && res.activityName) || ''
   items.value = list.map((it) => ({
     key: 'c' + it.id,
     id: it.id,
@@ -506,14 +561,47 @@ async function submit() {
   color: #999;
   margin-top: 12rpx;
 }
-.total {
-  padding: 24rpx;
-  font-size: 32rpx;
-  font-weight: bold;
+/* 金额明细 */
+.amounts {
+  margin-top: 20rpx;
+  padding: 20rpx 24rpx 8rpx;
+  background: #fff;
+  border-radius: 16rpx;
+}
+.amt-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 8rpx 0;
+}
+.amt-lbl {
+  font-size: 25rpx;
+  color: #8A8578;
+}
+.amt-val {
+  font-size: 26rpx;
+  color: #4B5563;
+}
+.amt-val.minus {
+  color: #C0392B;
+}
+.amt-row.payable {
+  margin-top: 4rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx dashed #F0EDE6;
+}
+.amt-row.payable .amt-lbl {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.amt-val.strong {
+  font-size: 34rpx;
+  font-weight: 700;
   color: #C0392B;
 }
 .channel {
-  padding: 0 24rpx 24rpx;
+  padding: 16rpx 24rpx 24rpx;
   color: #999;
   font-size: 24rpx;
 }
