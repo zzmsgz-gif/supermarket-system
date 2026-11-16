@@ -34,17 +34,24 @@
         <text class="f-lab">手机号</text>
         <input class="f-in" v-model="form.receiverPhone" placeholder="11 位手机号" />
       </view>
+      <!-- 省/市/区改成三级联动下拉：原来三个自由文本框，同一个地方能写出
+           「广东 / 广州」和「广东省 / 广州市」好几种写法，配送范围校验、后台统计都会乱 -->
       <view class="f-row">
-        <text class="f-lab">省</text>
-        <input class="f-in" v-model="form.province" placeholder="省份" />
-      </view>
-      <view class="f-row">
-        <text class="f-lab">市</text>
-        <input class="f-in" v-model="form.city" placeholder="城市" />
-      </view>
-      <view class="f-row">
-        <text class="f-lab">区/县</text>
-        <input class="f-in" v-model="form.district" placeholder="区/县" />
+        <text class="f-lab">地区</text>
+        <picker
+          class="f-picker"
+          mode="multiSelector"
+          :range="regionRange"
+          :value="regionIndex"
+          @columnchange="onRegionColumn"
+          @change="onRegionChange"
+        >
+          <view class="f-pick-box">
+            <text v-if="regionText" class="f-pick-text">{{ regionText }}</text>
+            <text v-else class="f-pick-ph">请选择省 / 市 / 区</text>
+            <text class="f-pick-arrow">›</text>
+          </view>
+        </picker>
       </view>
       <view class="f-row">
         <text class="f-lab">详细</text>
@@ -63,9 +70,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { listAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from '@/api/address'
+import { regionData, citiesOf, districtsOf } from '@/utils/regions'
 
 const addresses = ref([])
 const editing = ref(false)
@@ -81,8 +89,73 @@ const form = reactive({
   isDefault: false
 })
 
+// ==================== 省 / 市 / 区 三级联动 ====================
+// 数据来自 utils/regions.js（31 个省级，结构与 PC 端 frontend/src/utils/regions.js 同源）
+const PROVINCES = Object.keys(regionData)
+
+const regionIndex = ref([0, 0, 0])
+const regionCities = ref([])
+const regionDistricts = ref([])
+const regionRange = computed(() => [PROVINCES, regionCities.value, regionDistricts.value])
+
+/** 「市辖区」是直辖市数据里的虚拟市级，展示时省掉；但**存库要保留**（后端 city 是 @NotBlank） */
+function visibleCity(city) {
+  return city === '市辖区' ? '' : (city || '')
+}
+
+const regionText = computed(() => {
+  const p = PROVINCES[regionIndex.value[0]] || ''
+  const c = visibleCity(regionCities.value[regionIndex.value[1]])
+  const d = regionDistricts.value[regionIndex.value[2]] || ''
+  return [p, c, d].filter(Boolean).join(' ')
+})
+
+/** 把已存地址（可能是任意文本）反查成三列下标；匹配不到就落到第一项，不会白屏 */
+function resetRegion(province, city, district) {
+  let pi = PROVINCES.indexOf(province)
+  if (pi < 0) pi = 0
+  const cities = Object.keys(citiesOf(PROVINCES[pi]))
+  let ci = cities.indexOf(city)
+  if (ci < 0) ci = 0
+  const dists = districtsOf(PROVINCES[pi], cities[ci]) || []
+  let di = dists.indexOf(district)
+  if (di < 0) di = 0
+  regionCities.value = cities
+  regionDistricts.value = dists
+  regionIndex.value = [pi, ci, di]
+}
+
+function applyRegionToForm() {
+  form.province = PROVINCES[regionIndex.value[0]] || ''
+  form.city = regionCities.value[regionIndex.value[1]] || ''
+  form.district = regionDistricts.value[regionIndex.value[2]] || ''
+}
+
+/** 滚动某一列时更新后级联的候选值（否则选了省，市列还是上一个省的城市）*/
+function onRegionColumn(e) {
+  const { column, value } = e.detail
+  const idx = [...regionIndex.value]
+  idx[column] = value
+  if (column === 0) {
+    const cities = Object.keys(citiesOf(PROVINCES[idx[0]]))
+    regionCities.value = cities
+    regionDistricts.value = districtsOf(PROVINCES[idx[0]], cities[0]) || []
+    idx[1] = 0
+    idx[2] = 0
+  } else if (column === 1) {
+    regionDistricts.value = districtsOf(PROVINCES[idx[0]], regionCities.value[idx[1]]) || []
+    idx[2] = 0
+  }
+  regionIndex.value = idx
+}
+
+function onRegionChange(e) {
+  regionIndex.value = [...e.detail.value]
+  applyRegionToForm()
+}
+
 function full(a) {
-  return (a.province || '') + (a.city || '') + (a.district || '') + (a.detailAddress || '')
+  return (a.province || '') + visibleCity(a.city) + (a.district || '') + (a.detailAddress || '')
 }
 
 async function load() {
@@ -126,6 +199,10 @@ function startAdd() {
     detailAddress: '',
     isDefault: false
   })
+  // 三级联动从第一项（默认北京）开始；用户不选也能保存会被后端 @NotBlank 拦住，
+  // 所以这里先按首项填进 form，避免「什么都没选就保存」时表单看起来已填、实际为空
+  resetRegion('', '', '')
+  applyRegionToForm()
   editing.value = true
 }
 
@@ -140,6 +217,8 @@ function edit(a) {
     detailAddress: a.detailAddress,
     isDefault: !!a.isDefault
   })
+  // 把库里存的省市区反查成三列下标，否则下拉会停在默认项、一保存就把地址改错
+  resetRegion(a.province, a.city, a.district)
   editing.value = true
 }
 
@@ -281,6 +360,35 @@ onShow(load)
 .f-in {
   flex: 1;
   font-size: 26rpx;
+}
+/* 省市区下拉：整体铺满剩余宽度，右侧箭头提示可点 */
+.f-picker {
+  flex: 1;
+  min-width: 0;
+}
+.f-pick-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44rpx;
+}
+.f-pick-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #1F2937;
+  word-break: break-word;
+}
+.f-pick-ph {
+  flex: 1;
+  font-size: 26rpx;
+  color: #B8B2A6;
+}
+.f-pick-arrow {
+  flex-shrink: 0;
+  margin-left: 8rpx;
+  font-size: 28rpx;
+  color: #C4C0B6;
 }
 .f-actions {
   display: flex;
