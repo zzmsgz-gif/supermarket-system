@@ -90,54 +90,68 @@
     </view>
 
     <view class="footer" v-if="items.length">
-      <!-- ① 满减凑单进度（活动门槛）：只按**普通商品**小计算，秒杀商品不计入 -->
-      <view class="promo-bar" v-if="actProgress">
-        <view class="pb-track">
-          <view class="pb-fill" :style="{ width: actProgress.percent + '%' }"></view>
+      <!-- 折叠开关：凑单条 + 金额明细默认展开，但商品多的时候它们会把列表挤得没地方，
+           所以给一个收起入口，状态记在本地（下次进来保持）。
+           收起后「合计 / 已省 / 去结算」仍在下方常驻，核心信息不丢。 -->
+      <view class="fold-bar" @click="toggleFold">
+        <view class="fold-left">
+          <text class="fold-title">优惠明细</text>
+          <text class="fold-sum" v-if="activityDiscount > 0">已省 ¥{{ fmt(activityDiscount) }}</text>
         </view>
-        <text class="pb-text" v-if="!actProgress.reachedTop">
-          再买 <text class="pb-strong">¥{{ fmt(actProgress.gap) }}</text> 可 {{ actProgress.benefit }}
+        <text class="fold-btn">
+          {{ footerExpanded ? '收起' : '展开' }}<text class="fold-ar">{{ footerExpanded ? '⌄' : '⌃' }}</text>
         </text>
-        <text class="pb-text" v-else>
-          <!-- benefit 对打折活动返回的是「打 8 折」，前面直接接「已享」会读成"已享打8折" -->
-          已享优惠：<text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ fmt(actProgress.threshold) }}）
-        </text>
-        <text class="pb-note">满减仅按普通商品计算，秒杀商品不计入</text>
       </view>
 
-      <!-- ② 满 ¥99 免运费进度：与①是两条**互不相关**的门槛，必须分开显示，
-           否则用户分不清「满99减X」和「满99免邮」。运费按整车（含秒杀商品）算。 -->
-      <view class="promo-bar freight" v-if="freightProgress">
-        <view class="pb-track">
-          <view class="pb-fill blue" :style="{ width: freightProgress.percent + '%' }"></view>
+      <block v-if="footerExpanded">
+        <!-- ① 满减凑单进度（活动门槛）：只按**普通商品**小计算，秒杀商品不计入 -->
+        <view class="promo-bar" v-if="actProgress">
+          <view class="pb-track">
+            <view class="pb-fill" :style="{ width: actProgress.percent + '%' }"></view>
+          </view>
+          <text class="pb-text" v-if="!actProgress.reachedTop">
+            再买 <text class="pb-strong">¥{{ fmt(actProgress.gap) }}</text> 可 {{ actProgress.benefit }}
+          </text>
+          <text class="pb-text" v-else>
+            <!-- benefit 对打折活动返回的是「打 8 折」，前面直接接「已享」会读成"已享打8折" -->
+            已享优惠：<text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ fmt(actProgress.threshold) }}）
+          </text>
+          <text class="pb-note">满减仅按普通商品计算，秒杀商品不计入</text>
         </view>
-        <text class="pb-text" v-if="!freightProgress.reachedTop">
-          再买 <text class="pb-strong blue-t">¥{{ fmt(freightProgress.gap) }}</text>，即可免 ¥{{ fmt(freightProgress.freight) }} 运费
-        </text>
-        <text class="pb-text" v-else>
-          已满足满 ¥{{ fmt(freightProgress.threshold) }} 免运费
-        </text>
-        <text class="pb-note">运费按整车（含秒杀商品）计算</text>
-      </view>
 
-      <!-- 金额明细：商品金额 − 活动优惠 = 合计。
-           之前这里只有一个「合计」，满足满减条件时既不显示优惠、合计也不扣减，
-           用户看到的钱和下单实付对不上（用户反馈）。口径与后端 createOrder 保持一致：
-           payAmount = 商品金额 − max(券, 活动) − 积分 + 运费（购物车不涉及券/积分/运费）。 -->
-      <view class="amounts">
-        <view class="amt-row">
-          <text class="amt-lbl">商品金额</text>
-          <text class="amt-val">¥{{ fmt(total) }}</text>
+        <!-- ② 满 ¥99 免运费进度：与①是两条**互不相关**的门槛，必须分开显示，
+             否则用户分不清「满99减X」和「满99免邮」。运费按整车（含秒杀商品）算。 -->
+        <view class="promo-bar freight" v-if="freightProgress">
+          <view class="pb-track">
+            <view class="pb-fill blue" :style="{ width: freightProgress.percent + '%' }"></view>
+          </view>
+          <text class="pb-text" v-if="!freightProgress.reachedTop">
+            再买 <text class="pb-strong blue-t">¥{{ fmt(freightProgress.gap) }}</text>，即可免 ¥{{ fmt(freightProgress.freight) }} 运费
+          </text>
+          <text class="pb-text" v-else>
+            已满足满 ¥{{ fmt(freightProgress.threshold) }} 免运费
+          </text>
+          <text class="pb-note">运费按整车（含秒杀商品）计算</text>
         </view>
-        <view class="amt-row" v-if="activityDiscount > 0">
-          <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
-          <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+
+        <!-- 金额明细：商品金额 − 活动优惠 = 合计。
+             口径与后端 createOrder 保持一致：
+             payAmount = 商品金额 − max(券, 活动) − 积分 + 运费（购物车不涉及券/积分/运费）。 -->
+        <view class="amounts">
+          <view class="amt-row">
+            <text class="amt-lbl">商品金额</text>
+            <text class="amt-val">¥{{ fmt(total) }}</text>
+          </view>
+          <view class="amt-row" v-if="activityDiscount > 0">
+            <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
+            <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+          </view>
+          <view class="amt-row payable">
+            <text class="amt-lbl">合计</text>
+            <text class="amt-val strong">¥{{ fmt(payable) }}</text>
+          </view>
         </view>
-        <view class="amt-row payable">
-          <text class="amt-lbl">合计</text>
-          <text class="amt-val strong">¥{{ fmt(payable) }}</text>
-        </view>
-      </view>
+      </block>
 
       <view class="footer-line">
         <view class="sum-wrap">
@@ -368,6 +382,25 @@ function goCheckout() {
 const instance = getCurrentInstance()
 const footerH = ref(0)
 
+// ==================== 底部「优惠明细」折叠 ====================
+// 凑单条 + 金额明细在商品多的时候很占地方，给一个收起入口。
+// 状态存本地：用户一旦收起，下次进购物车保持收起（别每次都替他展开）；
+// 收起后「合计 / 已省 / 去结算」仍然常驻在下方，核心信息不丢。
+const FOLD_KEY = 'supermarket_cart_footer_folded'
+const footerExpanded = ref(true)
+let foldInited = false
+
+function toggleFold() {
+  footerExpanded.value = !footerExpanded.value
+  try {
+    uni.setStorageSync(FOLD_KEY, footerExpanded.value ? 0 : 1)
+  } catch (e) {
+    /* 存储失败无所谓，只是记不住偏好 */
+  }
+  // 底部栏高度变了，必须重新量，否则收起后仍留着展开时的空白（反之会压住商品）
+  measureFooter()
+}
+
 function measureFooter() {
   nextTick(() => {
     uni
@@ -388,12 +421,22 @@ watch(
     () => needLogin.value,
     () => actProgress.value,
     () => freightProgress.value,
-    () => activityDiscount.value
+    () => activityDiscount.value,
+    () => footerExpanded.value
   ],
   () => measureFooter()
 )
 
 onShow(async () => {
+  // 只在首次进入时读折叠偏好（之后用户点了就实时生效，不要被 onShow 覆盖回去）
+  if (!foldInited) {
+    foldInited = true
+    try {
+      footerExpanded.value = uni.getStorageSync(FOLD_KEY) !== 1
+    } catch (e) {
+      footerExpanded.value = true
+    }
+  }
   await load()
   // 活动只在有商品时需要（凑单进度条），失败不影响购物车本身
   if (items.value.length && !activities.value.length) {
@@ -702,6 +745,38 @@ onShow(async () => {
   background: #fff;
   border-top: 1rpx solid #eee;
   z-index: 10;
+}
+/* 折叠开关：做成窄条，收起后底部栏只剩「开关 + 合计行」两段 */
+.fold-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 24rpx;
+  border-top: 1rpx solid #F0EDE6;
+  background: #FDFCF9;
+}
+.fold-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+}
+.fold-title {
+  font-size: 23rpx;
+  color: #6B7280;
+}
+.fold-sum {
+  font-size: 21rpx;
+  font-weight: 600;
+  color: #C0392B;
+}
+.fold-btn {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #0F6E56;
+}
+.fold-ar {
+  margin-left: 4rpx;
+  font-size: 20rpx;
 }
 /* 结算行：原来 .footer 自己是 flex row，现在让位给「凑单条 + 结算行」两段式 */
 /* ---------- 金额明细（商品金额 − 活动优惠 = 合计） ---------- */
