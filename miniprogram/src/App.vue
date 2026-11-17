@@ -1,5 +1,6 @@
 <script>
 import { syncCartBadge } from '@/utils/cartBadge'
+import { syncCouponDot } from '@/utils/couponBadge'
 import { isLoggedIn } from '@/store/auth'
 
 export default {
@@ -12,7 +13,12 @@ export default {
     // tabBar 角标是"当前事实"而不是"上次操作的残留"。
     // 延时一点：冷启动时 tabBar 还没渲染完，setTabBarBadge 会失败。
     if (!isLoggedIn()) return
-    setTimeout(() => { syncCartBadge(true) }, 300)
+    setTimeout(() => {
+      syncCartBadge(true)
+      // 「有券可领」红点同理：运营随时可能在后台加券，用户回到前台就该看到提示。
+      // syncCouponDot 内部有 5s 节流，和页面自己的 onShow 不会重复打接口。
+      syncCouponDot(true)
+    }, 300)
   }
 }
 </script>

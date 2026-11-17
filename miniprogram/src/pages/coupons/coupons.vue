@@ -56,6 +56,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { listMyCoupons, listAvailableCoupons, receiveCoupon } from '@/api/coupon'
 import { couponStatusLabel, formatTime } from '@/utils/format'
+import { applyCouponDot, countClaimable } from '@/utils/couponBadge'
 
 const tab = ref('mine')
 const myCoupons = ref([])
@@ -65,7 +66,12 @@ const loading = ref(false)
 async function loadMine() {
   loading.value = true
   try {
-    myCoupons.value = await listMyCoupons()
+    // ⚠️ /coupons/mine 返回的是**分页对象** { items, page, size, total, pages }，不是数组。
+    // 原来直接把整个对象赋给 myCoupons，v-for 就在遍历对象的属性（items/page/size/total/pages），
+    // 渲染出几张金额和名称全空的卡片 —— 页面看起来"啥都没显示"（用户反馈）。
+    // /coupons/available 返回的才是纯数组，两个接口结构不一样，别当同一种用。
+    const res = await listMyCoupons()
+    myCoupons.value = Array.isArray(res) ? res : (res && res.items) || []
   } catch (e) {
     myCoupons.value = []
   } finally {
@@ -76,7 +82,10 @@ async function loadMine() {
 async function loadAvailable() {
   loading.value = true
   try {
-    available.value = await listAvailableCoupons()
+    const res = await listAvailableCoupons()
+    available.value = Array.isArray(res) ? res : (res && res.items) || []
+    // 列表已经在手上，顺手同步红点（省一次 /coupons/available）
+    applyCouponDot(countClaimable(available.value))
   } catch (e) {
     available.value = []
   } finally {
@@ -94,7 +103,8 @@ async function receive(c) {
   try {
     await receiveCoupon(c.id)
     uni.showToast({ title: '领取成功', icon: 'success' })
-    loadAvailable()
+    // 领完重拉：按钮变「已领取」+ 顺手把红点按最新可领张数刷新（loadAvailable 内部会 applyCouponDot）
+    await loadAvailable()
   } catch (e) {
     uni.showToast({ title: (e && e.message) || '领取失败', icon: 'none' })
   }

@@ -50,7 +50,11 @@
           <text class="g2-ic">❤</text><text class="g2-t">我的收藏</text><text class="g2-ar">›</text>
         </view>
         <view class="g2" @click="go('coupons')">
-          <text class="g2-ic">🎫</text><text class="g2-t">优惠券</text><text class="g2-ar">›</text>
+          <text class="g2-ic">🎫</text><text class="g2-t">优惠券</text>
+          <!-- 有券可领时直接把张数写在入口上，用户不必点进去才知道。
+               用 .g2-tag（文字标签）而不是 .g2-badge：后者是未读数用的圆形数字徽标 -->
+          <text class="g2-tag" v-if="claimableCount > 0">可领 {{ claimableCount }} 张</text>
+          <text class="g2-ar">›</text>
         </view>
         <view class="g2" @click="go('wallet')">
           <text class="g2-ic">💰</text><text class="g2-t">我的钱包</text><text class="g2-ar">›</text>
@@ -117,6 +121,7 @@ import { unreadCount } from '@/api/message'
 import { changePassword } from '@/api/auth'
 import { listMyCoupons } from '@/api/coupon'
 import { syncCartBadge, clearCartBadge } from '@/utils/cartBadge'
+import { syncCouponDot, clearCouponDot } from '@/utils/couponBadge'
 import { requireLogin, goLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
@@ -149,6 +154,8 @@ const TAB_PAGES = ['index', 'cart', 'orders', 'mine']
 // —— 三宫格数据 ——
 // 2026-11-15 删掉「我的订单」卡片后，orderCounts / goOrderTab 一并移除（订单走底部 tab）
 const couponCount = ref(0)
+// 可领取张数（领券中心里尚未领的券）：>0 时 tabBar 显示红点，入口上显示「可领 N」
+const claimableCount = ref(0)
 
 // —— 修改密码 ——
 const pwdOpen = ref(false)
@@ -249,9 +256,19 @@ async function load() {
   // 可用券数量（只数 UNUSED，已用/过期的没意义）
   try {
     const cs = await listMyCoupons()
-    couponCount.value = (cs || []).filter((c) => c.status === 'UNUSED').length
+    // ⚠️ /coupons/mine 返回**分页对象** { items, page, size, total, pages }，不是数组。
+    // 原来直接对返回值 .filter()，对象上没有 filter → TypeError → 被 catch 成 0，
+    // 表现是「明明有券，我的页却显示优惠券 0 张」（与「我的券」页空白同一个根因）。
+    const mineList = Array.isArray(cs) ? cs : (cs && cs.items) || []
+    couponCount.value = mineList.filter((c) => c.status === 'UNUSED').length
   } catch (e) {
     couponCount.value = 0
+  }
+  // 有券可领 → tabBar「我的」红点 + 入口上的张数（syncCouponDot 内部有节流）
+  try {
+    claimableCount.value = await syncCouponDot()
+  } catch (e) {
+    claimableCount.value = 0
   }
 }
 
@@ -264,6 +281,9 @@ function doLogout() {
       clearAuth()
       // 退出后角标必须清掉，否则下一个登录的账号会先看到上一个账号的购物车数字
       clearCartBadge()
+      // 券红点同理：不清的话下一个账号会看到"有券可领"的假提示
+      clearCouponDot()
+      claimableCount.value = 0
       uni.reLaunch({ url: '/pages/index/index' })
     }
   })
@@ -276,6 +296,7 @@ onShow(() => {
     profile.value = null
     walletBalance.value = '0.00'
     couponCount.value = 0
+    claimableCount.value = 0
     unread.value = 0
     return
   }
@@ -603,6 +624,16 @@ onShow(() => {
   color: #fff;
   font-size: 18rpx;
   padding: 0 6rpx;
+}
+/* 「可领 N 张」文字标签：比圆形数字徽标更能表达含义 */
+.g2-tag {
+  flex-shrink: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 10rpx;
+  background: #FDECEA;
+  color: #C0392B;
+  font-size: 20rpx;
+  font-weight: 600;
 }
 .g2-ar {
   font-size: 26rpx;
