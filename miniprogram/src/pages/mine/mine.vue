@@ -113,7 +113,7 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { getStoredUser, clearAuth, isLoggedIn } from '@/store/auth'
 import { getWallet } from '@/api/wallet'
 import { getMemberProfile } from '@/api/member'
@@ -313,6 +313,17 @@ onShow(() => {
   // tab 页每次切回来都对一次角标（内部有 1.2s 节流，不会因为连点 tab 反复请求）
   syncCartBadge()
 })
+
+// 下拉刷新：复用各页已有的 load（它们本身就是「重置到第一页」的语义）。
+// 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
+onPullDownRefresh(async () => {
+  try {
+    await load()
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
+
 </script>
 
 <style scoped>

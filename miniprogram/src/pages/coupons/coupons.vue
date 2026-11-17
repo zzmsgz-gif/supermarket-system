@@ -53,7 +53,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listMyCoupons, listAvailableCoupons, receiveCoupon } from '@/api/coupon'
 import { couponStatusLabel, formatTime } from '@/utils/format'
 import { applyCouponDot, countClaimable } from '@/utils/couponBadge'
@@ -114,6 +114,18 @@ onShow(() => {
   if (tab.value === 'mine') loadMine()
   else loadAvailable()
 })
+
+// 下拉刷新：复用各页已有的 load（它们本身就是「重置到第一页」的语义）。
+// 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
+onPullDownRefresh(async () => {
+  try {
+    if (tab.value === 'mine') await loadMine()
+    else await loadAvailable()
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
+
 </script>
 
 <style scoped>

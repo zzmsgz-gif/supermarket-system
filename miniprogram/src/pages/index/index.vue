@@ -115,10 +115,11 @@
         <view class="flash-title-wrap">
           <text class="flash-fire">🔥</text>
           <text class="flash-t">限时秒杀</text>
-          <text class="flash-sub" v-if="flashCountdown">{{ flashCountdown }}</text>
-          <text class="flash-sub2" v-else-if="flashEndLabel">{{ flashEndLabel }}</text>
+          <!-- 头部**不放**统一倒计时：这里每张卡是各自独立的秒杀商品、各自有场次结束时间，
+               一个「剩 N 天」代表不了全部，反而让人以为所有秒杀都还剩那么久（用户反馈）。
+               各自剩余时间标在卡片上，见 .f-left；只有"全部未开始"时才在头部提示 -->
+          <text class="flash-sub2" v-if="flashHasUpcoming">即将开始</text>
         </view>
-        <text class="flash-more" @click="goFlashAll">查看更多 ›</text>
       </view>
 
       <scroll-view scroll-x class="flash-scroll" :show-scrollbar="false">
@@ -130,6 +131,12 @@
           </view>
           <view class="f-info">
             <text class="f-name">{{ f.productName }}</text>
+            <!-- 每个秒杀商品各自的剩余时间：独立场次独立算，不能用一个数代表全部 -->
+            <text
+              class="f-left"
+              :class="{ 'f-left-soon': f.remaining > 0 && f.remaining < 3600 }"
+              v-if="f.state === 'RUNNING' && f.remaining > 0"
+            >{{ flashLeftLabel(f.remaining) }}</text>
             <view class="f-foot">
               <view class="f-price-box">
                 <text class="f-price"><text class="f-yen">¥</text>{{ f.flashPrice }}</text>
@@ -239,7 +246,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { onShow, onHide, onUnload, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
@@ -337,19 +344,25 @@ const quickCats = computed(() => {
   return head
 })
 
-// 秒杀头部：倒计时只显示「进行中最早结束」的那一场，避免一排数字挤在一起
-const flashCountdown = computed(() => {
-  const running = flashSales.value.find((f) => f.state === 'RUNNING' && f.remaining > 0)
-  if (!running) return ''
-  const s = Number(running.remaining) || 0
-  // 场次还剩几十天时显示 HH:MM:SS 会变成「1200:58:44」这种没意义的数字，改成按天
+// 秒杀：**不再**在头部放统一倒计时。
+// 每一张卡是独立秒杀商品（各自场次、各自 endTime），用头部一个「剩 N 天」
+// 等于拿某一个场次的时间代表全部，用户会误以为抢购窗口一样长（2026-11-17 反馈）。
+// 现在按卡片各自显示，见 flashLeftLabel。
+const flashHasUpcoming = computed(() =>
+  flashSales.value.length > 0 && flashSales.value.every((f) => f.state !== 'RUNNING')
+)
+
+/**
+ * 单张秒杀卡的剩余时间文案。
+ * 几十天的场次显示 HH:MM:SS 会变成「1200:58:44」这种没意义的数字，按量级切换单位。
+ */
+function flashLeftLabel(sec) {
+  const s = Number(sec) || 0
+  if (s <= 0) return ''
   if (s >= 86400) return '剩 ' + Math.floor(s / 86400) + ' 天'
-  return formatCountdown(s)
-})
-const flashEndLabel = computed(() => {
-  const upcoming = flashSales.value.find((f) => f.state === 'UPCOMING')
-  return upcoming ? '即将开始' : ''
-})
+  if (s >= 3600) return '剩 ' + Math.floor(s / 3600) + ' 小时'
+  return '剩 ' + formatCountdown(s)
+}
 
 function showOrigin(p) {
   return p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
@@ -602,10 +615,8 @@ function goFlash(f) {
   goDetail(f.productId || f.linkProductId)
 }
 
-/** 秒杀「查看更多」：小程序暂无秒杀独立列表页，去全部分类让用户自己逛 */
-function goFlashAll() {
-  uni.navigateTo({ url: '/pages/category/category' })
-}
+// 「查看更多」已按需求移除（2026-11-17）：秒杀区本身就是横滑全量列表，
+// 且小程序没有秒杀独立列表页，点进去只是跳分类页 —— 用户觉得多余。
 
 /** 圆形品类入口：进分类页并定位到该分类；「全部」不带参数，分类页落在第一个分类 */
 function goCategory(id) {
@@ -633,6 +644,17 @@ onUnmounted(() => {
   if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
   if (sugTimer) { clearTimeout(sugTimer); sugTimer = null }
 })
+
+// 下拉刷新：复用各页已有的 load（它们本身就是「重置到第一页」的语义）。
+// 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
+onPullDownRefresh(async () => {
+  try {
+    await load()
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
+
 </script>
 
 <style scoped>
@@ -1068,11 +1090,6 @@ onUnmounted(() => {
   font-weight: 600;
   color: #C0392B;
 }
-.flash-more {
-  flex-shrink: 0;
-  font-size: 23rpx;
-  color: #9CA3AF;
-}
 .flash-scroll {
   white-space: nowrap;
 }
@@ -1111,14 +1128,25 @@ onUnmounted(() => {
 .f-info {
   padding: 12rpx 14rpx 16rpx;
 }
+/* 每张秒杀卡自己的剩余时间（独立场次独立算） */
+.f-left {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #9A8F7E;
+}
+/* 不到 1 小时标红：这是真正的"快结束了"，需要区分出来 */
+.f-left-soon {
+  color: #C0392B;
+  font-weight: 600;
+}
 .f-name {
   font-size: 23rpx;
   color: #1F2937;
   line-height: 1.35;
   height: 62rpx;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
+  display: -webkit-box;  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   white-space: normal;
 }

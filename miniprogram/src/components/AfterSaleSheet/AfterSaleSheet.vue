@@ -27,20 +27,25 @@
           <text class="as-opt-text">{{ r }}</text>
         </view>
 
-        <view class="as-group">补充说明（选填）</view>
-        <textarea
-          class="as-textarea"
-          v-model="remark"
-          placeholder="可以补充具体情况，方便商家更快处理"
-          placeholder-class="as-ph"
-          maxlength="200"
-          :auto-height="true"
-        />
+        <!-- 只有选「其他」才让用户自己写，而且**必填**。
+             选标准原因时没必要再填备注：原因本身已经够商家判断，
+             多一个可选输入框反而让人犹豫要不要写、写了又怕写错。 -->
+        <view v-if="isOther">
+          <view class="as-group">请说明具体情况<text class="as-req">*</text></view>
+          <textarea
+            class="as-textarea"
+            v-model="remark"
+            placeholder="请填写具体原因（必填）"
+            placeholder-class="as-ph"
+            maxlength="200"
+            :auto-height="true"
+          />
+        </view>
       </scroll-view>
 
       <view class="as-foot">
         <view class="as-btn ghost" @click="onClose">再想想</view>
-        <view class="as-btn primary" :class="{ disabled: !reason || submitting }" @click="onSubmit">
+        <view class="as-btn primary" :class="{ disabled: !canSubmit || submitting }" @click="onSubmit">
           {{ submitting ? '提交中…' : '提交申请' }}
         </view>
       </view>
@@ -49,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -60,8 +65,20 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'submit'])
 
+const OTHER = '其他'
+
 const reason = ref('')
 const remark = ref('')
+
+/** 选「其他」才需要自填说明（两套原因列表都以「其他」结尾，字面量与这里一致） */
+const isOther = computed(() => reason.value === OTHER)
+
+/** 「其他」时说明必填，其余情况不校验备注 */
+const canSubmit = computed(() => {
+  if (!reason.value) return false
+  if (isOther.value && !remark.value.trim()) return false
+  return true
+})
 
 // 每次打开都重置，避免上一次选的原因/备注残留到下一次（尤其跨订单时很误导）
 watch(
@@ -79,8 +96,9 @@ function onClose() {
 }
 
 function onSubmit() {
-  if (!reason.value || props.submitting) return
-  emit('submit', { reason: reason.value, remark: remark.value.trim() })
+  if (!canSubmit.value || props.submitting) return
+  // 非「其他」不传备注（用户根本没机会填），避免把上次残留的空串写进库存
+  emit('submit', { reason: reason.value, remark: isOther.value ? remark.value.trim() : '' })
 }
 </script>
 
@@ -139,6 +157,12 @@ function onSubmit() {
   font-size: 24rpx;
   font-weight: 600;
   color: #6B7280;
+}
+/* 必填星号 */
+.as-req {
+  margin-left: 4rpx;
+  color: #C0392B;
+  font-size: 24rpx;
 }
 .as-opt {
   display: flex;

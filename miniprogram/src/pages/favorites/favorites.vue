@@ -29,7 +29,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { onShow, onReachBottom } from '@dcloudio/uni-app'
+import { onShow, onReachBottom, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listFavorites, removeFavorite } from '@/api/favorite'
 import { fullUrl } from '@/config'
 
@@ -86,6 +86,17 @@ onShow(() => load(true))
 onReachBottom(() => {
   if (hasMore.value) load()
 })
+
+// 下拉刷新：复用各页已有的 load（它们本身就是「重置到第一页」的语义）。
+// 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
+onPullDownRefresh(async () => {
+  try {
+    await load(true)
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
+
 </script>
 
 <style scoped>

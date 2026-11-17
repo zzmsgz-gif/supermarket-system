@@ -90,7 +90,7 @@
 
 <script setup>
 import { ref, computed, onUnmounted } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { addToCart, getCart } from '@/api/cart'
 import { syncCartBadge } from '@/utils/cartBadge'
@@ -244,6 +244,18 @@ onLoad((options) => {
 onUnmounted(() => {
   if (cartTipTimer) { clearTimeout(cartTipTimer); cartTipTimer = null }
 })
+
+// 下拉刷新：复用各页已有的 load（它们本身就是「重置到第一页」的语义）。
+// 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
+onPullDownRefresh(async () => {
+  try {
+    await loadCategories()
+    await loadPage(1)
+  } finally {
+    uni.stopPullDownRefresh()
+  }
+})
+
 </script>
 
 <style scoped>
