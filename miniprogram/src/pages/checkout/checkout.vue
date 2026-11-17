@@ -87,16 +87,23 @@
       </view>
     </view>
 
-    <!-- 金额明细：口径与后端下单公式一致（商品金额 − 活动优惠 + 运费 = 应付）。
-         之前这里只有一个「合计 = 商品金额」，满足活动条件也看不到任何优惠。 -->
+    <!-- 金额明细：口径与后端下单公式一致（商品金额 − max(券,活动) + 运费 = 应付）。
+         优惠券行**只做入口**，不显示金额 —— 金额放在下面「优惠」行里，
+         否则券生效时两行都写 -¥10，用户会以为扣了两次。 -->
     <view class="amounts">
       <view class="amt-row">
         <text class="amt-lbl">商品金额</text>
         <text class="amt-val">¥{{ fmt(goodsTotal) }}</text>
       </view>
-      <view class="amt-row" v-if="hasDiscount">
-        <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
-        <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+      <view class="amt-row cp-row" @click="openCouponSheet">
+        <text class="amt-lbl">优惠券</text>
+        <text class="amt-val cp-val" :class="{ 'cp-on': !!selectedCoupon && promoIsCoupon }">{{ couponLabel }}</text>
+        <text class="cp-arrow">›</text>
+      </view>
+      <!-- 券与活动互斥取大，只显示实际生效的那一档 -->
+      <view class="amt-row" v-if="hasPromo">
+        <text class="amt-lbl">{{ promoIsCoupon ? ('优惠券 · ' + selectedCoupon.couponName) : (activityName || '活动优惠') }}</text>
+        <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
       </view>
       <view class="amt-row" v-if="freight > 0">
         <text class="amt-lbl">运费</text>
@@ -116,12 +123,46 @@
   </view>
 
   <view class="empty" v-else>没有可结算的商品</view>
+
+  <!-- 优惠券选择弹层 -->
+  <view class="cp-mask" v-if="couponSheetOpen" @click="couponSheetOpen = false">
+    <view class="cp-sheet" @click.stop>
+      <view class="cp-head">
+        <text class="cp-title">选择优惠券</text>
+        <text class="cp-close" @click="couponSheetOpen = false">✕</text>
+      </view>
+      <text class="cp-tip">券与活动优惠不可叠加，系统自动取减免更大的那一档</text>
+      <scroll-view scroll-y class="cp-list">
+        <view
+          v-for="c in usableCoupons"
+          :key="c.id"
+          class="cp-item"
+          :class="{ on: c.id === selectedUserCouponId }"
+          @click="pickCoupon(c)"
+        >
+          <view class="cp-amt-box">
+            <text class="cp-amt"><text class="cp-yen">¥</text>{{ fmt(c.discountAmount) }}</text>
+            <text class="cp-th">满 {{ fmt(c.thresholdAmount) }} 可用</text>
+          </view>
+          <view class="cp-mid">
+            <text class="cp-name">{{ c.couponName }}</text>
+            <text class="cp-exp" v-if="c.endTime">有效期至 {{ String(c.endTime).slice(0, 10) }}</text>
+          </view>
+          <text class="cp-check">{{ c.id === selectedUserCouponId ? '●' : '○' }}</text>
+        </view>
+      </scroll-view>
+      <view class="cp-foot">
+        <view class="cp-none" @click="pickCoupon(null)">不使用优惠券</view>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
+import { listUsableCoupons } from '@/api/coupon'
 import { syncCartBadge } from '@/utils/cartBadge'
 import { createOrder, payOrder, quickBuy } from '@/api/order'
 import { listStores } from '@/api/store'
@@ -177,6 +218,94 @@ const goodsTotal = computed(() =>
 const activityDiscount = ref(0)
 const activityName = ref('')
 
+// ==================== 优惠券 ====================
+// 券只作用于**非秒杀**部分（后端同口径），所以取可用券时用非秒杀金额作基数。
+// 口径与 PC 端 useCart/useCartTotals 完全一致：
+//   bestPromo = max(券折扣, 活动折扣)   ← 互斥取大，绝不双减
+//   明细里**只显示实际生效的那一行**，否则用户会以为两档都扣了
+const usableCoupons = ref([])
+const selectedUserCouponId = ref(null)
+/** 用户显式点了「不使用优惠券」：之后不再自动补选最优券 */
+const couponOptedOut = ref(false)
+const couponSheetOpen = ref(false)
+
+const nonFlashTotal = computed(() =>
+  items.value
+    .filter((it) => it.flashSaleId == null)
+    .reduce(
+      (s, it) => s + (Number(it.subtotalAmount) || (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)),
+      0
+    )
+)
+
+const selectedCoupon = computed(
+  () => usableCoupons.value.find((c) => c.id === selectedUserCouponId.value) || null
+)
+
+const couponDiscount = computed(() =>
+  selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0
+)
+
+/** 券与活动二选一，取减免更大的那一档（后端 couponWins 判断同口径） */
+const bestPromo = computed(() => Math.max(couponDiscount.value, Number(activityDiscount.value) || 0))
+
+/** 生效的到底是券还是活动 —— 决定明细行显示哪个名字 */
+const promoIsCoupon = computed(
+  () => !!selectedCoupon.value && couponDiscount.value > (Number(activityDiscount.value) || 0)
+)
+
+/**
+ * 券入口右侧文案：**只表达状态，不显示金额**。
+ * 金额统一由下面「优惠」行给出（券与活动互斥，只显示生效的那一档）。
+ * 如果这里也写 -¥10，而实际生效的是活动 -¥50，用户会以为两档都扣了 → 金额加起来对不上。
+ */
+const couponLabel = computed(() => {
+  if (selectedCoupon.value) {
+    return promoIsCoupon.value ? '已用 1 张' : '活动更优惠'
+  }
+  const n = usableCoupons.value.length
+  return n > 0 ? n + ' 张可用' : '暂无可用'
+})
+
+/** 拉一次可用券（基数变了要重拉，比如改了配送方式导致金额变化时不用，但切换 tab/重进要） */
+async function loadUsableCoupons() {
+  try {
+    const res = await listUsableCoupons(Number(nonFlashTotal.value) || 0)
+    usableCoupons.value = Array.isArray(res) ? res : []
+    // 已选券若因金额变化不再可用 → 取消；未显式放弃时自动补选减免最大的
+    if (selectedUserCouponId.value && !usableCoupons.value.some((c) => c.id === selectedUserCouponId.value)) {
+      selectedUserCouponId.value = null
+    }
+    if (!couponOptedOut.value && !selectedUserCouponId.value) {
+      const best = usableCoupons.value
+        .slice()
+        .sort((a, b) => Number(b.discountAmount || 0) - Number(a.discountAmount || 0))[0]
+      if (best) selectedUserCouponId.value = best.id
+    }
+  } catch (e) {
+    usableCoupons.value = []
+  }
+}
+
+/** 门槛差额（弹层里给"还差 X 元可用"用；usableCoupons 只含已满足门槛的，这里兜底给全量提示用） */
+function couponShortfall(c) {
+  return Math.max(Number(c.thresholdAmount || 0) - Number(nonFlashTotal.value || 0), 0)
+}
+
+function openCouponSheet() {
+  if (!usableCoupons.value.length) {
+    uni.showToast({ title: '暂无可用优惠券', icon: 'none' })
+    return
+  }
+  couponSheetOpen.value = true
+}
+
+function pickCoupon(c) {
+  selectedUserCouponId.value = c ? c.id : null
+  couponOptedOut.value = !c
+  couponSheetOpen.value = false
+}
+
 // 运费口径必须与后端 OrderService.freightOf 一致：只有快递收，且按**商品金额**判门槛
 const EXPRESS_FREE_THRESHOLD = 99
 const EXPRESS_FREIGHT = 8
@@ -186,18 +315,15 @@ const freight = computed(() => {
 })
 
 /**
- * 应付 = 商品金额 − 活动优惠 + 运费。
- * 结算页没有券/积分入口（submit 的请求体也不带 userCouponId / usePoints），
- * 所以这里就是用户最终会被扣的钱：与后端 payAmount 公式同口径。
+ * 应付 = 商品金额 − max(券, 活动) + 运费。
+ * 与后端 payAmount 公式同口径（`total − max(券,活动) − 积分 + 运费`，结算页不涉及积分）。
  */
 const payable = computed(() => {
   const goods = Number(goodsTotal.value) || 0
-  const discount = Number(activityDiscount.value) || 0
-  return Math.max(goods - discount, 0) + Number(freight.value || 0)
+  return Math.max(goods - bestPromo.value, 0) + Number(freight.value || 0)
 })
 
-/** 后端「活动与券互斥取大」的提示：结算页暂无券入口，这里只用于文案 */
-const hasDiscount = computed(() => Number(activityDiscount.value) > 0)
+const hasPromo = computed(() => bestPromo.value > 0)
 
 const canSubmit = computed(() => {
   if (!items.value.length) return false
@@ -259,9 +385,13 @@ async function loadCart() {
     skuSpec: it.skuSpec,
     productPrice: it.productPrice,
     quantity: it.quantity,
-    // 单行小计：后端已按秒杀价拆分好，直接带上；没有就按单价×件数兜底
+    // flashSaleId 必须带上：券/活动的计算基数只算非秒杀部分（后端同口径）
+    flashSaleId: it.flashSaleId == null ? null : it.flashSaleId,
+    // 单行小计：后端已按秒杀价拆好，直接带上；没有就按单价×件数兜底
     subtotalAmount: Number(it.subtotalAmount) || (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)
   }))
+  // 券的门槛依赖金额，必须在 items 就位之后再拉
+  await loadUsableCoupons()
 }
 
 async function loadQuick(opts) {
@@ -375,6 +505,12 @@ async function submit() {
     }
     if (fulfillmentType.value === 'INSTANT' && selectedSlot.value) {
       payload.deliverySlot = selectedSlot.value
+    }
+    // 优惠券：只在「券减免确实大于活动减免」时才传。
+    // 后端本身是 max(券,活动) 互斥取大、传了不生效也不会消耗券，
+    // 但订单详情会记录 userCouponId —— 不生效就没必要留这个痕，避免用户看到"用了券却减免 0"。
+    if (promoIsCoupon.value && selectedUserCouponId.value) {
+      payload.userCouponId = selectedUserCouponId.value
     }
 
     const order = mode.value === 'quick' ? await quickBuy(payload) : await createOrder(payload)
@@ -618,5 +754,134 @@ async function submit() {
   text-align: center;
   color: #999;
   padding: 120rpx 0;
+}
+
+/* ---------- 优惠券入口行 ---------- */
+.cp-val {
+  margin-left: auto;
+  color: #8A8578;
+}
+.cp-val.cp-on {
+  color: #C0392B;
+  font-weight: 600;
+}
+.cp-arrow {
+  margin-left: 10rpx;
+  font-size: 26rpx;
+  color: #C4C0B6;
+}
+
+/* ---------- 优惠券弹层 ---------- */
+.cp-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  z-index: 900;
+}
+.cp-sheet {
+  width: 100%;
+  max-height: 76vh;
+  background: #fff;
+  border-radius: 28rpx 28rpx 0 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.cp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx 8rpx;
+}
+.cp-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.cp-close {
+  font-size: 30rpx;
+  color: #9CA3AF;
+  padding: 0 8rpx;
+}
+.cp-tip {
+  padding: 0 32rpx 16rpx;
+  font-size: 21rpx;
+  color: #A08A6A;
+  line-height: 1.5;
+}
+.cp-list {
+  flex: 1;
+  min-height: 0;
+  padding: 0 32rpx;
+}
+.cp-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 22rpx 20rpx;
+  margin-bottom: 14rpx;
+  border: 1rpx solid #EDE8DD;
+  border-radius: 16rpx;
+  background: #FDFCF9;
+}
+.cp-item.on {
+  border-color: #0F6E56;
+  background: #F1F8F5;
+}
+.cp-amt-box {
+  width: 150rpx;
+  flex-shrink: 0;
+  text-align: center;
+}
+.cp-amt {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #C0392B;
+}
+.cp-yen {
+  font-size: 22rpx;
+}
+.cp-th {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 19rpx;
+  color: #9A8F7E;
+}
+.cp-mid {
+  flex: 1;
+  min-width: 0;
+}
+.cp-name {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1F2937;
+}
+.cp-exp {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #A9A296;
+}
+.cp-check {
+  flex-shrink: 0;
+  font-size: 30rpx;
+  color: #0F6E56;
+}
+.cp-foot {
+  padding: 16rpx 32rpx 28rpx;
+  border-top: 1rpx solid #F5F2EC;
+}
+.cp-none {
+  text-align: center;
+  padding: 14rpx 0;
+  font-size: 27rpx;
+  color: #6B7280;
 }
 </style>

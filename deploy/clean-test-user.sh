@@ -52,17 +52,23 @@ fi
 
 # 3) 执行删除：子表 → 主表，最后一条带 username 双保险
 #
-# ⚠️ 顺序坑（2026-11-16 实测踩到，账号残留删不掉）：
-#   orders 被 **7 张表** 的外键引用（order_item / payment_record / product_review /
-#   return_request / stock_log / user_coupon / wallet_transaction），
-#   其中 wallet_transaction、user_coupon、product_review **也有 order_id 外键**，
-#   但它们原来排在 `DELETE FROM orders` 之后 —— 于是删 orders 时被外键拦下
-#   （ERROR 1451 fk_wallet_transaction_order），后面的语句全不执行，
-#   表现为「脚本跑完了、账号还在」，极容易误判成"删掉了"。
-#   所以：**凡是带 order_id 外键的表，必须全部排在 orders 之前**，并额外按 order_id 兜底一遍
-#   （user_id 与 order.user_id 不一致的历史脏数据也能清掉）。
+# ⚠️ 外键坑（先后踩过两次，2026-11-16 / 2026-11-17）：
+#   orders 被 7 张表引用（order_item / payment_record / product_review /
+#   return_request / stock_log / user_coupon / wallet_transaction）。
+#   光靠"排好顺序"不够 —— 存在**双向外键**：
+#     orders.user_coupon_id  → user_coupon.id
+#     user_coupon.order_id   → orders.id
+#   两边互相阻止，怎么排都删不干净（ERROR 1451 fk_orders_user_coupon）。
+#   前一次是 wallet_transaction 顺序，这次是券的双向引用，
+#   所以这里改成：**先用 UPDATE 断开订单上的券引用，再在外键检查关闭的保护下删**，
+#   清理工具的目标就是把该账号的所有痕迹删干净，不该被约束顺序卡住。
+#   （显式 DELETE 列表仍然保留，避免误删别的账号的数据；FOREIGN_KEY_CHECKS 只是不让
+#     顺序成为失败原因。）
 echo "--- 执行删除 ---"
 q "
+SET FOREIGN_KEY_CHECKS = 0;
+-- 断开设在订单行上的券引用（否则 orders ↔ user_coupon 互相阻止）
+UPDATE orders SET user_coupon_id = NULL WHERE user_id=$UID_VAL;
 DELETE FROM stock_log          WHERE order_id IN (SELECT id FROM orders WHERE user_id=$UID_VAL);
 DELETE FROM payment_record     WHERE order_id IN (SELECT id FROM orders WHERE user_id=$UID_VAL);
 DELETE FROM return_request     WHERE order_id IN (SELECT id FROM orders WHERE user_id=$UID_VAL);
@@ -81,6 +87,7 @@ DELETE FROM price_alert        WHERE user_id=$UID_VAL;
 DELETE FROM user_coupon        WHERE user_id=$UID_VAL;
 DELETE FROM product_review     WHERE user_id=$UID_VAL;
 DELETE FROM sys_user           WHERE id=$UID_VAL AND username='$NAME';
+SET FOREIGN_KEY_CHECKS = 1;
 "
 
 # 4) 事后核对（必须为 0 条 + 无孤儿订单）
