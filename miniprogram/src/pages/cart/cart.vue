@@ -1,5 +1,7 @@
 <template>
-  <view class="cart">
+  <!-- paddingBottom 由 measureFooter() 实测底部固定栏高度后写入 ——
+       写死一个值必然被「凑单条有没有、几张、金额明细几行」打破，商品一多就压住最后一件 -->
+  <view class="cart" :style="footerH ? { paddingBottom: footerH + 'px' } : ''">
     <!-- 骨架屏：首次加载时先把版式占住，避免"白屏 → 内容突然弹出"的跳动 -->
     <CartSkeleton v-if="loading" :rows="3" />
 
@@ -97,7 +99,8 @@
           再买 <text class="pb-strong">¥{{ fmt(actProgress.gap) }}</text> 可 {{ actProgress.benefit }}
         </text>
         <text class="pb-text" v-else>
-          已享 <text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ fmt(actProgress.threshold) }}）
+          <!-- benefit 对打折活动返回的是「打 8 折」，前面直接接「已享」会读成"已享打8折" -->
+          已享优惠：<text class="pb-strong">{{ actProgress.benefit }}</text>（满 ¥{{ fmt(actProgress.threshold) }}）
         </text>
         <text class="pb-note">满减仅按普通商品计算，秒杀商品不计入</text>
       </view>
@@ -148,7 +151,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, getCurrentInstance, watch } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getCart, updateCartItem, removeCartItem, clearCart } from '@/api/cart'
 // 骨架屏组件（也可走 easycom 自动引入，这里显式 import 更明确）
@@ -357,6 +360,39 @@ function goCheckout() {
   uni.navigateTo({ url: '/pages/checkout/checkout' })
 }
 
+// ==================== 底部固定栏高度自适应 ====================
+// 底部栏是 position:fixed，内容区必须让出等价高度，否则会压住最后一件商品。
+// 但它的高度不是常量：凑单条可能有 0/1/2 条（满减 + 免运费），金额明细满减行有没有、
+// 有没有活动优惠，都会改变高度 —— 写死一个值（原来是 210rpx）商品一多就盖住（用户反馈截图）。
+// 所以改成实测：量 .footer 的 boundingClientRect().height，直接以 px 写回 paddingBottom。
+const instance = getCurrentInstance()
+const footerH = ref(0)
+
+function measureFooter() {
+  nextTick(() => {
+    uni
+      .createSelectorQuery()
+      .in(instance)
+      .select('.footer')
+      .boundingClientRect((rect) => {
+        if (rect && rect.height) footerH.value = Math.ceil(rect.height)
+      })
+      .exec()
+  })
+}
+
+// 下面任一项变化都会改变底部栏高度/是否存在，跟着重新量
+watch(
+  [
+    () => items.value.length,
+    () => needLogin.value,
+    () => actProgress.value,
+    () => freightProgress.value,
+    () => activityDiscount.value
+  ],
+  () => measureFooter()
+)
+
 onShow(async () => {
   await load()
   // 活动只在有商品时需要（凑单进度条），失败不影响购物车本身
@@ -369,13 +405,15 @@ onShow(async () => {
   }
   // 空车才去拉推荐（有商品时不浪费一次请求）
   if (items.value.length === 0) loadRecommends()
+  measureFooter()
 })
 </script>
 
 <style scoped>
 .cart {
-  /* 底部固定栏现在含「凑单进度 + 结算行」两段，比原来高，留足空间别压住最后一件商品 */
-  padding-bottom: 210rpx;
+  /* 兜底值：真实高度由 measureFooter() 实测后以行内 style 覆盖；
+     这里给一个偏大的保守值，万一测量失败也不会压住最后一件商品 */
+  padding-bottom: 460rpx;
 }
 /* 工具条：件数 + 一键清空 */
 .tools {
