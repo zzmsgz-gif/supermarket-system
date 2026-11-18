@@ -2967,14 +2967,26 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .ck-cur-name.muted { color: var(--muted); font-weight: 500; }
 .ck-cur-amt { color: var(--danger); font-weight: 700; }
 .ck-coupon-link {
+  /* 同样是 <button>，必须把全局按钮的绿底/白字/38px 高度全部重置掉，
+     否则「更换 / 收起」会变成一颗绿色实心按钮 */
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0;
   background: none;
   border: none;
-  padding: 2px 0;
-  font-size: 13px;
+  box-shadow: none;
   color: var(--brand);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   cursor: pointer;
 }
-.ck-coupon-link:hover { text-decoration: underline; }
+.ck-coupon-link:hover {
+  background: none;          /* 覆盖全局 button:hover 的绿色渐变 */
+  color: var(--brand-dark);
+  text-decoration: underline;
+}
 .ck-coupon-link--right { margin-left: auto; }
 
 /* 卡片网格：固定宽度 + 换行，不随容器拉伸 */
@@ -2996,19 +3008,31 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   border: 1px solid var(--line);
   border-radius: 10px;
   cursor: pointer;
+  /* 全局 button 是白字+700，这里是卡片容器，文字靠子元素各自上色，必须重置 */
+  color: var(--ink);
+  font-weight: 400;
   transition: border-color .15s ease, background .15s ease, opacity .15s ease;
 }
 .ck-coupon-card:hover:not(.is-off):not(.is-on) { border-color: var(--brand); }
+/* ⚠️ 全局 `button { background: linear-gradient(180deg,#12c48b,var(--brand)) }` +
+   `button:hover { ... }` 会把用 <button> 做的卡片整个染成绿色块。
+   所以 hover / 选中态都必须显式把 background 写回白色，否则鼠标一放上去就是一大片绿。 */
+.ck-coupon-card:hover { background: #fff; }
+/* 选中态：**不做整块填充**（浅绿铺满很压数据），只加粗一圈绿边框 + 右上角对勾。
+   保留白底，金额与券名的可读性最好。 */
 .ck-coupon-card.is-on {
   border-color: var(--brand);
-  background: var(--brand-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+  background: #fff;
 }
+.ck-coupon-card.is-on:hover { background: #fff; }
 .ck-coupon-card.is-off {
   opacity: .5;
   cursor: not-allowed;
   border-style: dashed;
   background: #fafafa;
 }
+.ck-coupon-card.is-off:hover { background: #fafafa; }
 /* 金额块 */
 .ck-cc-amt {
   flex-shrink: 0;
@@ -3054,7 +3078,7 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   align-items: center;
 }
 .ck-cc-none { font-size: 13px; color: var(--muted); }
-.ck-coupon-card.is-none.is-on { background: var(--brand-soft); }
+.ck-coupon-card.is-none.is-on { background: #fff; }
 .ck-coupon-card.is-none.is-on .ck-cc-none { color: var(--brand-deep); font-weight: 600; }
 
 /* 选中圆点（右上角）：○ 未选 / ● 选中（内部用 CSS 画对勾，不依赖字体） */

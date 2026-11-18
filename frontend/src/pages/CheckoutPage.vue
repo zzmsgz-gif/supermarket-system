@@ -205,7 +205,8 @@
               @click="pickCoupon(c)"
             >
               <span class="ck-cc-amt">
-                <b>¥{{ money(c.discountAmount) }}</b>
+                <!-- ⚠️ money() 自带 ¥，前面不要再写一个，否则显示成 ¥¥10.00 -->
+                <b>{{ money(c.discountAmount) }}</b>
                 <small>满 {{ money(c.thresholdAmount) }} 可用</small>
               </span>
               <span class="ck-cc-info">
