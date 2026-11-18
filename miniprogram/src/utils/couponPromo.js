@@ -98,3 +98,23 @@ export function clearCouponSelection() {
   writeSelectedCouponId(null)
   writeOptedOut(false)
 }
+
+/**
+ * 用户在弹层里选定一张券（或选「不使用优惠券」传 null）后调用：
+ * 落存储 + 返回新的 couponState，页面一行 `couponState.value = pickCouponState(state, id)`。
+ * 抽出来是为了让购物车与结算页走**完全相同**的写入路径 ——
+ * 否则很容易一处写了 opted_out、另一处忘了，导致"取消用券后又被自动补选回去"。
+ */
+export function pickCouponState(state, id) {
+  const coupons = (state && state.coupons) || []
+  const selectedId = id == null ? null : Number(id)
+  writeSelectedCouponId(selectedId)
+  writeOptedOut(selectedId == null)
+  const selected = selectedId == null ? null : coupons.find((c) => Number(c.id) === selectedId) || null
+  return {
+    coupons,
+    selectedId,
+    selected,
+    discount: selected ? Number(selected.discountAmount || 0) : 0
+  }
+}

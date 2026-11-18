@@ -124,38 +124,14 @@
 
   <view class="empty" v-else>没有可结算的商品</view>
 
-  <!-- 优惠券选择弹层 -->
-  <view class="cp-mask" v-if="couponSheetOpen" @click="couponSheetOpen = false">
-    <view class="cp-sheet" @click.stop>
-      <view class="cp-head">
-        <text class="cp-title">选择优惠券</text>
-        <text class="cp-close" @click="couponSheetOpen = false">✕</text>
-      </view>
-      <text class="cp-tip">券与活动优惠不可叠加，系统自动取减免更大的那一档</text>
-      <scroll-view scroll-y class="cp-list">
-        <view
-          v-for="c in usableCoupons"
-          :key="c.id"
-          class="cp-item"
-          :class="{ on: c.id === selectedUserCouponId }"
-          @click="pickCoupon(c)"
-        >
-          <view class="cp-amt-box">
-            <text class="cp-amt"><text class="cp-yen">¥</text>{{ fmt(c.discountAmount) }}</text>
-            <text class="cp-th">满 {{ fmt(c.thresholdAmount) }} 可用</text>
-          </view>
-          <view class="cp-mid">
-            <text class="cp-name">{{ c.couponName }}</text>
-            <text class="cp-exp" v-if="c.endTime">有效期至 {{ String(c.endTime).slice(0, 10) }}</text>
-          </view>
-          <text class="cp-check">{{ c.id === selectedUserCouponId ? '●' : '○' }}</text>
-        </view>
-      </scroll-view>
-      <view class="cp-foot">
-        <view class="cp-none" @click="pickCoupon(null)">不使用优惠券</view>
-      </view>
-    </view>
-  </view>
+  <!-- 优惠券选择弹层：与购物车共用同一组件（原来这里是内联一套，两边 UI 容易漂移） -->
+  <CouponSheet
+    :visible="couponSheetOpen"
+    :coupons="usableCoupons"
+    :selected-id="selectedUserCouponId"
+    @close="couponSheetOpen = false"
+    @pick="pickCoupon"
+  />
 </template>
 
 <script setup>
@@ -163,6 +139,7 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
 import { listUsableCoupons } from '@/api/coupon'
+import CouponSheet from '@/components/CouponSheet/CouponSheet.vue'
 import {
   readSelectedCouponId,
   writeSelectedCouponId,

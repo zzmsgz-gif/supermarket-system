@@ -2228,6 +2228,11 @@ i.req { color: var(--danger); font-style: normal; }
 .modal {
   width: 100%;
   max-width: 430px;
+  /* 兜底：内容再长也不许超出视口（mask 顶部 padding 22vh，留上下安全边距），
+     超出部分在弹窗内部滚动，保证「再想想/删除」按钮永远可见可点。
+     2026-10-28 修复：长评价把弹窗撑满整屏、按钮被顶出屏幕点不到。 */
+  max-height: calc(78vh - 40px);
+  overflow-y: auto;
   display: grid;
   gap: 13px;
   padding: 22px;
@@ -2267,7 +2272,18 @@ i.req { color: var(--danger); font-style: normal; }
 }
 
 .modal-detail span { flex: 0 0 auto; color: var(--muted); }
-.modal-detail strong { overflow: hidden; text-align: right; color: var(--ink); text-overflow: ellipsis; }
+/* 详情值（如长评价）多行截断：超过 6 行出省略号，根因防护——
+   不让长内容把确认框撑出视口（按钮点不到）。原来只有单行 ellipsis，
+   没有 nowrap 时实际是整段折行，等于没限制。 */
+.modal-detail strong {
+  overflow: hidden;
+  text-align: right;
+  color: var(--ink);
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+}
 
 .modal-actions {
   display: grid;
@@ -2908,6 +2924,20 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .coupon-picked { font-weight: 600; color: var(--brand-deep); }
 .coupon-picked.muted { color: var(--ink); font-weight: 500; }
 .coupon-empty { color: var(--muted); font-size: 14px; }
+/* 结算页「更换」券按钮（2026-11-18 结算页也支持换券）：小号文字按钮，别抢主信息视觉 */
+.coupon-change {
+  margin-left: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand);
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.coupon-change:hover { background: var(--brand-soft); }
 
 /* ===== 图片上传组件 ===== */
 .img-upload { width: 100%; }

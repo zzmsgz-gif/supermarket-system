@@ -142,6 +142,12 @@
             <text class="amt-lbl">商品金额</text>
             <text class="amt-val">¥{{ fmt(total) }}</text>
           </view>
+          <!-- 券入口：可点换券（与结算页同一份选择，改完合计立刻变） -->
+          <view class="amt-row cp-row" @click="openCouponSheet">
+            <text class="amt-lbl">优惠券</text>
+            <text class="amt-val cp-val" :class="{ 'cp-on': promoIsCoupon }">{{ couponLabel }}</text>
+            <text class="cp-arrow">›</text>
+          </view>
           <!-- 优惠行只显示**实际生效**的那一档（券与活动互斥取大、绝不叠加）。
                两档都写会让用户以为叠加了，而且金额加起来对不上。 -->
           <view class="amt-row" v-if="bestPromo > 0">
@@ -164,6 +170,15 @@
       </view>
     </view>
   </view>
+
+  <!-- 券选择弹层：与结算页共用同一组件，改完两边金额同步 -->
+  <CouponSheet
+    :visible="couponSheetOpen"
+    :coupons="couponState.coupons"
+    :selected-id="couponState.selectedId"
+    @close="couponSheetOpen = false"
+    @pick="onPickCoupon"
+  />
 </template>
 
 <script setup>
@@ -176,7 +191,8 @@ import { applyCartBadge } from '@/utils/cartBadge'
 import { goLogin } from '@/utils/authGuard'
 import { listActiveActivities } from '@/api/activity'
 import { cartActivityProgress } from '@/utils/activity'
-import { loadCouponState } from '@/utils/couponPromo'
+import { loadCouponState, pickCouponState } from '@/utils/couponPromo'
+import CouponSheet from '@/components/CouponSheet/CouponSheet.vue'
 import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
@@ -265,6 +281,32 @@ const promoLabel = computed(() => {
   if (promoIsCoupon.value) return '优惠券 · ' + (couponState.value.selected?.couponName || '优惠券')
   return activityName.value || '活动优惠'
 })
+
+// ==================== 券选择：购物车也能改（与结算页一致） ====================
+const couponSheetOpen = ref(false)
+
+/** 券入口右侧只写状态；金额统一出现在下面「优惠」那一行，避免两处金额对不上 */
+const couponLabel = computed(() => {
+  if (couponState.value.selected) {
+    return promoIsCoupon.value ? '已用 1 张' : '活动更优惠'
+  }
+  const n = (couponState.value.coupons || []).length
+  return n > 0 ? n + ' 张可用' : '暂无可用'
+})
+
+function openCouponSheet() {
+  if (!(couponState.value.coupons || []).length) {
+    uni.showToast({ title: '暂无可用优惠券', icon: 'none' })
+    return
+  }
+  couponSheetOpen.value = true
+}
+
+/** 选定后写回共享状态（购物车/结算页同一份），合计立刻重算 */
+function onPickCoupon(c) {
+  couponState.value = pickCouponState(couponState.value, c ? c.id : null)
+  couponSheetOpen.value = false
+}
 
 /**
  * 合计 = 商品金额 − max(券, 活动)。
@@ -835,6 +877,20 @@ onShow(async () => {
 }
 /* 结算行：原来 .footer 自己是 flex row，现在让位给「凑单条 + 结算行」两段式 */
 /* ---------- 金额明细（商品金额 − 活动优惠 = 合计） ---------- */
+/* 券入口行：可点换券，右侧箭头提示；文字只写状态，金额由下面「优惠」行给 */
+.cp-val {
+  margin-left: auto;
+  color: #8A8578;
+}
+.cp-val.cp-on {
+  color: #C0392B;
+  font-weight: 600;
+}
+.cp-arrow {
+  margin-left: 10rpx;
+  font-size: 26rpx;
+  color: #C4C0B6;
+}
 .amounts {
   padding: 14rpx 28rpx 2rpx;
   background: #fff;

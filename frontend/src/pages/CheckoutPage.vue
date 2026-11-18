@@ -153,13 +153,49 @@
         </div>
 
         <div class="checkout-block">
-          <h3>优惠券</h3>
+          <h3>
+            优惠券
+            <!-- 结算页现在也能换券（2026-11-18 统一）：
+                 原来只有购物车能选，到这一步发现券不合适（活动失效 / 门槛变了 / 想换张大的）
+                 只能退回购物车，多一步。与购物车用同一套 selectCoupon / chooseNoCoupon。 -->
+            <button
+              v-if="selectableCoupons.length"
+              type="button"
+              class="coupon-change"
+              @click="couponPickerOpen = !couponPickerOpen"
+            >{{ couponPickerOpen ? '收起' : '更换' }}</button>
+          </h3>
           <span v-if="selectedCoupon" class="coupon-picked">{{ selectedCoupon.couponName }}（减 {{ money(selectedCoupon.discountAmount) }}）</span>
           <span v-else-if="hasUsableCoupon" class="coupon-picked muted">不使用优惠券</span>
           <span v-else class="coupon-picked muted">无可用优惠券</span>
           <p v-if="selectedCoupon && (!appliedPromo || appliedPromo.type !== 'coupon')" class="promo-note">
             本单已自动选用更优的活动优惠，未消耗此券（活动与券不叠加）
           </p>
+
+          <!-- 换券列表：结构与样式与购物车一致（.coupon-opt 在 styles.css 全局） -->
+          <div v-if="couponPickerOpen" class="coupon-list">
+            <button
+              type="button"
+              class="coupon-opt"
+              :class="{ on: !selectedUserCouponId }"
+              @click="pickCoupon(null)"
+            >不使用优惠券</button>
+            <button
+              v-for="c in selectableCoupons"
+              :key="c.id"
+              type="button"
+              class="coupon-opt"
+              :class="{ on: selectedUserCouponId === c.id, disabled: !couponEligible(c) }"
+              :disabled="!couponEligible(c)"
+              @click="pickCoupon(c)"
+            >
+              <span class="coupon-name">{{ c.couponName }}</span>
+              <span class="coupon-sub">满 {{ money(c.thresholdAmount) }} 减 {{ money(c.discountAmount) }}</span>
+              <span v-if="!couponEligible(c)" class="coupon-reason">
+                {{ couponShortfall(c) > 0 ? '差 ' + money(couponShortfall(c)) + ' 可用' : (c.unusableReason || '暂不可用') }}
+              </span>
+            </button>
+          </div>
         </div>
 
         <div class="checkout-block">
@@ -290,6 +326,21 @@ export default {
   name: 'CheckoutPage',
   setup() {
     const appCtx = inject('appCtx');
+
+    // ==================== 结算页换券（2026-11-18 与购物车统一） ====================
+    // 原来结算页只能"看"券，想换必须退回购物车。现在给一个「更换」按钮，
+    // 展开的列表与购物车用同一套 selectCoupon / chooseNoCoupon，两端行为一致。
+    const couponPickerOpen = ref(false);
+    // 与购物车同口径：已核销（USED）的券不出现在可选列表
+    const selectableCoupons = computed(() =>
+      (appCtx.myCoupons?.items || []).filter((c) => c.status !== 'USED')
+    );
+    function pickCoupon(c) {
+      if (c) appCtx.selectCoupon(c);
+      else appCtx.chooseNoCoupon();
+      couponPickerOpen.value = false;
+    }
+
     // 回购物车：**必须走 navigate**（改路由），不能只改 App.vue 的 view ref ——
     // view 只驱动标题/面包屑，直接赋值的话标题变了但 router-view 还停在结算页，
     // 表现为「只把『确认订单』换成『购物车』，其他都没变」。
@@ -401,6 +452,7 @@ export default {
       saveAddressChecked, digitsOnly, onPhoneInput,
       ...appCtx, clampPoints, checkoutItems, cartIssues, blockedCount, cartItemIssue,
       backToCart,
+      couponPickerOpen, selectableCoupons, pickCoupon,
       rangeCheck, outOfRange, hasItems, hasUsableCoupon, isMemberItem, memberTagText,
       regionData, citiesOf, districtsOf, onRegionProvince, onRegionCity,
     };
