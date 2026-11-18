@@ -153,47 +153,69 @@
         </div>
 
         <div class="checkout-block">
-          <h3>
-            优惠券
-            <!-- 结算页现在也能换券（2026-11-18 统一）：
-                 原来只有购物车能选，到这一步发现券不合适（活动失效 / 门槛变了 / 想换张大的）
-                 只能退回购物车，多一步。与购物车用同一套 selectCoupon / chooseNoCoupon。 -->
+          <!-- 优惠券（2026-11-18 重做布局）
+               旧版把购物车那排横向小按钮直接搬过来：宽屏下被拉长、选中券还在上下重复出现两遍。
+               新版：收起时一行摘要（券名 + 减免 + 更换），展开时是固定宽度的券卡片网格。 -->
+          <div class="ck-coupon-head">
+            <h3>优惠券</h3>
+            <div class="ck-coupon-cur" v-if="!couponPickerOpen">
+              <span v-if="selectedCoupon" class="ck-cur-pick">
+                <span class="ck-cur-name">{{ selectedCoupon.couponName }}</span>
+                <span class="ck-cur-amt">−{{ money(selectedCoupon.discountAmount) }}</span>
+              </span>
+              <span v-else-if="hasUsableCoupon" class="ck-cur-name muted">不使用优惠券</span>
+              <span v-else class="ck-cur-name muted">无可用优惠券</span>
+              <button
+                v-if="selectableCoupons.length"
+                type="button"
+                class="ck-coupon-link"
+                @click="couponPickerOpen = true"
+              >更换</button>
+            </div>
             <button
-              v-if="selectableCoupons.length"
+              v-else
               type="button"
-              class="coupon-change"
-              @click="couponPickerOpen = !couponPickerOpen"
-            >{{ couponPickerOpen ? '收起' : '更换' }}</button>
-          </h3>
-          <span v-if="selectedCoupon" class="coupon-picked">{{ selectedCoupon.couponName }}（减 {{ money(selectedCoupon.discountAmount) }}）</span>
-          <span v-else-if="hasUsableCoupon" class="coupon-picked muted">不使用优惠券</span>
-          <span v-else class="coupon-picked muted">无可用优惠券</span>
+              class="ck-coupon-link ck-coupon-link--right"
+              @click="couponPickerOpen = false"
+            >收起</button>
+          </div>
+
           <p v-if="selectedCoupon && (!appliedPromo || appliedPromo.type !== 'coupon')" class="promo-note">
             本单已自动选用更优的活动优惠，未消耗此券（活动与券不叠加）
           </p>
 
-          <!-- 换券列表：结构与样式与购物车一致（.coupon-opt 在 styles.css 全局） -->
-          <div v-if="couponPickerOpen" class="coupon-list">
+          <div v-if="couponPickerOpen" class="ck-coupon-grid">
             <button
               type="button"
-              class="coupon-opt"
-              :class="{ on: !selectedUserCouponId }"
+              class="ck-coupon-card is-none"
+              :class="{ 'is-on': !selectedUserCouponId }"
               @click="pickCoupon(null)"
-            >不使用优惠券</button>
+            >
+              <span class="ck-cc-none">不使用优惠券</span>
+              <i class="ck-cc-dot"></i>
+            </button>
+
             <button
               v-for="c in selectableCoupons"
               :key="c.id"
               type="button"
-              class="coupon-opt"
-              :class="{ on: selectedUserCouponId === c.id, disabled: !couponEligible(c) }"
+              class="ck-coupon-card"
+              :class="{ 'is-on': selectedUserCouponId === c.id, 'is-off': !couponEligible(c) }"
               :disabled="!couponEligible(c)"
               @click="pickCoupon(c)"
             >
-              <span class="coupon-name">{{ c.couponName }}</span>
-              <span class="coupon-sub">满 {{ money(c.thresholdAmount) }} 减 {{ money(c.discountAmount) }}</span>
-              <span v-if="!couponEligible(c)" class="coupon-reason">
-                {{ couponShortfall(c) > 0 ? '差 ' + money(couponShortfall(c)) + ' 可用' : (c.unusableReason || '暂不可用') }}
+              <span class="ck-cc-amt">
+                <b>¥{{ money(c.discountAmount) }}</b>
+                <small>满 {{ money(c.thresholdAmount) }} 可用</small>
               </span>
+              <span class="ck-cc-info">
+                <span class="ck-cc-name">{{ c.couponName }}</span>
+                <span class="ck-cc-sub" v-if="c.endTime">至 {{ String(c.endTime).slice(0, 10) }}</span>
+                <span class="ck-cc-tag" :class="{ bad: !couponEligible(c) }" v-if="!couponEligible(c)">{{
+                  couponShortfall(c) > 0 ? '差 ' + money(couponShortfall(c)) + ' 可用' : (c.unusableReason || '暂不可用')
+                }}</span>
+              </span>
+              <i class="ck-cc-dot"></i>
             </button>
           </div>
         </div>

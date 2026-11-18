@@ -2939,6 +2939,149 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 }
 .coupon-change:hover { background: var(--brand-soft); }
 
+/* ============================================================
+   结算页优惠券区块（2026-11-18 重做布局）
+   旧版直接复用购物车的 .coupon-opt 横向小按钮：宽屏下被拉长成一条，
+   选中券还会在标题下方再重复显示一遍（绿色那行），视觉很脏。
+   新版：标题行一行摘要（收起态），展开态用固定宽度卡片网格 —— 卡片不会被拉伸，
+   多张时自动换行；选中靠右上角圆点表达；不可用券只做降透明+灰标签，不用刺眼红字。
+   ============================================================ */
+.ck-coupon-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ck-coupon-head h3 {
+  margin: 0;            /* 覆盖 .checkout-block h3 的下边距，交给 head 统一控制 */
+}
+.ck-coupon-cur {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.ck-cur-pick { display: inline-flex; align-items: center; gap: 6px; }
+.ck-cur-name { color: var(--ink); font-weight: 600; }
+.ck-cur-name.muted { color: var(--muted); font-weight: 500; }
+.ck-cur-amt { color: var(--danger); font-weight: 700; }
+.ck-coupon-link {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-size: 13px;
+  color: var(--brand);
+  cursor: pointer;
+}
+.ck-coupon-link:hover { text-decoration: underline; }
+.ck-coupon-link--right { margin-left: auto; }
+
+/* 卡片网格：固定宽度 + 换行，不随容器拉伸 */
+.ck-coupon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ck-coupon-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 248px;
+  min-height: 78px;
+  padding: 12px 34px 12px 14px;   /* 右侧留出圆点位置 */
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, opacity .15s ease;
+}
+.ck-coupon-card:hover:not(.is-off):not(.is-on) { border-color: var(--brand); }
+.ck-coupon-card.is-on {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+.ck-coupon-card.is-off {
+  opacity: .5;
+  cursor: not-allowed;
+  border-style: dashed;
+  background: #fafafa;
+}
+/* 金额块 */
+.ck-cc-amt {
+  flex-shrink: 0;
+  width: 88px;
+  text-align: center;
+  color: var(--danger);
+  line-height: 1.1;
+}
+.ck-cc-amt b { font-size: 20px; font-weight: 800; letter-spacing: -.5px; white-space: nowrap; }
+.ck-cc-amt small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;   /* 门槛文案不许折行，否则「满 ¥100.00 可用」会断成两行 */
+}
+/* 信息块 */
+.ck-cc-info { flex: 1; min-width: 0; display: block; }
+.ck-cc-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ck-cc-sub { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); }
+.ck-cc-tag {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: #f1f3f2;
+  color: var(--muted);
+}
+.ck-cc-tag.bad { background: #fdecec; color: var(--danger); }
+
+/* 「不使用优惠券」卡片：同一尺寸，内容居中，视觉上跟券卡并排不突兀 */
+.ck-coupon-card.is-none {
+  justify-content: center;
+  align-items: center;
+}
+.ck-cc-none { font-size: 13px; color: var(--muted); }
+.ck-coupon-card.is-none.is-on { background: var(--brand-soft); }
+.ck-coupon-card.is-none.is-on .ck-cc-none { color: var(--brand-deep); font-weight: 600; }
+
+/* 选中圆点（右上角）：○ 未选 / ● 选中（内部用 CSS 画对勾，不依赖字体） */
+.ck-cc-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #cfd6d2;
+  background: #fff;
+  transition: border-color .15s ease, background .15s ease;
+}
+.ck-coupon-card.is-on .ck-cc-dot { border-color: var(--brand); background: var(--brand); }
+.ck-coupon-card.is-on .ck-cc-dot::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 2px;
+  width: 5px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 /* ===== 图片上传组件 ===== */
 .img-upload { width: 100%; }
 .iu-list { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
