@@ -122,6 +122,7 @@ import { changePassword } from '@/api/auth'
 import { listMyCoupons } from '@/api/coupon'
 import { syncCartBadge, clearCartBadge } from '@/utils/cartBadge'
 import { syncCouponDot, clearCouponDot } from '@/utils/couponBadge'
+import { clearCouponSelection } from '@/utils/couponPromo'
 import { requireLogin, goLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
@@ -283,6 +284,8 @@ function doLogout() {
       clearCartBadge()
       // 券红点同理：不清的话下一个账号会看到"有券可领"的假提示
       clearCouponDot()
+      // 券选择也是账号相关的：不清会让下一个账号沿用上一个账号选中的那张券
+      clearCouponSelection()
       claimableCount.value = 0
       uni.reLaunch({ url: '/pages/index/index' })
     }

@@ -163,6 +163,12 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
 import { listUsableCoupons } from '@/api/coupon'
+import {
+  readSelectedCouponId,
+  writeSelectedCouponId,
+  readOptedOut,
+  writeOptedOut
+} from '@/utils/couponPromo'
 import { syncCartBadge } from '@/utils/cartBadge'
 import { createOrder, payOrder, quickBuy } from '@/api/order'
 import { listStores } from '@/api/store'
@@ -272,15 +278,27 @@ async function loadUsableCoupons() {
   try {
     const res = await listUsableCoupons(Number(nonFlashTotal.value) || 0)
     usableCoupons.value = Array.isArray(res) ? res : []
+    // 首次进入：沿用购物车那边已经选好的券（两边共用同一份本地状态），
+    // 否则会出现「购物车合计 147、这里应付 157」——用户一眼就能看出不一致
+    if (selectedUserCouponId.value == null) {
+      selectedUserCouponId.value = readSelectedCouponId()
+    }
+    if (selectedUserCouponId.value == null && readOptedOut()) {
+      couponOptedOut.value = true
+    }
     // 已选券若因金额变化不再可用 → 取消；未显式放弃时自动补选减免最大的
     if (selectedUserCouponId.value && !usableCoupons.value.some((c) => c.id === selectedUserCouponId.value)) {
       selectedUserCouponId.value = null
+      writeSelectedCouponId(null)
     }
     if (!couponOptedOut.value && !selectedUserCouponId.value) {
       const best = usableCoupons.value
         .slice()
         .sort((a, b) => Number(b.discountAmount || 0) - Number(a.discountAmount || 0))[0]
-      if (best) selectedUserCouponId.value = best.id
+      if (best) {
+        selectedUserCouponId.value = best.id
+        writeSelectedCouponId(best.id)
+      }
     }
   } catch (e) {
     usableCoupons.value = []
@@ -303,6 +321,9 @@ function openCouponSheet() {
 function pickCoupon(c) {
   selectedUserCouponId.value = c ? c.id : null
   couponOptedOut.value = !c
+  // 写回共享状态：购物车下次 onShow 会读到同一张券，两边合计保持一致
+  writeSelectedCouponId(c ? c.id : null)
+  writeOptedOut(!c)
   couponSheetOpen.value = false
 }
 

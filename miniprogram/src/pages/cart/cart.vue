@@ -96,7 +96,7 @@
       <view class="fold-bar" @click="toggleFold">
         <view class="fold-left">
           <text class="fold-title">优惠明细</text>
-          <text class="fold-sum" v-if="activityDiscount > 0">已省 ¥{{ fmt(activityDiscount) }}</text>
+          <text class="fold-sum" v-if="bestPromo > 0">已省 ¥{{ fmt(bestPromo) }}</text>
         </view>
         <text class="fold-btn">
           {{ footerExpanded ? '收起' : '展开' }}<text class="fold-ar">{{ footerExpanded ? '⌄' : '⌃' }}</text>
@@ -142,9 +142,11 @@
             <text class="amt-lbl">商品金额</text>
             <text class="amt-val">¥{{ fmt(total) }}</text>
           </view>
-          <view class="amt-row" v-if="activityDiscount > 0">
-            <text class="amt-lbl">{{ activityName || '活动优惠' }}</text>
-            <text class="amt-val minus">-¥{{ fmt(activityDiscount) }}</text>
+          <!-- 优惠行只显示**实际生效**的那一档（券与活动互斥取大、绝不叠加）。
+               两档都写会让用户以为叠加了，而且金额加起来对不上。 -->
+          <view class="amt-row" v-if="bestPromo > 0">
+            <text class="amt-lbl">{{ promoLabel }}</text>
+            <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
           </view>
           <view class="amt-row payable">
             <text class="amt-lbl">合计</text>
@@ -156,7 +158,7 @@
       <view class="footer-line">
         <view class="sum-wrap">
           <text class="sum">合计 ¥{{ fmt(payable) }}</text>
-          <text class="saved" v-if="activityDiscount > 0">已省 ¥{{ fmt(activityDiscount) }}</text>
+          <text class="saved" v-if="bestPromo > 0">已省 ¥{{ fmt(bestPromo) }}</text>
         </view>
         <button class="checkout" @click="goCheckout">去结算</button>
       </view>
@@ -174,6 +176,7 @@ import { applyCartBadge } from '@/utils/cartBadge'
 import { goLogin } from '@/utils/authGuard'
 import { listActiveActivities } from '@/api/activity'
 import { cartActivityProgress } from '@/utils/activity'
+import { loadCouponState } from '@/utils/couponPromo'
 import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
@@ -241,11 +244,35 @@ const actProgress = computed(() => cartActivityProgress(activities.value, nonFla
 const activityDiscount = ref(0)
 const activityName = ref('')
 
-/** 应付 = 商品金额 − 活动优惠（购物车不涉及券/积分/运费，这三项在结算页才算） */
+// ==================== 优惠券（与结算页共用同一张，见 utils/couponPromo） ====================
+// 用户要求购物车就显示「含券」的合计，而不是等结算页才算。
+// 券选择状态落本地存储，购物车和结算页读同一份 —— 否则会出现
+// 「购物车合计 147、结算页应付 157」这种自相矛盾。
+const couponState = ref({ coupons: [], selectedId: null, selected: null, discount: 0 })
+
+const couponDiscount = computed(() => Number(couponState.value.discount) || 0)
+
+/** 券与活动互斥取大（后端 couponWins 同口径），绝不双减 */
+const bestPromo = computed(() => Math.max(couponDiscount.value, Number(activityDiscount.value) || 0))
+
+/** 生效的是券还是活动 —— 决定明细行显示哪个名字 */
+const promoIsCoupon = computed(
+  () => !!couponState.value.selected && couponDiscount.value > (Number(activityDiscount.value) || 0)
+)
+
+/** 明细里生效那一档的名称（券名 or 活动名） */
+const promoLabel = computed(() => {
+  if (promoIsCoupon.value) return '优惠券 · ' + (couponState.value.selected?.couponName || '优惠券')
+  return activityName.value || '活动优惠'
+})
+
+/**
+ * 合计 = 商品金额 − max(券, 活动)。
+ * 购物车不涉及积分与运费（那两项在结算页才加），所以这里就是"全部优惠后的价格"。
+ */
 const payable = computed(() => {
   const goods = Number(total.value) || 0
-  const discount = Number(activityDiscount.value) || 0
-  return Math.max(goods - discount, 0)
+  return Math.max(goods - bestPromo.value, 0)
 })
 
 /**
@@ -310,6 +337,8 @@ async function load() {
     // 活动优惠由后端计算并随购物车返回，直接采用（详见 activityDiscount 的注释）
     activityDiscount.value = Number(res && res.activityDiscount) || 0
     activityName.value = (res && res.activityName) || ''
+    // 券：按非秒杀金额拉可用券并定下当前用哪张（与结算页共用同一份选择）
+    couponState.value = await loadCouponState(Number(nonFlashTotal.value) || 0)
     // 已经拿到购物车了，顺手把 tabBar 角标写上（不再多发一次 /cart）。
     // 改数量 / 删除 / 从别的页面切回来都会走 load，所以这一处就覆盖了全部路径。
     applyCartBadge(items.value.reduce((s, it) => s + (Number(it.quantity) || 0), 0))
@@ -321,6 +350,7 @@ async function load() {
     serverNonFlashAmount.value = null
     activityDiscount.value = 0
     activityName.value = ''
+    couponState.value = { coupons: [], selectedId: null, selected: null, discount: 0 }
     uni.showToast({ title: (e && e.message) || '购物车加载失败', icon: 'none' })
   } finally {
     loading.value = false
@@ -354,6 +384,7 @@ async function clearAll() {
     serverNonFlashAmount.value = null
     activityDiscount.value = 0
     activityName.value = ''
+    couponState.value = { coupons: [], selectedId: null, selected: null, discount: 0 }
     applyCartBadge(0)
     uni.hideLoading()
     uni.showToast({ title: '已清空', icon: 'success' })
