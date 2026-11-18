@@ -200,22 +200,35 @@ function subtotalOf(it) {
   return (Number(it.productPrice) || 0) * (Number(it.quantity) || 0)
 }
 
-const total = computed(() =>
-  items.value.reduce(
-    (s, it) => s + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
+// 商品金额：**优先用后端算好的 selectedAmount**，前端求和只作兜底。
+// 后端 CartService 的 selectedAmount 是"选中行小计之和"的唯一权威口径
+// （会员价 / 秒杀价拆分等单价逻辑全在服务端）；前端自己 reduce items，
+// 一旦某行 subtotalAmount 缺失、或将来加了部分勾选，就会和后端给的
+// activityDiscount 基数分叉 → 「商品金额 − 活动优惠」的合计与实付对不上。
+const serverAmount = ref(null)
+const total = computed(() => {
+  const s = Number(serverAmount.value)
+  if (Number.isFinite(s) && s > 0) return s
+  return items.value.reduce(
+    (sum, it) => sum + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
     0
   )
-)
+})
 
 // 凑单进度只看「非秒杀」商品小计：秒杀商品不参与满减（与 web 的 cartNonFlashTotal 同口径）
-const nonFlashTotal = computed(() =>
-  items.value
+// 同样优先用后端给的 nonFlashSelectedAmount
+const serverNonFlashAmount = ref(null)
+const nonFlashTotal = computed(() => {
+  if (serverNonFlashAmount.value != null && Number.isFinite(Number(serverNonFlashAmount.value))) {
+    return Number(serverNonFlashAmount.value)
+  }
+  return items.value
     .filter((it) => !it.flashSaleId)
     .reduce(
-      (s, it) => s + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
+      (sum, it) => sum + (Number(it.subtotalAmount) || Number(it.productPrice) * it.quantity || 0),
       0
     )
-)
+})
 const activities = ref([])
 const actProgress = computed(() => cartActivityProgress(activities.value, nonFlashTotal.value))
 
@@ -290,6 +303,10 @@ async function load() {
     needLogin.value = false
     const res = await getCart()
     items.value = (res && res.items) ? res.items : []
+    // 商品金额 / 非秒杀金额：都用后端算好的值（前端求和仅兜底，见 total 的注释）
+    serverAmount.value = res && res.selectedAmount != null ? Number(res.selectedAmount) : null
+    serverNonFlashAmount.value =
+      res && res.nonFlashSelectedAmount != null ? Number(res.nonFlashSelectedAmount) : null
     // 活动优惠由后端计算并随购物车返回，直接采用（详见 activityDiscount 的注释）
     activityDiscount.value = Number(res && res.activityDiscount) || 0
     activityName.value = (res && res.activityName) || ''
@@ -299,6 +316,9 @@ async function load() {
   } catch (e) {
     // 必须 catch：失败也要把骨架屏收掉，否则页面会永远停在骨架状态
     items.value = []
+    // 后端金额一并清掉，否则失败态/清空后还会显示上一次的金额
+    serverAmount.value = null
+    serverNonFlashAmount.value = null
     activityDiscount.value = 0
     activityName.value = ''
     uni.showToast({ title: (e && e.message) || '购物车加载失败', icon: 'none' })
@@ -330,6 +350,10 @@ async function clearAll() {
   try {
     await clearCart()
     items.value = []
+    serverAmount.value = null
+    serverNonFlashAmount.value = null
+    activityDiscount.value = 0
+    activityName.value = ''
     applyCartBadge(0)
     uni.hideLoading()
     uni.showToast({ title: '已清空', icon: 'success' })
