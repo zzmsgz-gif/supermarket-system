@@ -95,10 +95,14 @@
         <text class="amt-lbl">商品金额</text>
         <text class="amt-val">¥{{ fmt(amtGoods) }}</text>
       </view>
-      <view class="amt-row cp-row" @click="openCouponSheet">
+      <!-- 活动生效时（活动比券更划算）**锁掉券入口**：
+           后端是 max(券,活动) 互斥，此时选券也不生效，让用户点进去只会以为「漏用了券」。
+           锁定时不给箭头、文字置灰，点击只提示原因（完全不响应会像卡住了）。 -->
+      <view class="amt-row cp-row" :class="{ locked: couponLocked }" @click="onCouponRowClick">
         <text class="amt-lbl">优惠券</text>
         <text class="amt-val cp-val" :class="{ 'cp-on': !!selectedCoupon && promoIsCoupon }">{{ couponLabel }}</text>
-        <text class="cp-arrow">›</text>
+        <text class="cp-arrow" v-if="!couponLocked">›</text>
+        <text class="cp-lock" v-else>已锁定</text>
       </view>
       <!-- 券与活动互斥取大，只显示实际生效的那一档 -->
       <view class="amt-row" v-if="hasPromo">
@@ -266,6 +270,16 @@ const promoIsCoupon = computed(() => {
 })
 
 /**
+ * 券入口是否锁定：**活动生效且活动不弱于券** 时锁。
+ *
+ * 后端是 `bestPromo = max(券, 活动)`，活动更大（或相等）时券根本不会被核销 ——
+ * 让用户点进去选券，选完金额一分不变，只会以为「券白选了 / 系统漏减了」。
+ * 所以直接锁掉入口，并把原因写在下面那行提示里。
+ * 无活动、或券更优时不锁：用户仍需要进去挑券。
+ */
+const couponLocked = computed(() => !promoIsCoupon.value && amtActivity.value > 0)
+
+/**
  * 券入口右侧文案：**只表达状态，不显示金额**。
  * 金额统一由下面「优惠」行给出（券与活动互斥，只显示生效的那一档）。
  * 如果这里也写 -¥10，而实际生效的是活动 -¥50，用户会以为两档都扣了 → 金额加起来对不上。
@@ -348,6 +362,15 @@ function openCouponSheet() {
   // 券为空也照样打开弹层：弹层里有空态和「去领券中心」入口，
   // 比只弹一句「暂无可用优惠券」的 toast 有用（toast 不可点，用户不知道该去哪领）。
   couponSheetOpen.value = true
+}
+
+/** 券行点击：活动生效时锁住（选券也不会生效），只提示原因 */
+function onCouponRowClick() {
+  if (couponLocked.value) {
+    uni.showToast({ title: '本单活动更优惠，优惠券暂不可用', icon: 'none' })
+    return
+  }
+  openCouponSheet()
 }
 
 function pickCoupon(c) {
@@ -854,6 +877,19 @@ async function submit() {
   margin-left: 10rpx;
   font-size: 26rpx;
   color: #C4C0B6;
+}
+/* 活动生效 → 券入口锁定：不显示箭头，右侧标「已锁定」，整体压暗 */
+.cp-row.locked .amt-lbl,
+.cp-row.locked .cp-val {
+  color: #B4AEA2;
+}
+.cp-lock {
+  margin-left: 10rpx;
+  padding: 2rpx 12rpx;
+  font-size: 20rpx;
+  color: #B4AEA2;
+  background: #F5F2EC;
+  border-radius: 6rpx;
 }
 
 /* ---------- 优惠券弹层 ---------- */

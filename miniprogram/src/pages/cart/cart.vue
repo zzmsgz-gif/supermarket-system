@@ -142,11 +142,13 @@
             <text class="amt-lbl">商品金额</text>
             <text class="amt-val">¥{{ fmt(total) }}</text>
           </view>
-          <!-- 券入口：可点换券（与结算页同一份选择，改完合计立刻变） -->
-          <view class="amt-row cp-row" @click="openCouponSheet">
+          <!-- 券入口：可点换券（与结算页同一份选择，改完合计立刻变）。
+               活动生效时锁掉：选券也不会生效（后端 max(券,活动)），点进去只会以为漏减了。 -->
+          <view class="amt-row cp-row" :class="{ locked: couponLocked }" @click="onCouponRowClick">
             <text class="amt-lbl">优惠券</text>
             <text class="amt-val cp-val" :class="{ 'cp-on': promoIsCoupon }">{{ couponLabel }}</text>
-            <text class="cp-arrow">›</text>
+            <text class="cp-arrow" v-if="!couponLocked">›</text>
+            <text class="cp-lock" v-else>已锁定</text>
           </view>
           <!-- 优惠行只显示**实际生效**的那一档（券与活动互斥取大、绝不叠加）。
                两档都写会让用户以为叠加了，而且金额加起来对不上。 -->
@@ -279,6 +281,12 @@ const promoIsCoupon = computed(
   () => !!couponState.value.selected && couponDiscount.value > (Number(activityDiscount.value) || 0)
 )
 
+/**
+ * 券入口是否锁定：活动生效且活动不弱于券时锁（与结算页同一条规则）。
+ * 后端 max(券,活动) 互斥 —— 此时选券不生效，让用户点进去选只会以为「漏减了」。
+ */
+const couponLocked = computed(() => !promoIsCoupon.value && Number(activityDiscount.value) > 0)
+
 /** 明细里生效那一档的名称（券名 or 活动名） */
 const promoLabel = computed(() => {
   if (promoIsCoupon.value) return '优惠券 · ' + (couponState.value.selected?.couponName || '优惠券')
@@ -301,6 +309,15 @@ function openCouponSheet() {
   // 券为空也照样打开弹层：弹层里有空态和「去领券中心」入口，
   // 比只弹一句「暂无可用优惠券」的 toast 有用（toast 不可点，用户不知道该去哪领）。
   couponSheetOpen.value = true
+}
+
+/** 券行点击：活动生效时锁住（选券也不会生效），只提示原因 */
+function onCouponRowClick() {
+  if (couponLocked.value) {
+    uni.showToast({ title: '本单活动更优惠，优惠券暂不可用', icon: 'none' })
+    return
+  }
+  openCouponSheet()
 }
 
 /** 选定后写回共享状态（购物车/结算页同一份），合计立刻重算 */
@@ -891,6 +908,19 @@ onShow(async () => {
   margin-left: 10rpx;
   font-size: 26rpx;
   color: #C4C0B6;
+}
+/* 活动生效 → 券入口锁定：不显示箭头，右侧标「已锁定」，整体压暗 */
+.cp-row.locked .amt-lbl,
+.cp-row.locked .cp-val {
+  color: #B4AEA2;
+}
+.cp-lock {
+  margin-left: 10rpx;
+  padding: 2rpx 12rpx;
+  font-size: 20rpx;
+  color: #B4AEA2;
+  background: #F5F2EC;
+  border-radius: 6rpx;
 }
 .amounts {
   padding: 14rpx 28rpx 2rpx;
