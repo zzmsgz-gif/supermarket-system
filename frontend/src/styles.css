@@ -2997,17 +2997,6 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 }
 .ck-coupon-link--right { margin-left: auto; }
 
-/* 活动生效 → 券入口已锁定（与小程序同步）：灰色小标签，替代「更换」按钮 */
-.ck-coupon-locked {
-  margin-left: 10px;
-  padding: 2px 8px;
-  font-size: 12px;
-  color: var(--muted);
-  background: #F5F2EC;
-  border-radius: 6px;
-  white-space: nowrap;
-}
-
 /* 卡片网格：固定宽度 + 换行，不随容器拉伸 */
 .ck-coupon-grid {
   display: flex;

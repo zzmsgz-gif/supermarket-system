@@ -146,9 +146,11 @@
                活动生效时锁掉：选券也不会生效（后端 max(券,活动)），点进去只会以为漏减了。 -->
           <view class="amt-row cp-row" :class="{ locked: couponLocked }" @click="onCouponRowClick">
             <text class="amt-lbl">优惠券</text>
-            <text class="amt-val cp-val" :class="{ 'cp-on': promoIsCoupon }">{{ couponLabel }}</text>
+            <text
+              class="amt-val cp-val"
+              :class="{ 'cp-on': promoIsCoupon, 'cp-locked-text': couponLocked }"
+            >{{ couponLabel }}</text>
             <text class="cp-arrow" v-if="!couponLocked">›</text>
-            <text class="cp-lock" v-else>已锁定</text>
           </view>
           <!-- 优惠行只显示**实际生效**的那一档（券与活动互斥取大、绝不叠加）。
                两档都写会让用户以为叠加了，而且金额加起来对不上。 -->
@@ -156,9 +158,6 @@
             <text class="amt-lbl">{{ promoLabel }}</text>
             <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
           </view>
-          <!-- 选了券但活动更优：说清「已自动选更优的活动」，别让用户以为还要继续选券。
-               文案与 PC 端结算页、小程序结算页逐字一致。 -->
-          <text class="promo-note" v-if="couponState.selected && !promoIsCoupon">活动与券不叠加，已自动选更优的活动</text>
           <view class="amt-row payable">
             <text class="amt-lbl">合计</text>
             <text class="amt-val strong">¥{{ fmt(payable) }}</text>
@@ -298,9 +297,9 @@ const couponSheetOpen = ref(false)
 
 /** 券入口右侧只写状态；金额统一出现在下面「优惠」那一行，避免两处金额对不上 */
 const couponLabel = computed(() => {
-  if (couponState.value.selected) {
-    return promoIsCoupon.value ? '已用 1 张' : '活动更优惠'
-  }
+  // 锁定态直接把原因写在这里（替代「活动更优惠」+「已锁定」两段字），下面不再重复提示
+  if (couponLocked.value) return '活动与券不叠加，已自动选更优的活动'
+  if (couponState.value.selected) return '已用 1 张'
   const n = (couponState.value.coupons || []).length
   return n > 0 ? n + ' 张可用' : '暂无可用'
 })
@@ -909,31 +908,21 @@ onShow(async () => {
   font-size: 26rpx;
   color: #C4C0B6;
 }
-/* 活动生效 → 券入口锁定：不显示箭头，右侧标「已锁定」，整体压暗 */
-.cp-row.locked .amt-lbl,
-.cp-row.locked .cp-val {
+/* 活动生效 → 券入口锁定：不显示箭头，右侧整句说明原因（灰色、可换行） */
+.cp-row.locked .amt-lbl {
   color: #B4AEA2;
 }
-.cp-lock {
-  margin-left: 10rpx;
-  padding: 2rpx 12rpx;
-  font-size: 20rpx;
+.cp-val.cp-locked-text {
+  max-width: 72%;
+  font-size: 22rpx;
+  line-height: 1.4;
+  text-align: right;
   color: #B4AEA2;
-  background: #F5F2EC;
-  border-radius: 6rpx;
 }
 .amounts {
   padding: 14rpx 28rpx 2rpx;
   background: #fff;
   border-top: 1rpx solid #F5F2EC;
-}
-/* 「活动与券不叠加，已自动选更优的活动」—— 主色小字，紧贴优惠行下方 */
-.promo-note {
-  display: block;
-  margin: 2rpx 0 10rpx;
-  font-size: 22rpx;
-  line-height: 1.5;
-  color: #0F6E56;
 }
 .amt-row {
   display: flex;

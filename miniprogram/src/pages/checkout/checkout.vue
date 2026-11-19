@@ -97,22 +97,21 @@
       </view>
       <!-- 活动生效时（活动比券更划算）**锁掉券入口**：
            后端是 max(券,活动) 互斥，此时选券也不生效，让用户点进去只会以为「漏用了券」。
-           锁定时不给箭头、文字置灰，点击只提示原因（完全不响应会像卡住了）。 -->
+           锁定态右侧直接写整句原因（替代原来的「活动更优惠 / 已锁定」两段字），
+           所以下面不再重复一行提示。 -->
       <view class="amt-row cp-row" :class="{ locked: couponLocked }" @click="onCouponRowClick">
         <text class="amt-lbl">优惠券</text>
-        <text class="amt-val cp-val" :class="{ 'cp-on': !!selectedCoupon && promoIsCoupon }">{{ couponLabel }}</text>
+        <text
+          class="amt-val cp-val"
+          :class="{ 'cp-on': !!selectedCoupon && promoIsCoupon, 'cp-locked-text': couponLocked }"
+        >{{ couponLabel }}</text>
         <text class="cp-arrow" v-if="!couponLocked">›</text>
-        <text class="cp-lock" v-else>已锁定</text>
       </view>
       <!-- 券与活动互斥取大，只显示实际生效的那一档 -->
       <view class="amt-row" v-if="hasPromo">
         <text class="amt-lbl">{{ promoLabel }}</text>
         <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
       </view>
-      <!-- 选了券、但活动更优：必须说清「已自动选更优的活动」。
-           否则券行右侧只显示「活动更优惠」，用户会以为还要继续去选券。
-           文案与 PC 端结算页逐字一致（用户要求两端统一）。 -->
-      <text class="promo-note" v-if="selectedCoupon && !promoIsCoupon">活动与券不叠加，已自动选更优的活动</text>
       <view class="amt-row" v-if="amtFreight > 0">
         <text class="amt-lbl">运费</text>
         <text class="amt-val">+¥{{ fmt(amtFreight) }}</text>
@@ -285,9 +284,9 @@ const couponLocked = computed(() => !promoIsCoupon.value && amtActivity.value > 
  * 如果这里也写 -¥10，而实际生效的是活动 -¥50，用户会以为两档都扣了 → 金额加起来对不上。
  */
 const couponLabel = computed(() => {
-  if (selectedCoupon.value) {
-    return promoIsCoupon.value ? '已用 1 张' : '活动更优惠'
-  }
+  // 锁定态直接把原因写在这里（替代「活动更优惠」+「已锁定」两段字），下面不再重复提示
+  if (couponLocked.value) return '活动与券不叠加，已自动选更优的活动'
+  if (selectedCoupon.value) return '已用 1 张'
   const n = usableCoupons.value.length
   return n > 0 ? n + ' 张可用' : '暂无可用'
 })
@@ -804,14 +803,6 @@ async function submit() {
   background: #fff;
   border-radius: 16rpx;
 }
-/* 「活动与券不叠加，已自动选更优的活动」—— 主色小字，紧贴优惠行下方 */
-.promo-note {
-  display: block;
-  margin: 2rpx 0 10rpx;
-  font-size: 22rpx;
-  line-height: 1.5;
-  color: #0F6E56;
-}
 .amt-row {
   display: flex;
   align-items: baseline;
@@ -878,18 +869,16 @@ async function submit() {
   font-size: 26rpx;
   color: #C4C0B6;
 }
-/* 活动生效 → 券入口锁定：不显示箭头，右侧标「已锁定」，整体压暗 */
-.cp-row.locked .amt-lbl,
-.cp-row.locked .cp-val {
+/* 活动生效 → 券入口锁定：不显示箭头，右侧整句说明原因（灰色、可换行） */
+.cp-row.locked .amt-lbl {
   color: #B4AEA2;
 }
-.cp-lock {
-  margin-left: 10rpx;
-  padding: 2rpx 12rpx;
-  font-size: 20rpx;
+.cp-val.cp-locked-text {
+  max-width: 72%;
+  font-size: 22rpx;
+  line-height: 1.4;
+  text-align: right;
   color: #B4AEA2;
-  background: #F5F2EC;
-  border-radius: 6rpx;
 }
 
 /* ---------- 优惠券弹层 ---------- */

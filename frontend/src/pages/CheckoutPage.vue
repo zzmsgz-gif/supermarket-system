@@ -158,25 +158,32 @@
                新版：收起时一行摘要（券名 + 减免 + 更换），展开时是固定宽度的券卡片网格。 -->
           <div class="ck-coupon-head">
             <h3>优惠券</h3>
-            <div class="ck-coupon-cur" v-if="!couponPickerOpen">
+            <!-- 活动生效时不显示右侧任何内容（2026-11-19 用户要求）：
+                 券名、面额、「已锁定」全部去掉 —— 活动已经赢了，再把「每日优惠50-10 −¥10.00」
+                 摆在那里会让人以为这张券也减了。原因由下面那行说明承担。
+                 max(券,活动) 互斥，此时换券金额一分不变，所以也不给「更换」。 -->
+            <div
+              class="ck-coupon-cur"
+              v-if="!couponPickerOpen && !(appliedPromo && appliedPromo.type === 'activity')"
+            >
               <span v-if="selectedCoupon" class="ck-cur-pick">
                 <span class="ck-cur-name">{{ selectedCoupon.couponName }}</span>
                 <span class="ck-cur-amt">−{{ money(selectedCoupon.discountAmount) }}</span>
               </span>
               <span v-else-if="hasUsableCoupon" class="ck-cur-name muted">不使用优惠券</span>
               <span v-else class="ck-cur-name muted">无可用优惠券</span>
-              <!-- 活动生效时锁掉换券入口（与小程序同步，2026-11-19）：
-                   max(券,活动) 互斥，此时换券金额一分不变，点进去只会让人以为「漏减了」。 -->
-              <span v-if="appliedPromo && appliedPromo.type === 'activity'" class="ck-coupon-locked">已锁定</span>
               <button
-                v-else-if="selectableCoupons.length"
+                v-if="selectableCoupons.length"
                 type="button"
                 class="ck-coupon-link"
                 @click="couponPickerOpen = true"
               >更换</button>
             </div>
+            <!-- ⚠️ 必须是 v-else-if="couponPickerOpen"，不能写 v-else：
+                 活动生效时上面的 v-if 为 false，v-else 会把「收起」按钮显示出来
+                 （2026-11-19 实测踩到：活动赢的页面右侧莫名出现一个「收起」）。 -->
             <button
-              v-else
+              v-else-if="couponPickerOpen"
               type="button"
               class="ck-coupon-link ck-coupon-link--right"
               @click="couponPickerOpen = false"
