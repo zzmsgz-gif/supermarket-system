@@ -77,6 +77,36 @@ export function useQuickBuy({
   // 注意：这条项只存在前端 cart.items，不落库、不写购物车表。
   // 规格价优先：regular 取「所选规格价」(effectiveDetailPrice)，会员价不与规格价叠加（与后端一致）；
   // 秒杀按折扣率套到规格价上（走规格价时 = 规格价 × (基准秒杀价 / 基准价)），否则用基准秒杀绝对值。
+  /**
+   * 填「立即购买」的活动优惠：问后端 POST /orders/preview 要权威值。
+   *
+   * 原来这里写死 cart.activityDiscount = 0（注释说"后端会重新评估，保守置 0 避免预览虚高"），
+   * 结果结算页只减券、不减活动，而 /orders/quick-buy 会按 max(券,活动) 扣 ——
+   * 薯片×30=207 时页面 197、收银台 157，差 40 元（2026-11-19 用户报「PC端没修复」）。
+   *
+   * 为什么不用 estimateGuestActivity 在前端算：它**不剔除秒杀行**，
+   * 而活动与券的门槛基数只算非秒杀部分 —— 秒杀商品立即购买时前端会算出后端不给的优惠。
+   * 所以一律以后端为准，与小程序走同一个接口。
+   *
+   * 活动优惠只取决于商品明细（与券、配送方式无关），所以进入立即购买时算一次即可。
+   */
+  async function fillQuickActivity(productId, qty, spec) {
+    try {
+      const d = await api.post('/orders/preview', {
+        productId,
+        quantity: qty,
+        skuSpec: spec || undefined,
+        // 只取活动优惠，配送方式传自提（不影响活动门槛，也免得触发运费/地址校验）
+        fulfillmentType: 'PICKUP'
+      });
+      cart.activityDiscount = Number((d && d.activityDiscount) || 0);
+      cart.activityName = (d && d.activityName) || null;
+    } catch (e) {
+      // 预览失败不挡流程：置 0 与旧行为一致（用户仍能看到券、仍能下单）
+      cart.activityDiscount = 0;
+      cart.activityName = null;
+    }
+  }
   function buildQuickBuyCartItem(product, qty, spec) {
     const id = Number(product.id);
     const basePrice = Number(effectiveDetailPrice.value ?? product.price ?? 0);
@@ -184,9 +214,8 @@ export function useQuickBuy({
     cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
     (cart.items || []).forEach((i) => { i.selected = false; });
     cart.items.push(item);
-    // 活动优惠只按真实购物车算过；立即购买是单品通道，后端会重新评估，这里保守置 0 避免预览虚高
-    cart.activityDiscount = 0;
-    cart.activityName = null;
+    // 活动优惠问后端要权威值（原来写死 0 → 结算页少了整档活动优惠，与实付差钱）
+    await fillQuickActivity(product.id, qty, spec);
     quickBuy.value = { productId: product.id, spec, qty };
     navigate('checkout');
   }
@@ -205,8 +234,8 @@ export function useQuickBuy({
     cart.items = (cart.items || []).filter((i) => i.id !== QUICKBUY_ITEM_ID);
     (cart.items || []).forEach((i) => { i.selected = false; });
     cart.items.push(item);
-    cart.activityDiscount = 0;
-    cart.activityName = null;
+    // 同上：活动优惠取后端权威值，不写死 0
+    await fillQuickActivity(q.productId, q.qty, q.spec);
     quickBuy.value = { productId: q.productId, spec: q.spec, qty: q.qty };
     navigate('checkout');
     return true;
