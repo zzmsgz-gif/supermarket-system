@@ -93,7 +93,7 @@
     <view class="amounts">
       <view class="amt-row">
         <text class="amt-lbl">商品金额</text>
-        <text class="amt-val">¥{{ fmt(goodsTotal) }}</text>
+        <text class="amt-val">¥{{ fmt(amtGoods) }}</text>
       </view>
       <view class="amt-row cp-row" @click="openCouponSheet">
         <text class="amt-lbl">优惠券</text>
@@ -102,12 +102,12 @@
       </view>
       <!-- 券与活动互斥取大，只显示实际生效的那一档 -->
       <view class="amt-row" v-if="hasPromo">
-        <text class="amt-lbl">{{ promoIsCoupon ? ('优惠券 · ' + selectedCoupon.couponName) : (activityName || '活动优惠') }}</text>
+        <text class="amt-lbl">{{ promoLabel }}</text>
         <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
       </view>
-      <view class="amt-row" v-if="freight > 0">
+      <view class="amt-row" v-if="amtFreight > 0">
         <text class="amt-lbl">运费</text>
-        <text class="amt-val">+¥{{ fmt(freight) }}</text>
+        <text class="amt-val">+¥{{ fmt(amtFreight) }}</text>
       </view>
       <view class="amt-row payable">
         <text class="amt-lbl">应付</text>
@@ -147,7 +147,7 @@ import {
   writeOptedOut
 } from '@/utils/couponPromo'
 import { syncCartBadge } from '@/utils/cartBadge'
-import { createOrder, payOrder, quickBuy } from '@/api/order'
+import { createOrder, payOrder, quickBuy, previewQuickOrder } from '@/api/order'
 import { listStores } from '@/api/store'
 import { listAddresses } from '@/api/address'
 import { listDeliverySlots } from '@/api/fulfillment'
@@ -201,6 +201,13 @@ const goodsTotal = computed(() =>
 const activityDiscount = ref(0)
 const activityName = ref('')
 
+// ==================== 「立即购买」权威金额（POST /orders/preview）====================
+// quick 分支没有 GET /cart 可依，活动优惠前端根本拿不到（恒为 0）→
+// 结算页只减券、收银台却按 max(券,活动) 扣（实测薯片×30=207 时差 40 元：显示 197、实付 157）。
+// 让前端复刻门槛计算必然与服务端分叉，所以改成问后端拿权威金额，前端只负责展示。
+// 为 null 表示不是 quick 模式（或还没拿到），此时沿用购物车口径。
+const quickPreview = ref(null)
+
 // ==================== 优惠券 ====================
 // 券只作用于**非秒杀**部分（后端同口径），所以取可用券时用非秒杀金额作基数。
 // 口径与 PC 端 useCart/useCartTotals 完全一致：
@@ -229,13 +236,30 @@ const couponDiscount = computed(() =>
   selectedCoupon.value ? Number(selectedCoupon.value.discountAmount || 0) : 0
 )
 
-/** 券与活动二选一，取减免更大的那一档（后端 couponWins 判断同口径） */
-const bestPromo = computed(() => Math.max(couponDiscount.value, Number(activityDiscount.value) || 0))
-
-/** 生效的到底是券还是活动 —— 决定明细行显示哪个名字 */
-const promoIsCoupon = computed(
-  () => !!selectedCoupon.value && couponDiscount.value > (Number(activityDiscount.value) || 0)
+/** 商品金额：quick 用后端算的（会员价/秒杀价逐件取优），购物车模式用 /cart 的行小计之和 */
+const amtGoods = computed(() =>
+  quickPreview.value ? Number(quickPreview.value.goodsAmount) || 0 : Number(goodsTotal.value) || 0
 )
+/** 活动减免：quick 用 preview 的（权威），购物车用 /cart 返回的 activityDiscount */
+const amtActivity = computed(() =>
+  quickPreview.value ? Number(quickPreview.value.activityDiscount) || 0 : Number(activityDiscount.value) || 0
+)
+const amtActivityName = computed(() =>
+  quickPreview.value ? (quickPreview.value.activityName || '') : (activityName.value || '')
+)
+/** 券减免：quick 用 preview 的（门槛已按后端的非秒杀基数校验），购物车用券列表面额 */
+const amtCoupon = computed(() =>
+  quickPreview.value ? Number(quickPreview.value.couponDiscount) || 0 : Number(couponDiscount.value) || 0
+)
+
+/** 券与活动二选一，取减免更大的那一档（后端 couponWins 判断同口径） */
+const bestPromo = computed(() => Math.max(amtCoupon.value, amtActivity.value))
+
+/** 生效的到底是券还是活动 —— 决定明细行显示哪个名字（quick 模式直接信后端的 promoType） */
+const promoIsCoupon = computed(() => {
+  if (quickPreview.value) return quickPreview.value.promoType === 'COUPON'
+  return !!selectedCoupon.value && couponDiscount.value > (Number(activityDiscount.value) || 0)
+})
 
 /**
  * 券入口右侧文案：**只表达状态，不显示金额**。
@@ -248,6 +272,13 @@ const couponLabel = computed(() => {
   }
   const n = usableCoupons.value.length
   return n > 0 ? n + ' 张可用' : '暂无可用'
+})
+
+/** 「优惠」行左边的名字：生效的是券就写券名，否则写活动名（两档互斥，只出现一行） */
+const promoLabel = computed(() => {
+  if (!promoIsCoupon.value) return amtActivityName.value || '活动优惠'
+  const name = selectedCoupon.value && selectedCoupon.value.couponName
+  return '优惠券 · ' + (name || '已选优惠券')
 })
 
 /** 拉一次可用券（基数变了要重拉，比如改了配送方式导致金额变化时不用，但切换 tab/重进要） */
@@ -282,6 +313,28 @@ async function loadUsableCoupons() {
   }
 }
 
+/**
+ * 拉「立即购买」的权威金额（POST /orders/preview）。
+ *
+ * 任何会影响金额的动作之后都要重调：拉到券并定下用哪张、用户换券、切换配送方式
+ * （快递才收运费）。不重调的话页面会停在上一次的数字上，用户切了券发现金额没变。
+ */
+async function refreshQuickPreview() {
+  if (mode.value !== 'quick' || !quick.productId) return
+  try {
+    quickPreview.value = await previewQuickOrder({
+      productId: quick.productId,
+      quantity: quick.quantity,
+      skuSpec: quick.skuSpec || undefined,
+      fulfillmentType: fulfillmentType.value,
+      userCouponId: selectedUserCouponId.value || undefined
+    })
+  } catch (e) {
+    // 预览失败不能挡住下单：退回本地口径（活动优惠会缺，但券仍能用、仍能提交）
+    quickPreview.value = null
+  }
+}
+
 /** 门槛差额（弹层里给"还差 X 元可用"用；usableCoupons 只含已满足门槛的，这里兜底给全量提示用） */
 function couponShortfall(c) {
   return Math.max(Number(c.thresholdAmount || 0) - Number(nonFlashTotal.value || 0), 0)
@@ -300,6 +353,8 @@ function pickCoupon(c) {
   writeSelectedCouponId(c ? c.id : null)
   writeOptedOut(!c)
   couponSheetOpen.value = false
+  // quick 模式：换券后金额必须重新问后端（活动/券取大、门槛都在服务端判）
+  refreshQuickPreview()
 }
 
 // 运费口径必须与后端 OrderService.freightOf 一致：只有快递收，且按**商品金额**判门槛
@@ -310,11 +365,18 @@ const freight = computed(() => {
   return goodsTotal.value >= EXPRESS_FREE_THRESHOLD ? 0 : EXPRESS_FREIGHT
 })
 
+/** 运费：quick 用 preview 的（后端 freightOf 算的），购物车用本地同口径公式 */
+const amtFreight = computed(() =>
+  quickPreview.value ? Number(quickPreview.value.freightAmount) || 0 : Number(freight.value) || 0
+)
+
 /**
  * 应付 = 商品金额 − max(券, 活动) + 运费。
- * 与后端 payAmount 公式同口径（`total − max(券,活动) − 积分 + 运费`，结算页不涉及积分）。
+ * quick 模式直接用后端 preview 的 payAmount（公式一模一样，但金额是他算的，不会再对不上）；
+ * 购物车模式用本地同口径公式（`/cart` 已给 activityDiscount，两项都是权威值）。
  */
 const payable = computed(() => {
+  if (quickPreview.value) return Number(quickPreview.value.payAmount) || 0
   const goods = Number(goodsTotal.value) || 0
   return Math.max(goods - bestPromo.value, 0) + Number(freight.value || 0)
 })
@@ -335,6 +397,8 @@ function pickFulfillment(type) {
   fulfillmentType.value = type
   if (type === 'INSTANT' && !slots.value.length) loadSlots()
   if ((type === 'INSTANT' || type === 'EXPRESS') && !addresses.value.length) loadAddresses()
+  // 运费只由快递产生，切换配送方式要重新问后端要金额（quick 模式）
+  refreshQuickPreview()
 }
 
 function goAddresses() {
@@ -388,6 +452,8 @@ async function loadCart() {
   }))
   // 券的门槛依赖金额，必须在 items 就位之后再拉
   await loadUsableCoupons()
+  // 券定下来了，再问后端要权威金额（活动优惠只有后端算得出）
+  await refreshQuickPreview()
 }
 
 async function loadQuick(opts) {
@@ -480,6 +546,8 @@ onLoad(async (opts) => {
   // 拿到默认地址后按城市自动选「同城配送 / 快递配送」——用户不必自己想选哪个
   await loadAddresses()
   autoPickFulfillment()
+  // autoPickFulfillment 刚可能把取货方式从自提改成快递（有运费），所以放在它之后补算一次
+  await refreshQuickPreview()
 })
 
 onShow(() => {

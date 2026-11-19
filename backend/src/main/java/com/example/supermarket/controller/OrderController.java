@@ -3,6 +3,7 @@ package com.example.supermarket.controller;
 import com.example.supermarket.common.ApiResponse;
 import com.example.supermarket.common.PageResponse;
 import com.example.supermarket.dto.CreateOrderRequest;
+import com.example.supermarket.dto.OrderPreviewResponse;
 import com.example.supermarket.dto.OrderResponse;
 import com.example.supermarket.dto.QuickBuyRequest;
 import com.example.supermarket.dto.RefundApplyRequest;
@@ -60,6 +61,25 @@ public class OrderController {
     ) {
         return idempotencyService.execute(idempotencyKey,
                 () -> ApiResponse.ok(orderService.quickBuy(currentUser.getId(), request)));
+    }
+
+    /**
+     * 「立即购买」金额预览：返回与 {@code /orders/quick-buy} 完全同口径的
+     * 商品金额 / 活动减免 / 券减免 / 生效优惠 / 运费 / 应付。
+     *
+     * <p>存在的理由（2026-11-19）：小程序「立即购买」进结算页时没有 {@code GET /cart} 可依，
+     * 活动优惠在前端恒为 0 —— 结算页只减券，收银台却按 max(券,活动) 扣，
+     * 实测薯片×30=207 时差 40 元（结算页显示 197、实付 157）。
+     * 与其让前端复刻门槛计算（必然与服务端分叉），不如直接问后端。
+     *
+     * <p><b>纯只读</b>：不落库、不占秒杀名额、不消耗券/积分，用户切券时可反复调用。
+     */
+    @PostMapping("/preview")
+    public ApiResponse<OrderPreviewResponse> preview(
+            @AuthenticationPrincipal CurrentUser currentUser,
+            @Valid @RequestBody QuickBuyRequest request
+    ) {
+        return ApiResponse.ok(orderService.previewQuickBuy(currentUser.getId(), request));
     }
 
     @GetMapping
