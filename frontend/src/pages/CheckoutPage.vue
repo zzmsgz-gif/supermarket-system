@@ -165,8 +165,11 @@
               </span>
               <span v-else-if="hasUsableCoupon" class="ck-cur-name muted">不使用优惠券</span>
               <span v-else class="ck-cur-name muted">无可用优惠券</span>
+              <!-- 活动生效时锁掉换券入口（与小程序同步，2026-11-19）：
+                   max(券,活动) 互斥，此时换券金额一分不变，点进去只会让人以为「漏减了」。 -->
+              <span v-if="appliedPromo && appliedPromo.type === 'activity'" class="ck-coupon-locked">已锁定</span>
               <button
-                v-if="selectableCoupons.length"
+                v-else-if="selectableCoupons.length"
                 type="button"
                 class="ck-coupon-link"
                 @click="couponPickerOpen = true"

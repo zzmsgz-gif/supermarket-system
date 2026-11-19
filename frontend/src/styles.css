@@ -2924,6 +2924,14 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
 .coupon-picked { font-weight: 600; color: var(--brand-deep); }
 .coupon-picked.muted { color: var(--ink); font-weight: 500; }
 .coupon-empty { color: var(--muted); font-size: 14px; }
+/* 活动生效 → 券已锁定：与后续「已自动选更优的活动」说明同色，替代可选列表 */
+.coupon-lock-tip {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--brand-deep);
+}
+
 /* 结算页「更换」券按钮（2026-11-18 结算页也支持换券）：小号文字按钮，别抢主信息视觉 */
 .coupon-change {
   margin-left: 10px;
@@ -2988,6 +2996,17 @@ strong.cart-item-link:hover { color: var(--brand-deep); opacity: 1; }
   text-decoration: underline;
 }
 .ck-coupon-link--right { margin-left: auto; }
+
+/* 活动生效 → 券入口已锁定（与小程序同步）：灰色小标签，替代「更换」按钮 */
+.ck-coupon-locked {
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: #F5F2EC;
+  border-radius: 6px;
+  white-space: nowrap;
+}
 
 /* 卡片网格：固定宽度 + 换行，不随容器拉伸 */
 .ck-coupon-grid {

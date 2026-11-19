@@ -128,7 +128,12 @@
           <!-- 2026-10-12 用户要求：
                没有任何可用券时显示「无可用优惠券」；
                只有当确实存在可用券时，才出现「不使用优惠券」这一可选项。 -->
-          <p v-if="selectableCoupons.length === 0" class="coupon-empty">无可用优惠券</p>
+          <!-- 活动生效时锁券（与结算页、小程序同步，2026-11-19）：
+               max(券,活动) 互斥，此时选券金额一分不变 → 直接说明原因，不再铺开可选列表。 -->
+          <p v-if="appliedPromo && appliedPromo.type === 'activity'" class="coupon-lock-tip">
+            活动与券不叠加，已自动选更优的活动
+          </p>
+          <p v-else-if="selectableCoupons.length === 0" class="coupon-empty">无可用优惠券</p>
           <div v-else class="coupon-list">
             <button class="coupon-opt" :class="{ on: !selectedUserCouponId }" @click="chooseNoCoupon">不使用优惠券</button>
             <button
