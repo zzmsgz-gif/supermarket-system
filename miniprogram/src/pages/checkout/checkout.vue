@@ -288,10 +288,8 @@ function couponShortfall(c) {
 }
 
 function openCouponSheet() {
-  if (!usableCoupons.value.length) {
-    uni.showToast({ title: '暂无可用优惠券', icon: 'none' })
-    return
-  }
+  // 券为空也照样打开弹层：弹层里有空态和「去领券中心」入口，
+  // 比只弹一句「暂无可用优惠券」的 toast 有用（toast 不可点，用户不知道该去哪领）。
   couponSheetOpen.value = true
 }
 
@@ -403,8 +401,17 @@ async function loadQuick(opts) {
     skuSpec: opts.skuSpec,
     productPrice: price,
     quantity: qty,
+    // ⚠️ 必须带 flashSaleId（2026-11-19 修）：券/活动的门槛基数只算**非秒杀**部分，
+    // 漏了它 → 秒杀商品被算进基数 → 前端显示"券可用"，后端下单时门槛不够、券不生效。
+    // 商品详情接口命中进行中场次时会透出 flashSaleId（ProductService.applyRunningFlashPrice）。
+    flashSaleId: product.flashSaleId == null ? null : product.flashSaleId,
     subtotalAmount: (Number(price) || 0) * qty
   }]
+  // ⚠️ 立即购买路径原来**没拉券**（2026-11-19 修）：
+  // 只有 loadCart 分支调了 loadUsableCoupons()，走「立即购买」进结算页时
+  // usableCoupons 一直是空数组 → 券入口显示「暂无可用」、点开只弹一句 toast，
+  // 用户手里的券完全用不上（线上真实反馈）。
+  await loadUsableCoupons()
 }
 
 async function loadStores() {

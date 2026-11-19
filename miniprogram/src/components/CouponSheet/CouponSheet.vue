@@ -24,7 +24,13 @@
           </view>
           <text class="cs-check">{{ c.id === selectedId ? '●' : '○' }}</text>
         </view>
-        <view class="cs-empty" v-if="!coupons.length">暂无可用优惠券</view>
+        <!-- 空态：给一个能点的出口。原来只有一句「暂无可用优惠券」，
+             用户不知道是该去领、还是门槛不够（2026-11-19 加） -->
+        <view class="cs-empty" v-if="!coupons.length">
+          <text class="cs-empty-t">暂无可用优惠券</text>
+          <text class="cs-empty-sub">券只能在非秒杀商品上使用，且需满足门槛</text>
+          <view class="cs-empty-btn" @click="goClaim">去领券中心 ›</view>
+        </view>
       </scroll-view>
 
       <view class="cs-foot">
@@ -44,9 +50,16 @@ defineProps({
   selectedId: { type: [Number, String], default: null }
 })
 
-defineEmits(['close', 'pick'])
+const emit = defineEmits(['close', 'pick'])
 
 const fmt = (n) => formatAmount(n)
+
+/** 空态出口：跳领券中心（coupons 不是 tabBar 页，用 navigateTo） */
+function goClaim() {
+  // 先关弹层，否则从领券中心返回时弹层还盖着，看起来像点击没生效
+  emit('close')
+  uni.navigateTo({ url: '/pages/coupons/coupons' })
+}
 </script>
 
 <style scoped>
@@ -154,9 +167,32 @@ const fmt = (n) => formatAmount(n)
 }
 .cs-empty {
   text-align: center;
-  padding: 60rpx 0;
+  padding: 48rpx 24rpx 40rpx;
   font-size: 26rpx;
   color: #9A8F7E;
+}
+.cs-empty-t {
+  display: block;
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #6B7280;
+}
+.cs-empty-sub {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #B3AA9A;
+  line-height: 1.5;
+}
+.cs-empty-btn {
+  display: inline-block;
+  margin-top: 24rpx;
+  padding: 12rpx 32rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #0F6E56;
+  border: 1rpx solid #0F6E56;
+  border-radius: 999rpx;
 }
 .cs-foot {
   padding: 16rpx 32rpx 28rpx;

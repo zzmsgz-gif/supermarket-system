@@ -295,10 +295,8 @@ const couponLabel = computed(() => {
 })
 
 function openCouponSheet() {
-  if (!(couponState.value.coupons || []).length) {
-    uni.showToast({ title: '暂无可用优惠券', icon: 'none' })
-    return
-  }
+  // 券为空也照样打开弹层：弹层里有空态和「去领券中心」入口，
+  // 比只弹一句「暂无可用优惠券」的 toast 有用（toast 不可点，用户不知道该去哪领）。
   couponSheetOpen.value = true
 }
 
