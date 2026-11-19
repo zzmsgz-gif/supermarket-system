@@ -105,6 +105,10 @@
         <text class="amt-lbl">{{ promoLabel }}</text>
         <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
       </view>
+      <!-- 选了券、但活动更优：必须说清「已自动选更优的活动」。
+           否则券行右侧只显示「活动更优惠」，用户会以为还要继续去选券。
+           文案与 PC 端结算页逐字一致（用户要求两端统一）。 -->
+      <text class="promo-note" v-if="selectedCoupon && !promoIsCoupon">活动与券不叠加，已自动选更优的活动</text>
       <view class="amt-row" v-if="amtFreight > 0">
         <text class="amt-lbl">运费</text>
         <text class="amt-val">+¥{{ fmt(amtFreight) }}</text>
@@ -776,6 +780,14 @@ async function submit() {
   padding: 20rpx 24rpx 8rpx;
   background: #fff;
   border-radius: 16rpx;
+}
+/* 「活动与券不叠加，已自动选更优的活动」—— 主色小字，紧贴优惠行下方 */
+.promo-note {
+  display: block;
+  margin: 2rpx 0 10rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #0F6E56;
 }
 .amt-row {
   display: flex;

@@ -154,6 +154,9 @@
             <text class="amt-lbl">{{ promoLabel }}</text>
             <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
           </view>
+          <!-- 选了券但活动更优：说清「已自动选更优的活动」，别让用户以为还要继续选券。
+               文案与 PC 端结算页、小程序结算页逐字一致。 -->
+          <text class="promo-note" v-if="couponState.selected && !promoIsCoupon">活动与券不叠加，已自动选更优的活动</text>
           <view class="amt-row payable">
             <text class="amt-lbl">合计</text>
             <text class="amt-val strong">¥{{ fmt(payable) }}</text>
@@ -893,6 +896,14 @@ onShow(async () => {
   padding: 14rpx 28rpx 2rpx;
   background: #fff;
   border-top: 1rpx solid #F5F2EC;
+}
+/* 「活动与券不叠加，已自动选更优的活动」—— 主色小字，紧贴优惠行下方 */
+.promo-note {
+  display: block;
+  margin: 2rpx 0 10rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #0F6E56;
 }
 .amt-row {
   display: flex;
