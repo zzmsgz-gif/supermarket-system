@@ -33,7 +33,7 @@
       <view class="kv" v-if="order.freightAmount"><text>运费</text><text>¥{{ order.freightAmount }}</text></view>
       <view class="kv" v-if="order.discountAmount"><text>优惠</text><text class="minus">-¥{{ order.discountAmount }}</text></view>
       <view class="kv" v-if="order.activityDiscount"><text>活动优惠</text><text class="minus">-¥{{ order.activityDiscount }}</text></view>
-      <view class="kv" v-if="order.pointsDiscountAmount"><text>积分抵扣</text><text class="minus">-¥{{ order.pointsDiscountAmount }}</text></view>
+      <view class="kv" v-if="order.pointsDiscount"><text>积分抵扣</text><text class="minus">-¥{{ order.pointsDiscount }}</text></view>
     </view>
 
     <view class="ops">

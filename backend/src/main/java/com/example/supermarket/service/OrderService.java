@@ -797,6 +797,22 @@ public class OrderService {
         // 互斥取大，绝不双减（与 buildOrderFromItems 的 bestPromo 同一条规则）
         BigDecimal bestPromo = couponPreview.max(activityDiscount);
 
+        // 积分抵扣：与 buildOrderFromItems 完全同一套取小规则
+        //   maxRedeem = (商品 − max(券,活动)) × 0.5，最多抵一半
+        //   pointsUsed = min(想用的, floor(maxRedeem×100), 当前余额)
+        // 但这里走 previewRedeemPoints（只算不写）——
+        // 走 reserveRedeem 会把用户积分真的扣掉，预览接口会被反复调用。
+        // 运费不参与任何折扣，最后加（与落库口径一致）。
+        BigDecimal amountAfterPromo = totalAmount.subtract(bestPromo).max(ZERO);
+        BigDecimal maxRedeem = memberService.maxRedeemValue(amountAfterPromo);
+        long pointsUsed = 0L;
+        if (Boolean.TRUE.equals(request.getUsePoints())) {
+            pointsUsed = memberService.previewRedeemPoints(userId, request.getPointsToUse(), maxRedeem);
+        }
+        BigDecimal pointsValue = new BigDecimal(pointsUsed)
+                .divide(POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
+        BigDecimal finalPay = amountAfterPromo.subtract(pointsValue).max(ZERO);
+
         OrderPreviewResponse res = new OrderPreviewResponse();
         res.setGoodsAmount(totalAmount);
         res.setNonFlashAmount(nonFlashSubtotal);
@@ -807,10 +823,13 @@ public class OrderService {
         res.setBestPromo(bestPromo);
         // 券名故意不返回：调用方手里本来就有券列表（/coupons/usable），不必多查一次库
         res.setPromoType(bestPromo.compareTo(ZERO) <= 0 ? "NONE" : (couponWins ? "COUPON" : "ACTIVITY"));
+        res.setPointsUsed(pointsUsed);
+        res.setPointsDiscount(pointsValue);
         res.setFreightAmount(freight);
-        res.setPayAmount(totalAmount.subtract(bestPromo).max(ZERO).add(freight));
+        res.setPayAmount(finalPay.add(freight));
         return res;
     }
+
     private OrderItem buildOrderItem(Integer memberLevel, CartItem cartItem, Product product,
                                      FlashSale flashSale, int quantity) {
         OrderItem item = new OrderItem();

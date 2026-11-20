@@ -112,6 +112,20 @@
         <text class="amt-lbl">{{ promoLabel }}</text>
         <text class="amt-val minus">-¥{{ fmt(bestPromo) }}</text>
       </view>
+      <!-- 积分抵扣入口：勾上就抵满（与 PC 端「有多少抵多少」一致），没有积分时整行不可点 -->
+      <view class="amt-row pts-row" @click="togglePoints">
+        <text class="amt-lbl">积分抵扣</text>
+        <view class="pts-right">
+          <text class="pts-hint" :class="{ off: !hasPoints }">{{ pointsHint }}</text>
+          <view class="pts-switch" :class="{ on: usePoints }" v-if="hasPoints">
+            <text class="pts-knob"></text>
+          </view>
+        </view>
+      </view>
+      <view class="amt-row" v-if="ptsDiscount > 0">
+        <text class="amt-lbl">积分抵扣（{{ ptsUsed }} 分）</text>
+        <text class="amt-val minus">-¥{{ fmt(ptsDiscount) }}</text>
+      </view>
       <view class="amt-row" v-if="amtFreight > 0">
         <text class="amt-lbl">运费</text>
         <text class="amt-val">+¥{{ fmt(amtFreight) }}</text>
@@ -146,6 +160,7 @@ import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
 import { listUsableCoupons } from '@/api/coupon'
+import { getMemberProfile } from '@/api/member'
 import CouponSheet from '@/components/CouponSheet/CouponSheet.vue'
 import {
   readSelectedCouponId,
@@ -214,6 +229,17 @@ const activityName = ref('')
 // 让前端复刻门槛计算必然与服务端分叉，所以改成问后端拿权威金额，前端只负责展示。
 // 为 null 表示不是 quick 模式（或还没拿到），此时沿用购物车口径。
 const quickPreview = ref(null)
+
+// ==================== 积分抵扣 ====================
+// 口径与 PC 端 useMemberPoints、后端 reserveRedeem/previewRedeemPoints 完全一致：
+//   可抵上限 = (商品金额 − max(券,活动)) × maxRedeemRatio（后端常量 0.5，最多抵一半）
+//   可用积分 = 账户当前余额（2026-10-24 起冻结分不再锁抵扣）
+//   用掉的积分 = min(余额, 上限对应积分)，100 积分 = 1 元
+// quick 模式一律以 /orders/preview 返回的 pointsUsed / pointsDiscount 为准，前端不自己算 ——
+// 否则又会重演「结算页一个数、收银台另一个数」。
+const userPoints = ref(0)
+const maxRedeemRatio = ref(0.5)
+const usePoints = ref(false)
 
 // ==================== 优惠券 ====================
 // 券只作用于**非秒杀**部分（后端同口径），所以取可用券时用非秒杀金额作基数。
@@ -344,12 +370,36 @@ async function refreshQuickPreview() {
       quantity: quick.quantity,
       skuSpec: quick.skuSpec || undefined,
       fulfillmentType: fulfillmentType.value,
-      userCouponId: selectedUserCouponId.value || undefined
+      userCouponId: selectedUserCouponId.value || undefined,
+      // 积分：勾了就传 usePoints=true，**不传 pointsToUse** ——
+      // 后端按 min(想用的=MAX, 上限, 余额) 取小，等价于「有多少抵多少」，与 PC 端一致
+      usePoints: usePoints.value || undefined
     })
   } catch (e) {
     // 预览失败不能挡住下单：退回本地口径（活动优惠会缺，但券仍能用、仍能提交）
     quickPreview.value = null
   }
+}
+
+/** 拉会员资料（积分余额 + 抵扣比例上限）—— 结算页只用这两个字段 */
+async function loadProfile() {
+  try {
+    const p = await getMemberProfile()
+    userPoints.value = Number((p && p.points) || 0)
+    maxRedeemRatio.value = Number((p && p.maxRedeemRatio) || 0.5)
+  } catch (e) {
+    userPoints.value = 0
+  }
+}
+
+/** 切换积分抵扣；quick 模式下勾选状态改变会影响后端算的应付，必须重算一次 */
+function togglePoints() {
+  if (!hasPoints.value) {
+    uni.showToast({ title: '暂无可用积分', icon: 'none' })
+    return
+  }
+  usePoints.value = !usePoints.value
+  refreshQuickPreview()
 }
 
 /** 门槛差额（弹层里给"还差 X 元可用"用；usableCoupons 只含已满足门槛的，这里兜底给全量提示用） */
@@ -396,15 +446,47 @@ const amtFreight = computed(() =>
   quickPreview.value ? Number(quickPreview.value.freightAmount) || 0 : Number(freight.value) || 0
 )
 
+/** 优惠后、扣积分前的金额 —— 积分只能抵这部分，且最多抵一半 */
+const amountAfterPromo = computed(() =>
+  Math.max(Number(amtGoods.value) - Number(bestPromo.value), 0)
+)
+/** 本单积分最多能抵多少钱（四舍五入到分，与后端 maxRedeemValue 一致） */
+const maxRedeemValue = computed(() =>
+  Math.round(amountAfterPromo.value * Number(maxRedeemRatio.value || 0) * 100) / 100
+)
+/** 上限对应多少积分（1 元 = 100 分，向下取整，与后端 floor 一致） */
+const maxRedeemPoints = computed(() => Math.floor(maxRedeemValue.value * 100))
+
+/** 实际用掉的积分：quick 信后端；购物车按同一套取小规则算 */
+const ptsUsed = computed(() => {
+  if (quickPreview.value) return Number(quickPreview.value.pointsUsed) || 0
+  if (!usePoints.value) return 0
+  return Math.max(0, Math.min(Number(userPoints.value) || 0, maxRedeemPoints.value))
+})
+/** 积分抵扣金额（100 积分 = 1 元） */
+const ptsDiscount = computed(() => {
+  if (quickPreview.value) return Number(quickPreview.value.pointsDiscount) || 0
+  return Math.round((ptsUsed.value / 100) * 100) / 100
+})
+/** 积分行右侧提示：没有积分 / 已勾选（说明抵了多少） / 未勾选（说明有多少、最多抵多少） */
+const pointsHint = computed(() => {
+  if (Number(userPoints.value) <= 0) return '暂无可用积分'
+  if (ptsDiscount.value > 0) return `用 ${ptsUsed.value} 分抵 ¥${fmt(ptsDiscount.value)}`
+  return `${userPoints.value} 积分，本单最多抵 ¥${fmt(maxRedeemValue.value)}`
+})
+/** 有没有积分可用（没有时整行不可点、不给开关） */
+const hasPoints = computed(() => Number(userPoints.value) > 0)
+
 /**
- * 应付 = 商品金额 − max(券, 活动) + 运费。
+ * 应付 = 商品金额 − max(券, 活动) − 积分 + 运费。
  * quick 模式直接用后端 preview 的 payAmount（公式一模一样，但金额是他算的，不会再对不上）；
- * 购物车模式用本地同口径公式（`/cart` 已给 activityDiscount，两项都是权威值）。
+ * 购物车模式用本地同口径公式（`/cart` 已给 activityDiscount，其余项都是权威值）。
  */
 const payable = computed(() => {
   if (quickPreview.value) return Number(quickPreview.value.payAmount) || 0
   const goods = Number(goodsTotal.value) || 0
-  return Math.max(goods - bestPromo.value, 0) + Number(freight.value || 0)
+  const afterPromo = Math.max(goods - bestPromo.value, 0)
+  return Math.max(afterPromo - ptsDiscount.value, 0) + Number(freight.value || 0)
 })
 
 const hasPromo = computed(() => bestPromo.value > 0)
@@ -572,6 +654,8 @@ onLoad(async (opts) => {
   // 拿到默认地址后按城市自动选「同城配送 / 快递配送」——用户不必自己想选哪个
   await loadAddresses()
   autoPickFulfillment()
+  // 积分余额要在算金额之前拿到（quick 模式的 preview 会把它算进去）
+  await loadProfile()
   // autoPickFulfillment 刚可能把取货方式从自提改成快递（有运费），所以放在它之后补算一次
   await refreshQuickPreview()
 })
@@ -610,6 +694,12 @@ async function submit() {
     // 但订单详情会记录 userCouponId —— 不生效就没必要留这个痕，避免用户看到"用了券却减免 0"。
     if (promoIsCoupon.value && selectedUserCouponId.value) {
       payload.userCouponId = selectedUserCouponId.value
+    }
+    // 积分抵扣：只在实际能抵钱时才传。
+    // 显式带上 pointsToUse（而不是靠后端"有多少抵多少"），保证扣的分数与页面显示的一分不差。
+    if (usePoints.value && ptsUsed.value > 0) {
+      payload.usePoints = true
+      payload.pointsToUse = ptsUsed.value
     }
 
     const order = mode.value === 'quick' ? await quickBuy(payload) : await createOrder(payload)
@@ -802,6 +892,45 @@ async function submit() {
   padding: 20rpx 24rpx 8rpx;
   background: #fff;
   border-radius: 16rpx;
+}
+/* ===== 积分抵扣行 ===== */
+.pts-right {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+.pts-hint {
+  font-size: 22rpx;
+  color: #8A8578;
+}
+.pts-hint.off {
+  color: #B4AEA2;
+}
+/* 小开关：纯 CSS，不引组件库（只有这一处用到） */
+.pts-switch {
+  position: relative;
+  width: 64rpx;
+  height: 36rpx;
+  margin-left: 14rpx;
+  background: #D8D3C8;
+  border-radius: 999rpx;
+  transition: background 0.18s;
+}
+.pts-switch.on {
+  background: #0F6E56;
+}
+.pts-knob {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: 28rpx;
+  height: 28rpx;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.18s;
+}
+.pts-switch.on .pts-knob {
+  transform: translateX(28rpx);
 }
 .amt-row {
   display: flex;

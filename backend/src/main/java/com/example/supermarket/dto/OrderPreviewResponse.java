@@ -34,7 +34,11 @@ public class OrderPreviewResponse {
     private String promoType;
     /** 运费（仅快递配送产生，按商品金额判 99 免邮） */
     private BigDecimal freightAmount;
-    /** 应付 = goodsAmount − bestPromo + freightAmount */
+    /** 本次会用掉的积分数（usePoints 为 false 时为 0）；**只是算，不冻结不扣减** */
+    private Long pointsUsed;
+    /** 积分抵扣金额 = pointsUsed / 100（100 积分 = 1 元） */
+    private BigDecimal pointsDiscount;
+    /** 应付 = goodsAmount − bestPromo − pointsDiscount + freightAmount */
     private BigDecimal payAmount;
 
     public BigDecimal getGoodsAmount() {
@@ -100,6 +104,22 @@ public class OrderPreviewResponse {
 
     public void setFreightAmount(BigDecimal freightAmount) {
         this.freightAmount = freightAmount;
+    }
+
+    public Long getPointsUsed() {
+        return pointsUsed;
+    }
+
+    public void setPointsUsed(Long pointsUsed) {
+        this.pointsUsed = pointsUsed;
+    }
+
+    public BigDecimal getPointsDiscount() {
+        return pointsDiscount;
+    }
+
+    public void setPointsDiscount(BigDecimal pointsDiscount) {
+        this.pointsDiscount = pointsDiscount;
     }
 
     public BigDecimal getPayAmount() {

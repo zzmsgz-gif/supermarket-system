@@ -203,6 +203,27 @@ public class MemberService {
         return usable;
     }
 
+    /**
+     * <b>只算不写</b>的积分抵扣预览 —— 与 reserveRedeem 同口径，
+     * 但不扣积分、不写流水、不锁用户行。
+     *
+     * <p>给 POST /orders/preview 用：用户反复勾选、改数量时会调很多次，
+     * 走 reserveRedeem 会真的把积分扣掉（预览绝不能有副作用，这是底线）。
+     *
+     * <p>⚠️ 取小规则必须与 reserveRedeem 一字不差：
+     * min(想用的, floor(可抵金额 x POINTS_PER_YUAN), 当前余额)，
+     * 否则结算页显示能抵 N 分、实际只扣 N-1 分，用户会觉得「勾了跟没勾一样」。
+     */
+    public long previewRedeemPoints(Long userId, Long requestedPoints, BigDecimal moneyCap) {
+        long want = requestedPoints == null ? Long.MAX_VALUE : Math.max(0, requestedPoints);
+        long moneyCapPoints = moneyCap == null ? 0
+                : moneyCap.multiply(POINTS_PER_YUAN).setScale(0, RoundingMode.FLOOR).longValue();
+        long available = userRepository.findById(userId)
+                .map(u -> Math.max(0L, u.getPoints() == null ? 0L : u.getPoints()))
+                .orElse(0L);
+        return Math.min(Math.min(want, moneyCapPoints), available);
+    }
+
     /** 取消/退款时回退已抵扣积分 */
     @Transactional
     public void refundRedeem(Long userId, Long orderId) {
