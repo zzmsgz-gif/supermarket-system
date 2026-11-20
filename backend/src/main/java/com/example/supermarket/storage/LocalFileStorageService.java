@@ -10,7 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 本地磁盘存储实现。仅用于本地开发 / 联调；生产环境请切换到 OssFileStorageService。
+ * 本地磁盘存储实现 —— **当前唯一实现**（生产也在用）。
+ * 阿里云 OSS 已按用户要求彻底移除（2026-11-20），不要再往云存储切。
  * 文件落在 storage.local.dir 下，并按 bizType/年份 分目录；通过 WebConfig 的
  * 静态资源映射以 /api/uploads/** 对外提供。
  */

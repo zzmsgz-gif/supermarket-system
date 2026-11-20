@@ -42,20 +42,13 @@ logging:
     org.hibernate.SQL: warn
 
 # 文件存储配置
-# OSS 已欠费，暂停使用（2026-09）：强制 local，文件落在容器 ./uploads 磁盘并经 /api/uploads/** 访问。
-# 注意：即使环境变量残留 STORAGE_TYPE=oss / OSS_*，这里 type 硬编码为 local 也不会实例化 OSS 客户端。
-# 恢复 OSS：把 type 改回 ${STORAGE_TYPE:local}，并重新配齐 STORAGE_TYPE=oss + OSS_ENDPOINT/OSS_BUCKET/OSS_ACCESS_KEY_ID/OSS_ACCESS_KEY_SECRET/OSS_BASE_URL。
+# 【2026-11-20 彻底移除 OSS】OSS 已按用户要求停用（欠费 + 避免继续产生费用），
+# 依赖、实现类、配置块全部删除；StorageConfig 不再读 storage.type，只剩本地磁盘。
+# 即使环境变量残留 STORAGE_TYPE=oss / OSS_*，也不会实例化任何云端存储客户端。
+# 恢复 OSS 需重新加依赖 + 实现类 + 配置，且必须先取得用户明确同意。
 storage:
-  type: local
   local:
     dir: ${STORAGE_LOCAL_DIR:./uploads}
-  # oss 配置块暂留（供恢复时参考），当前 type=local 不会被读取。
-  oss:
-    endpoint: ${OSS_ENDPOINT:https://oss-cn-beijing.aliyuncs.com}
-    bucket: ${OSS_BUCKET:super-zzm}
-    # access-key-id: ${OSS_ACCESS_KEY_ID}
-    # access-key-secret: ${OSS_ACCESS_KEY_SECRET}
-    base-url: ${OSS_BASE_URL:https://super-zzm.oss-cn-beijing.aliyuncs.com}
 
 # JWT / 业务参数：均读取环境变量，带安全兜底默认值
 app:
