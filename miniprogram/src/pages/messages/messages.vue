@@ -9,11 +9,11 @@
       v-for="m in messages"
       :key="m.id"
       class="msg"
-      :class="{ unread: !m.isRead }"
+      :class="{ unread: !m.isRead, important: isImportant(m) }"
       @click="open(m)"
     >
       <view class="m-top">
-        <text class="m-type">{{ typeLabel(m.type) }}</text>
+        <text class="m-type" :class="typeClass(m.type)">{{ typeLabel(m.type) }}</text>
         <text class="m-title">{{ m.title }}</text>
         <text class="m-dot" v-if="!m.isRead"></text>
       </view>
@@ -40,15 +40,43 @@ const total = ref(0)
 const loading = ref(false)
 const hasMore = ref(false)
 
+/**
+ * 消息类型中文名。类型以后端 UserMessage 常量为准：
+ * ORDER / MEMBER / COUPON / SYSTEM（原来这里漏了 MEMBER、COUPON，
+ * 那两类消息会直接把英文 "MEMBER" 显示出来 —— 2026-11-20 补齐）。
+ * ACTIVITY / PROMOTION / PRICE_DROP 是更早的命名，保留映射兼容历史数据。
+ */
 function typeLabel(t) {
   const map = {
     ORDER: '订单',
-    ACTIVITY: '活动',
+    MEMBER: '会员',
+    COUPON: '优惠券',
     SYSTEM: '系统',
+    ACTIVITY: '活动',
     PROMOTION: '优惠',
     PRICE_DROP: '降价'
   }
   return map[t] || t || '通知'
+}
+
+/**
+ * 需要用户特别留意的消息（涉及钱、需要处理）。
+ *
+ * 为什么按关键词而不是按 type 判：后端把「订单已发出」和「退款已到账 / 售后未通过」
+ * 都发成 TYPE_ORDER，光看类型分不出轻重；而这几类漏看代价最大（钱的事）。
+ * 命中后整条消息加红色左边条 + 浅红底，比默认模板显眼。
+ */
+const IMPORTANT_RE = /退款|售后|未通过|失败|异常|缺货/
+function isImportant(m) {
+  return IMPORTANT_RE.test((m.title || '') + ' ' + (m.content || ''))
+}
+
+/** 类型标签配色：系统=橙、会员=紫、优惠券=金，订单等其余保持主色绿 */
+function typeClass(t) {
+  if (t === 'SYSTEM') return 'sys'
+  if (t === 'MEMBER') return 'member'
+  if (t === 'COUPON') return 'coupon'
+  return ''
 }
 
 async function load(reset = false) {
@@ -142,6 +170,14 @@ onPullDownRefresh(async () => {
 .msg.unread {
   background: #f0fff7;
 }
+/* 退款/售后这类「涉及钱」的消息：左边红色条 + 浅红底，比普通消息显眼 */
+.msg.important {
+  background: #FEF6F5;
+  border-left: 8rpx solid #C0392B;
+}
+.msg.important .m-title {
+  color: #C0392B;
+}
 .m-top {
   display: flex;
   align-items: center;
@@ -152,6 +188,28 @@ onPullDownRefresh(async () => {
   border: 1rpx solid #0F6E56;
   border-radius: 16rpx;
   padding: 2rpx 12rpx;
+}
+/* 类型分色：系统=橙（要读）、会员=紫（权益）、优惠券=金（好处） */
+.m-type.sys {
+  color: #B45309;
+  border-color: #B45309;
+  background: #FEF6E7;
+}
+.m-type.member {
+  color: #7C3AED;
+  border-color: #7C3AED;
+  background: #F5F0FE;
+}
+.m-type.coupon {
+  color: #B7791F;
+  border-color: #B7791F;
+  background: #FDF7E7;
+}
+/* 醒目消息的标签压成红色，和左边条呼应 */
+.msg.important .m-type {
+  color: #C0392B;
+  border-color: #C0392B;
+  background: #FDECEA;
 }
 .m-title {
   flex: 1;
