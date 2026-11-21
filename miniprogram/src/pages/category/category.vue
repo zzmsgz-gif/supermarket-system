@@ -72,7 +72,12 @@
           </view>
         </view>
 
-        <view class="list-empty" v-if="!loading && !products.length">该分类暂无商品</view>
+        <EmptyState
+          v-if="!loading && !products.length"
+          icon="🧺"
+          title="该分类暂无商品"
+          desc="换个分类看看，或回首页逛逛"
+        />
         <view class="list-tip" v-else>{{ loading ? '加载中…' : (noMore ? '没有更多了' : '上拉加载更多') }}</view>
       </scroll-view>
     </view>
@@ -96,6 +101,7 @@ import { addToCart, getCart } from '@/api/cart'
 import { syncCartBadge } from '@/utils/cartBadge'
 import { requireLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const PAGE_SIZE = 20
 

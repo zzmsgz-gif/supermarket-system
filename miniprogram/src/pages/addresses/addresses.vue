@@ -19,7 +19,14 @@
       </view>
     </view>
 
-    <view class="empty" v-if="!addresses.length && !editing">还没有收货地址</view>
+    <!-- 空态不放按钮：下面那个「+ 新增收货地址」是全宽主按钮，页面上一直有，
+         这里再给一个就是两个「新增」摆在一起（2026-11-21 实测截图发现）。 -->
+    <EmptyState
+      v-if="!addresses.length && !editing"
+      icon="📍"
+      title="还没有收货地址"
+      desc="点下方按钮添加，下单时就能直接用"
+    />
 
     <button class="add" @click="startAdd">+ 新增收货地址</button>
 
@@ -74,6 +81,7 @@ import { ref, reactive, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { listAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from '@/api/address'
 import { regionData, citiesOf, districtsOf } from '@/utils/regions'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const addresses = ref([])
 const editing = ref(false)

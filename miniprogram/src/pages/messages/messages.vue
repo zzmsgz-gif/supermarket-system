@@ -21,7 +21,12 @@
       <view class="m-time">{{ formatTime(m.createdAt) }}</view>
     </view>
 
-    <view class="empty" v-if="!loading && !messages.length">暂无消息</view>
+    <EmptyState
+      v-if="!loading && !messages.length"
+      icon="🔔"
+      title="暂无消息"
+      desc="订单动态、会员权益、优惠提醒都会在这里通知你"
+    />
     <view class="loading" v-if="loading">加载中…</view>
     <view class="more" v-else-if="hasMore" @click="loadMore">点击加载更多</view>
   </view>
@@ -32,6 +37,7 @@ import { ref } from 'vue'
 import { onShow, onReachBottom, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listMessages, markAllRead, markRead } from '@/api/message'
 import { formatTime } from '@/utils/format'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const messages = ref([])
 const page = ref(0)

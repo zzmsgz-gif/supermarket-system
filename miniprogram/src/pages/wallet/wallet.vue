@@ -40,7 +40,12 @@
       </view>
     </view>
 
-    <view class="empty" v-if="!loading && !txns.length">暂无交易记录</view>
+    <EmptyState
+      v-if="!loading && !txns.length"
+      icon="💳"
+      title="暂无交易记录"
+      desc="充值或下单支付后，每一笔余额变动都会记在这里"
+    />
     <view class="loading" v-if="loading">加载中…</view>
     <view class="more" v-else-if="hasMore" @click="loadMore">点击加载更多</view>
   </view>
@@ -51,6 +56,7 @@ import { ref } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
 import { getWallet, getWalletSummary, recharge, listWalletTransactions } from '@/api/wallet'
 import { formatTime } from '@/utils/format'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const balance = ref('0.00')
 const txns = ref([])

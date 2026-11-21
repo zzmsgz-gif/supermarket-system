@@ -42,7 +42,13 @@
           <view class="s-hours" v-if="s.businessHours">营业：{{ s.businessHours }}</view>
           <view class="s-phone" v-if="s.phone">{{ s.phone }}</view>
         </view>
-        <view class="empty-store" v-if="stores.length === 0">暂无可选自提门店</view>
+        <EmptyState
+          v-if="stores.length === 0"
+          icon="🏪"
+          title="暂无可选自提门店"
+          desc="换快递配送也能下单"
+          compact
+        />
       </view>
 
       <!-- 配送（需地址） -->
@@ -161,6 +167,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { getCart } from '@/api/cart'
 import { listUsableCoupons } from '@/api/coupon'
 import { getMemberProfile } from '@/api/member'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 import CouponSheet from '@/components/CouponSheet/CouponSheet.vue'
 import {
   readSelectedCouponId,

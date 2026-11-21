@@ -21,7 +21,14 @@
       </view>
     </view>
 
-    <view class="empty" v-if="!loading && !favorites.length">还没有收藏的商品</view>
+    <EmptyState
+      v-if="!loading && !favorites.length"
+      icon="❤️"
+      title="还没有收藏的商品"
+      desc="看到喜欢的点一下收藏，下次就能快速找到"
+      action-text="去逛逛"
+      @action="goShop"
+    />
     <view class="loading" v-if="loading">加载中…</view>
     <view class="more" v-else-if="hasMore" @click="loadMore">点击加载更多</view>
   </view>
@@ -32,6 +39,7 @@ import { ref } from 'vue'
 import { onShow, onReachBottom, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listFavorites, removeFavorite } from '@/api/favorite'
 import { fullUrl } from '@/config'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const favorites = ref([])
 const page = ref(0)
@@ -80,6 +88,10 @@ function remove(f) {
       }
     }
   })
+}
+
+function goShop() {
+  uni.switchTab({ url: '/pages/index/index' })
 }
 
 onShow(() => load(true))

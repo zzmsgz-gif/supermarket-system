@@ -209,7 +209,12 @@
           </view>
         </view>
       </view>
-      <view class="floor-empty" v-if="!fl.products.length">该分类暂无商品</view>
+      <EmptyState
+        v-if="!fl.products.length"
+        icon="🧺"
+        title="该分类暂无商品"
+        compact
+      />
     </view>
 
     <!-- ===== 猜你喜欢（上拉加载）：复用楼层的双列卡样式 =====
@@ -302,6 +307,7 @@ import { requireLogin } from '@/utils/authGuard'
 import { fullUrl, BRAND_NAME } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
 import { syncCartBadge } from '@/utils/cartBadge'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const categories = ref([])
 const banners = ref([])

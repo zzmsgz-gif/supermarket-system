@@ -21,7 +21,14 @@
           <text class="cp-status">{{ couponStatusLabel(c.status) }}</text>
         </view>
       </view>
-      <view class="empty" v-if="!loading && !myCoupons.length">还没有优惠券</view>
+      <EmptyState
+        v-if="!loading && !myCoupons.length"
+        icon="🎟️"
+        title="还没有优惠券"
+        desc="去领券中心看看，满减券经常有"
+        action-text="去领券"
+        @action="switchTab('available')"
+      />
     </view>
 
     <!-- 领券中心 -->
@@ -44,7 +51,12 @@
           <text v-else class="cp-got">已领取</text>
         </view>
       </view>
-      <view class="empty" v-if="!loading && !available.length">暂无可领优惠券</view>
+      <EmptyState
+        v-if="!loading && !available.length"
+        icon="🎫"
+        title="暂无可领优惠券"
+        desc="过几天再来看看，活动券会不定期上新"
+      />
     </view>
 
     <view class="loading" v-if="loading">加载中…</view>
@@ -57,6 +69,7 @@ import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listMyCoupons, listAvailableCoupons, receiveCoupon } from '@/api/coupon'
 import { couponStatusLabel, formatTime } from '@/utils/format'
 import { applyCouponDot, countClaimable } from '@/utils/couponBadge'
+import EmptyState from '@/components/EmptyState/EmptyState.vue'
 
 const tab = ref('mine')
 const myCoupons = ref([])
