@@ -23,11 +23,13 @@ import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.AbstractMap;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
@@ -95,13 +97,56 @@ public class ProductService {
     ) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-        Pageable pageable = PageRequest.of(safePage - 1, safeSize, resolveSort(sort));
         List<Long> categoryIds = expandCategoryIds(categoryId);
-        Page<Product> products = productRepository.findAll(
-                buildPublicSearchSpec(categoryIds, keyword, minPrice, maxPrice, brand), pageable);
+        Specification<Product> spec = buildPublicSearchSpec(categoryIds, keyword, minPrice, maxPrice, brand);
+        // 首页「每次进来换一批」：走固定 seed 洗牌，见 randomSlice 的注释
+        if (isRandomSort(sort)) {
+            return randomSlice(spec, safePage, safeSize, parseSeed(sort));
+        }
+        Pageable pageable = PageRequest.of(safePage - 1, safeSize, resolveSort(sort));
+        Page<Product> products = productRepository.findAll(spec, pageable);
         List<ProductSummaryResponse> items = products.getContent().stream()
                 .map(ProductSummaryResponse::from).toList();
         return PageResponse.of(items, safePage, safeSize, products.getTotalElements());
+    }
+
+    /**
+     * 首页「每次进来换一批」用的随机排序。
+     *
+     * <p>约定：{@code sort=random} 或 {@code sort=random_<seed>}。
+     *
+     * <p>为什么不交给 Pageable：{@code Sort} 只能按实体属性排序，表达不了 {@code ORDER BY RAND()}；
+     * 而真用 {@code RAND()} 分页会**每页各自随机** —— 同一件商品在两次翻页里都出现、
+     * 另一些永远轮不到（上拉加载直接坏掉）。所以这里用「固定 seed 洗牌 + 按页切片」：
+     * 同一 seed 下分页稳定、不重不漏；前端每次进首页换一个 seed，就是换一批。
+     *
+     * <p>商品是百级量级，全量取一次再洗牌的代价可以忽略，不必为此引入原生 SQL 拼条件。
+     */
+    private static boolean isRandomSort(String sort) {
+        return sort != null && (sort.equals("random") || sort.startsWith("random_"));
+    }
+
+    private static long parseSeed(String sort) {
+        if (sort == null || "random".equals(sort)) {
+            return 0L;
+        }
+        String raw = sort.substring("random_".length()).trim();
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    private PageResponse<ProductSummaryResponse> randomSlice(
+            Specification<Product> spec, int page, int size, long seed) {
+        List<Product> shuffled = new ArrayList<>(productRepository.findAll(spec, Sort.by(Sort.Direction.ASC, "id")));
+        Collections.shuffle(shuffled, new Random(seed));
+        int from = Math.min((page - 1) * size, shuffled.size());
+        int to = Math.min(from + size, shuffled.size());
+        List<ProductSummaryResponse> items = shuffled.subList(from, to).stream()
+                .map(ProductSummaryResponse::from).toList();
+        return PageResponse.of(items, page, size, shuffled.size());
     }
 
     @Cacheable(cacheNames = "productDetail", key = "#id")

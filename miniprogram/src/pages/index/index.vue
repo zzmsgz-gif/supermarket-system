@@ -315,6 +315,16 @@ const banners = ref([])
 const loadError = ref('')
 const flashSales = ref([])
 const floors = ref([])
+// ===== 商品「每次进来换一批」的随机种子 =====
+// 后端约定 sort=random_<seed>：按固定 seed 洗牌再分页，所以同一 seed 下上拉加载
+// **不重不漏**（真用 ORDER BY RAND() 会每页各自随机，同一件反复出现、另一批永远刷不到）。
+// 页面实例创建时生成一次 = 每次打开小程序首页换一批；下拉刷新再换一次；
+// 从商品详情返回时沿用同一 seed，避免「刚看的那件位置全变了、翻不回去」。
+function newFeedSeed() {
+  return Math.floor(Math.random() * 1000000000)
+}
+const feedSeed = ref(newFeedSeed())
+const feedSort = computed(() => 'random_' + feedSeed.value)
 // ===== 「猜你喜欢」上拉加载流 =====
 // 楼层每类只放 8 件，112 件在售商品里有 32 件（冷冻速食 16 / 个人护理 5 / 清洁纸品 5 / 生鲜 4 / 乳品 2）
 // 在首页根本出不来，用户只能逐个点「查看全部」才能看到 —— 滑到底继续按销量加载更好。
@@ -476,10 +486,11 @@ async function load() {
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
 
   // 分类楼层：每个分类取前 8 件（按 categoryId 分组现场取，避免只用分页第一页截断）
+  // sort=random_<seed> → 每次进首页各类挑出来的 8 件都不一样（用户反馈「老是同一个顺序」）
   const floorsData = []
   for (const c of categories.value) {
     try {
-      const res = await listProducts({ categoryId: c.id, size: 8 })
+      const res = await listProducts({ categoryId: c.id, size: 8, sort: feedSort.value })
       floorsData.push({ category: c, products: (res && res.items) ? res.items : [] })
     } catch (e) {
       floorsData.push({ category: c, products: [] })
@@ -499,7 +510,8 @@ async function load() {
 /**
  * 「猜你喜欢」：上拉加载更多。
  *
- * - 按销量降序（sort=sales_desc），先热销后长尾
+ * - 顺序跟着首页的随机种子走（sort=random_<seed>）：同一 seed 下翻页稳定不重不漏，
+ *   换 seed（重开小程序 / 下拉刷新）就是换一批。用户反馈「每次进来老是同一个顺序」后改的
  * - **跳过楼层已经展示过的商品**，避免同一件东西在首屏出现两次（用户会觉得列表在重复）
  * - 用 `page*size < total` 判还有没有下一页，不猜
  * - 失败时把 hasMore 置 false，否则上拉会无限重试同一个失败请求
@@ -529,7 +541,7 @@ async function loadFeed(reset = false) {
     let added = 0
     while (guard < 6 && feedHasMore.value && (guard < minRounds || added < 4)) {
       guard += 1
-      const res = await listProducts({ page: feedPage.value + 1, size: FEED_SIZE, sort: 'sales_desc' })
+      const res = await listProducts({ page: feedPage.value + 1, size: FEED_SIZE, sort: feedSort.value })
       const items = (res && res.items) || []
       const fresh = items.filter((p) => !shown[p.id])
       fresh.forEach((p) => { shown[p.id] = true })
@@ -765,6 +777,8 @@ onUnmounted(() => {
 // 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
 onPullDownRefresh(async () => {
   try {
+    // 下拉刷新 = 明确的「换一批」意图：换种子后再重拉，楼层与猜你喜欢都洗一遍
+    feedSeed.value = newFeedSeed()
     await load()
   } finally {
     uni.stopPullDownRefresh()
