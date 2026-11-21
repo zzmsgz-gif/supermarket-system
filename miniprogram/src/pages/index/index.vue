@@ -905,6 +905,14 @@ onPullDownRefresh(async () => {
 }
 .ns-body {
   flex: 1;
+  /* ⚠️ 必须写 min-height: 0（2026-11-21 修「公告不能往下滑」）：
+     flex 子项默认 min-height: auto，内容一多 scroll-view 会被内容撑高到等于内容高度，
+     父容器虽然有 max-height:70vh，但它自己已经不再收缩 → 没有滚动空间 → 手指划不动。
+     CouponSheet 的 .cs-list、AfterSaleSheet 的 .as-body 都写了这一行，只有这里漏了。 */
+  min-height: 0;
+  /* 给一个确定的上限：小程序端 flex:1 已经够用；H5 下 uni 内层滚动容器是 height:100%，
+     只有父级有确定高度/上限时百分比才解析得出来，否则内层永远按内容撑开、滚不动。 */
+  max-height: calc(70vh - 100rpx);
   padding: 8rpx 28rpx 24rpx;
   box-sizing: border-box;
   /* scroll-view 在 flex 里必须允许收缩，否则内容会把自身撑宽 */
