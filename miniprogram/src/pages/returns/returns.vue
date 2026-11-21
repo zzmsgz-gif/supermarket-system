@@ -14,6 +14,7 @@
     <view
       v-for="r in filtered"
       :key="r.id"
+      :id="'ret-' + r.id"
       class="card"
       @click="goOrder(r.orderId)"
     >
@@ -112,7 +113,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { onShow, onReachBottom, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onShow, onReachBottom, onPullDownRefresh } from '@dcloudio/uni-app'
 import { listReturns, shipBackReturn } from '@/api/returns'
 import { fullUrl } from '@/config'
 import { isLoggedIn } from '@/store/auth'
@@ -144,6 +145,20 @@ const loading = ref(false)
 const shipOpen = ref(false)
 const shipSubmitting = ref(false)
 const shipTarget = ref(null)
+
+// ===== 带参落地的目标（订单页「填写寄回物流 / 查看进度」跳进来时设置）=====
+// 用普通变量而非 ref：只给 landOnTarget 内部用，不参与渲染
+let pendingOrderId = 0
+let pendingAutoShip = false
+onLoad((opts) => {
+  const oid = Number((opts && opts.orderId) || 0)
+  pendingAutoShip = !!(opts && opts.ship === '1')
+  if (!oid) return
+  pendingOrderId = oid
+  // 待寄回的售后单一定落在「处理中」分组；只查看进度时保持「全部」，
+  // 否则目标若是已通过/已驳回，会被分组过滤掉、滚不到
+  if (pendingAutoShip) activeTab.value = 'DOING'
+})
 const shipItem = ref('')
 const shipForm = ref({ expressCompany: '', trackingNo: '' })
 
@@ -247,13 +262,46 @@ async function submitShip() {
   }
 }
 
-onShow(() => {
+onShow(async () => {
   if (!isLoggedIn()) {
     uni.navigateTo({ url: '/pages/login/login' })
     return
   }
-  load(true)
+  await load(true)
+  await landOnTarget()
 })
+
+/**
+ * 从订单页带参进来时的「落地定位」（2026-11-22 用户反馈：
+ * 点「填写寄回物流」只是跳到售后列表，还得自己找那张卡、再点一次按钮）。
+ *
+ * - `?orderId=123&ship=1`：定位到该订单的售后单，**直接弹出发送单号的弹层**（待寄回按钮专用）
+ * - `?orderId=123`：只把那张卡滚进视口（详情页「查看进度」用）
+ *
+ * 售后单可能不在第一页（分页 20），所以找不到就继续往后翻，最多 3 轮。
+ */
+async function landOnTarget() {
+  if (!pendingOrderId) return
+  const match = () => list.value.find((r) => Number(r.orderId) === pendingOrderId)
+  let target = match()
+  let guard = 0
+  while (!target && guard < 3 && list.value.length < total.value && !loading.value) {
+    guard += 1
+    await load()
+    target = match()
+  }
+  const autoShip = pendingAutoShip
+  pendingOrderId = 0
+  pendingAutoShip = false
+  if (!target) return
+  if (autoShip && target.status === 'WAITING_SHIP') {
+    // 直达填单：弹层是 fixed 遮罩，出来就在视口里，不用再滚动
+    openShip(target)
+    return
+  }
+  // 只定位：把卡片滚到视口（不自动弹层，用户可能只是想看进度）
+  uni.pageScrollTo({ selector: '#ret-' + target.id, duration: 200 })
+}
 
 onReachBottom(() => {
   if (list.value.length < total.value && !loading.value) load()

@@ -35,7 +35,7 @@
           <view class="spec" v-if="it.skuSpec">{{ it.skuSpec }}</view>
           <view class="meta">¥{{ fmt(it.productPrice) }} × {{ it.quantity }}</view>
           <!-- 该商品行的售后进度：一笔订单里不同商品可以各走各的售后 -->
-          <view class="line-ret" v-if="returnOfItem(it.id)" @click.stop="goReturns">
+          <view class="line-ret" v-if="returnOfItem(it.id)" @click.stop="goReturns()">
             <text class="lr-tag" :class="statusClass(returnOfItem(it.id).status)">
               {{ returnOfItem(it.id).statusLabel || returnOfItem(it.id).status }}
             </text>
@@ -107,8 +107,9 @@
         {{ afterSaleLabel }}
       </button>
       <!-- 待寄回：商家已同意，用户此刻该去寄件并填单号 —— 直接给可点的主按钮，
-           而不是一个「待寄回商品」的灰按钮（填单入口在「我的售后」，跳过去才有输入框） -->
-      <button v-if="refundWaitingShip" class="a main" @click="goReturns">填写寄回物流</button>
+           带 ship=1 跳转，售后页落地直接弹出发送单号的弹层（2026-11-22 用户反馈：
+           以前只是跳到售后列表，还得自己找卡、再点一次「填写寄回物流」） -->
+      <button v-if="refundWaitingShip" class="a main" @click="goReturns(null, true)">填写寄回物流</button>
       <button v-if="afterSaleInFlight && !refundWaitingShip" class="a ghost" disabled>{{ afterSaleInFlightText }}</button>
       <!-- 退款已到账（APPROVED 终态）：钱已经退回来了，不再挂「退款处理中」的禁用按钮 -->
       <text v-if="refundDone" class="a done">退款已到账</text>
@@ -182,8 +183,14 @@ function statusClass(s) {
   if (s === 'APPROVED') return 'lr-done'
   return 'lr-wait'
 }
-function goReturns() {
-  uni.navigateTo({ url: '/pages/returns/returns' })
+function goReturns(orderId, autoShip) {
+  const id = orderId || (order.value && order.value.id)
+  let url = '/pages/returns/returns'
+  const qs = []
+  if (id) qs.push('orderId=' + id)
+  if (autoShip) qs.push('ship=1')
+  if (qs.length) url += '?' + qs.join('&')
+  uni.navigateTo({ url })
 }
 
 async function loadItemReturns() {

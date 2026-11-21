@@ -77,11 +77,13 @@
         >{{ afterSaleLabel(o) }}</button>
         <!-- 待寄回：这是用户此刻唯一要做的事（商家已同意，等他寄件），必须可点直达填单。
              以前一律渲染成禁用的「待寄回」灰按钮 → 用户知道要寄件却在小程序里找不到填单入口
-             （PC 端是订单卡片内嵌表单，小程序只能绕去「我的 → 我的售后」，2026-11-21 补）。 -->
+             （PC 端是订单卡片内嵌表单，小程序只能绕去「我的 → 我的售后」，2026-11-21 补）。
+             2026-11-22 再补一步：带 orderId+ship=1 跳转，售后页落地**直接弹出发送单号的输入框**，
+             不再让用户落地后再自己找那张卡、再点一次「填写寄回物流」。 -->
         <button
           v-if="o.refundStatus === 'WAITING_SHIP'"
           class="a main"
-          @click="goReturns"
+          @click="goReturns(o.id, true)"
         >填写寄回物流</button>
         <button
           v-if="afterSaleInFlight(o) && o.refundStatus !== 'WAITING_SHIP'"
@@ -264,9 +266,20 @@ function goDetail(id) {
   uni.navigateTo({ url: '/pages/order-detail/order-detail?id=' + id })
 }
 
-/** 待寄回时直达「我的售后」——填快递单号/运单号的唯一入口就在那一页 */
-function goReturns() {
-  uni.navigateTo({ url: '/pages/returns/returns' })
+/**
+ * 跳「我的售后」。
+ *
+ * @param {number} [orderId]  要定位的订单 —— 售后页据此把对应那张卡滚进视口
+ * @param {boolean} [autoShip]  true = 落地后**直接打开「填写寄回物流」弹层**（待寄回按钮专用），
+ *                              用户点一次就到输入框，不用在售后列表里自己找
+ */
+function goReturns(orderId, autoShip) {
+  let url = '/pages/returns/returns'
+  const qs = []
+  if (orderId) qs.push('orderId=' + orderId)
+  if (autoShip) qs.push('ship=1')
+  if (qs.length) url += '?' + qs.join('&')
+  uni.navigateTo({ url })
 }
 
 function pay(o) {
