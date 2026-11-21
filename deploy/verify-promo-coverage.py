@@ -140,6 +140,26 @@ def check_preview(group, name, body, token, expect):
     return data
 
 
+def temp_admin():
+    """注册临时管理员：注册 → SQL 提权 ADMIN → 重新登录拿新 JWT（注册时的 JWT 已写死 role=USER）。
+    绝不动 sys_user id=1 的密码（历史踩过：脚本改密码中途崩溃会把后台口令留在硬编码值上）。"""
+    name = "vfyadm%d" % (int(time.time()) % 10000)
+    code, res = http("POST", "/auth/register", None, {
+        "username": name, "password": "At123456",
+        "phone": "138" + str(int(time.time() * 1000))[-8:],
+        "nickname": "临时管理", "email": name + "@example.com",
+    })
+    if code != 200:
+        raise SystemExit("临时管理员注册失败 %s %s" % (code, res))
+    uid = sql_one("SELECT id FROM sys_user WHERE username='%s'" % name)
+    sql_many(["UPDATE sys_user SET role='ADMIN' WHERE id=%s" % uid])
+    code, res = http("POST", "/auth/login", None, {"username": name, "password": "At123456"})
+    token = (res.get("data") or {}).get("token")
+    if not token:
+        raise SystemExit("临时管理员登录失败 %s" % res)
+    return {"name": name, "id": uid, "token": token}
+
+
 def new_user(tag, level=0, points=0, balance=None):
     name = "vfyb%s%d" % (tag, int(time.time()) % 10000)
     code, res = http("POST", "/auth/register", None, {
@@ -581,6 +601,246 @@ def main():
         record("J", "J7 超时关单：抵扣积分必须退回（否则用户白丢）",
                str(pts_after) == "3000", "关单前=%s 关单后=%s(应3000)" % (pts_before, pts_after))
 
+    adm = None
+    act_id = None
+    sp_item = None
+
+    # ===== K 会员日积分倍数 =====
+    print("\n--- K 会员日积分倍数（按**下单日**判定）---")
+    sql_many(["DELETE FROM member_day WHERE member_date=CURDATE()",
+              "INSERT INTO member_day (member_date, multiplier, remark, enabled, created_at, updated_at) "
+              "VALUES (CURDATE(), 2.0, 'verify-promo-coverage 临时会员日', 1, NOW(), NOW())"])
+    # 薯片70g×15 = 103.50，无活动无券 → base=floor(103.5)=103，会员日 2 倍 = 206
+    u4 = new_user("d", level=0, points=0, balance=1000)
+    T4 = u4["token"]
+    clear_cart(T4)
+    http("POST", "/cart/items", T4, {"productId": 3, "quantity": 15, "skuSpec": SKU_SP70})
+    code, cK = http("GET", "/cart", T4)
+    idsK = [it.get("id") for it in ((cK.get("data") or {}).get("items") or [])]
+    code, oK = http("POST", "/orders", T4, {"cartItemIds": idsK, "fulfillmentType": "PICKUP", "pickupStoreId": 1})
+    oKd = oK.get("data") or {}
+    oidK = oKd.get("id")
+    if code != 200 or not oidK:
+        record("K", "K1 会员日下单", False, "HTTP %s %s" % (code, oK.get("message")))
+    else:
+        record("K", "K1 会员日 2 倍：订单 pointsEarned = floor(103.50)×2 = 206",
+               near(oKd.get("pointsEarned"), 206),
+               "实付=%s pointsEarned=%s" % (oKd.get("payAmount"), oKd.get("pointsEarned")))
+        http("POST", "/orders/%s/pay" % oidK, T4)
+        ptsK = sql_one("SELECT points FROM sys_user WHERE id=%s" % u4["id"])
+        remK = sql_one("SELECT remark FROM point_ledger WHERE user_id=%s AND type='EARN' "
+                       "ORDER BY id DESC LIMIT 1" % u4["id"])
+        record("K", "K2 支付后实发 206 分", str(ptsK) == "206", "积分=%s" % ptsK)
+        record("K", "K3 流水备注点明会员日倍数", bool(remK and "倍" in str(remK)), "备注=%s" % remK)
+
+    # 关掉会员日 → 同一笔应为 1 倍（证明倍率是按当日配置实时判的，不是写死的）
+    sql_many(["DELETE FROM member_day WHERE member_date=CURDATE()"])
+    clear_cart(T4)
+    http("POST", "/cart/items", T4, {"productId": 3, "quantity": 15, "skuSpec": SKU_SP70})
+    code, cK2 = http("GET", "/cart", T4)
+    idsK2 = [it.get("id") for it in ((cK2.get("data") or {}).get("items") or [])]
+    code, oK2 = http("POST", "/orders", T4, {"cartItemIds": idsK2, "fulfillmentType": "PICKUP", "pickupStoreId": 1})
+    oK2d = oK2.get("data") or {}
+    record("K", "K4 非会员日恢复 1 倍：pointsEarned = 103",
+           near(oK2d.get("pointsEarned"), 103), "pointsEarned=%s" % oK2d.get("pointsEarned"))
+
+    # ===== L 分类限定活动（scope=CATEGORY）=====
+    print("\n--- L 分类限定活动（后台建/删，只对该分类生效）---")
+    adm = temp_admin()
+    TA = adm["token"]
+    start_l = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 3600))
+    end_l = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 86400))
+    code, act = http("POST", "/admin/activities", TA, {
+        "name": "VERIFY2 零食满30减5", "type": "FULL_REDUCTION", "scope": "CATEGORY",
+        "categoryId": 3, "threshold": 30, "discount": 5,
+        "startTime": start_l, "endTime": end_l, "status": 1, "priority": 0,
+    })
+    act_id = (act.get("data") or {}).get("id")
+    record("L", "L0 后台创建分类活动（休闲零食 category=3）", bool(act_id),
+           "id=%s %s" % (act_id, act.get("message")))
+    if act_id:
+        # 零食 34.50 命中；饮料（矿泉水 category=2）不命中；混合车门槛只算零食部分
+        check_preview("L", "L1 零食 34.50 → 分类活动减 5.00",
+                      pv(3, 5, SKU_SP70), T1,
+                      {"goodsAmount": 34.50, "activityDiscount": 5.00, "payAmount": 29.50})
+        check_preview("L", "L2 饮料 35.00（category=2）→ 分类活动不适用",
+                      pv(2, 14, SKU_W350), T1,
+                      {"goodsAmount": 35.00, "activityDiscount": 0, "payAmount": 35.00})
+
+        clear_cart(T1)
+        http("POST", "/cart/items", T1, {"productId": 3, "quantity": 5, "skuSpec": SKU_SP70})
+        http("POST", "/cart/items", T1, {"productId": 2, "quantity": 14, "skuSpec": SKU_W350})
+        code, cL = http("GET", "/cart", T1)
+        cLd = cL.get("data") or {}
+        record("L", "L3 混合车：门槛只算零食 34.50 → 减 5（84.50−5=79.50）",
+               near(cLd.get("activityDiscount"), 5.00) and near(cLd.get("selectedAmount"), 69.50),
+               "selectedAmount=%s activityDiscount=%s" % (cLd.get("selectedAmount"), cLd.get("activityDiscount")))
+
+        # 删除活动 → 立即失效（后台接口带 CacheEvict）
+        code, res = http("DELETE", "/admin/activities/%s" % act_id, TA)
+        record("L", "L4 后台删除活动", code == 200, "HTTP %s" % code)
+        check_preview("L", "L5 删除后零食 34.50 不再减",
+                      pv(3, 5, SKU_SP70), T1,
+                      {"goodsAmount": 34.50, "activityDiscount": 0, "payAmount": 34.50})
+        act_id = None
+
+    # ===== M 按商品行的部分退款 =====
+    print("\n--- M 部分退款（整单两行只退一行）---")
+    u5 = new_user("e", level=0, points=0, balance=1000)
+    T5 = u5["token"]
+    clear_cart(T5)
+    stock_sp_before = int(sql_one("SELECT stock FROM product WHERE id=3"))
+    stock_w_before = int(sql_one("SELECT stock FROM product WHERE id=2"))
+    http("POST", "/cart/items", T5, {"productId": 3, "quantity": 10, "skuSpec": SKU_SP70})   # 69.00
+    http("POST", "/cart/items", T5, {"productId": 2, "quantity": 4, "skuSpec": SKU_W350})    # 10.00
+    code, cM = http("GET", "/cart", T5)
+    idsM = [it.get("id") for it in ((cM.get("data") or {}).get("items") or [])]
+    code, oM = http("POST", "/orders", T5, {"cartItemIds": idsM, "fulfillmentType": "PICKUP", "pickupStoreId": 1})
+    oMd = oM.get("data") or {}
+    oidM = oMd.get("id")
+    if code != 200 or not oidM:
+        record("M", "M1 两行订单建单", False, "HTTP %s %s" % (code, oM.get("message")))
+    else:
+        ear = oMd.get("pointsEarned")
+        record("M", "M1 两行订单建单 79.00", near(oMd.get("payAmount"), 79.00),
+               "实付=%s pointsEarned=%s" % (oMd.get("payAmount"), ear))
+        http("POST", "/orders/%s/pay" % oidM, T5)
+        # 自提订单走 /ready（/ship 要 shipCompany+shipNo 物流信息，自提单没有）
+        codeRD, rd = http("POST", "/admin/orders/%s/ready" % oidM, TA)
+        codeCR, cr = http("POST", "/orders/%s/confirm-receipt" % oidM, T5)
+        st = sql_one("SELECT status FROM orders WHERE id=%s" % oidM)
+        record("M", "M2 备货完成+确认收货 → COMPLETED", str(st) == "COMPLETED",
+               "ready=%s confirm=%s 状态=%s %s" % (codeRD, codeCR, st, cr.get("message")))
+
+        items = (http("GET", "/orders/%s" % oidM, T5)[1].get("data") or {}).get("items") or []
+        sp_item = next((it for it in items if it.get("productId") == 3), None)
+        code, ret = http("POST", "/returns", T5, {
+            "orderId": oidM, "orderItemId": (sp_item or {}).get("id"),
+            "type": "REFUND", "reason": "只退薯片（部分退款验证）"})
+        rid = (ret.get("data") or {}).get("id")
+        record("M", "M3 按商品行申请售后", bool(rid), "rid=%s %s" % (rid, ret.get("message")))
+        if rid:
+            code, rev = http("POST", "/admin/return-requests/%s/review" % rid, TA,
+                             {"approved": True, "needReturn": False})
+            record("M", "M4 审核通过（免寄回，直接退款）", code == 200,
+                   "HTTP %s %s" % (code, rev.get("message")))
+            time.sleep(1)
+            row = sql_one("SELECT CONCAT(status,'|',IFNULL(refund_status,'-'),'|',IFNULL(payment_status,'-')) "
+                          "FROM orders WHERE id=%s" % oidM)
+            record("M", "M5 订单不关闭：仍 COMPLETED、退款态 PARTIAL",
+                   row.startswith("COMPLETED") and "PARTIAL" in row, "订单=%s" % row)
+            sp_after = int(sql_one("SELECT stock FROM product WHERE id=3"))
+            w_after = int(sql_one("SELECT stock FROM product WHERE id=2"))
+            record("M", "M6 只回补被退那一行的库存（薯片 +10，矿泉水不动）",
+                   sp_after == stock_sp_before and w_after == stock_w_before - 4,
+                   "薯片 %s→%s（应回 %s） 矿泉水 %s（应 %s）" % (
+                       stock_sp_before - 10, sp_after, stock_sp_before, w_after, stock_w_before - 4))
+            balM = sql_one("SELECT balance FROM sys_user WHERE id=%s" % u5["id"])
+            record("M", "M7 退款金额只退被退那行 69.00", near(balM, 1000 - 79 + 69),
+                   "余额=%s（应 %s）" % (balM, 1000 - 79 + 69))
+            ptsM = sql_one("SELECT points FROM sys_user WHERE id=%s" % u5["id"])
+            record("M", "M8 积分按非秒杀占比回收（79→69 只回收约 69/79）",
+                   int(ptsM) < int(ear or 0), "积分=%s（全额为 %s，应小于它）" % (ptsM, ear))
+
+    # ===== N 幂等（重复支付 / 重复取消 / 重复售后）=====
+    print("\n--- N 幂等：重复操作必须被拒 ---")
+    code, _ = http("POST", "/orders/%s/pay" % oidM, T5) if oidM else (0, {})
+    record("N", "N1 已支付订单再次支付 → 拒绝", code != 200, "HTTP %s" % code)
+    if oid2:
+        code, res = http("POST", "/orders/%s/cancel" % oid2, T1)
+        record("N", "N2 已取消订单再次取消 → 拒绝", code != 200,
+               "HTTP %s %s" % (code, res.get("message")))
+    if oidM and sp_item:
+        code, res = http("POST", "/returns", T5, {
+            "orderId": oidM, "orderItemId": sp_item.get("id"),
+            "type": "REFUND", "reason": "重复申请"})
+        record("N", "N3 同一商品行重复申请售后 → 拒绝", code != 200,
+               "HTTP %s %s" % (code, res.get("message")))
+
+    # ===== O 购物车勾选影响门槛 =====
+    print("\n--- O 购物车勾选 / 取消勾选 ---")
+    u6 = new_user("f", level=0, points=0, balance=500)
+    T6 = u6["token"]
+    clear_cart(T6)
+    http("POST", "/cart/items", T6, {"productId": 3, "quantity": 5, "skuSpec": SKU_SP70})    # 34.50
+    http("POST", "/cart/items", T6, {"productId": 104, "quantity": 2})                       # 178.00
+    code, cO = http("GET", "/cart", T6)
+    cOd = cO.get("data") or {}
+    itemsO = cOd.get("items") or []
+    record("O", "O1 全选 212.50 → 活动减 50",
+           near(cOd.get("selectedAmount"), 212.50) and near(cOd.get("activityDiscount"), 50.00),
+           "selectedAmount=%s 活动=%s" % (cOd.get("selectedAmount"), cOd.get("activityDiscount")))
+    beef = next((it for it in itemsO if it.get("productId") == 104), None)
+    if beef:
+        code, _ = http("PUT", "/cart/items/%s" % beef.get("id"), T6,
+                       {"quantity": beef.get("quantity"), "selected": False})
+        code, cO2 = http("GET", "/cart", T6)
+        cO2d = cO2.get("data") or {}
+        record("O", "O2 取消勾选牛排 → 只剩 34.50，活动优惠归 0",
+               near(cO2d.get("selectedAmount"), 34.50) and near(cO2d.get("activityDiscount"), 0),
+               "selectedAmount=%s 活动=%s" % (cO2d.get("selectedAmount"), cO2d.get("activityDiscount")))
+        http("PUT", "/cart/items/%s" % beef.get("id"), T6,
+             {"quantity": beef.get("quantity"), "selected": True})
+        code, cO3 = http("GET", "/cart", T6)
+        cO3d = cO3.get("data") or {}
+        record("O", "O3 重新勾选 → 恢复 212.50 / 减 50",
+               near(cO3d.get("selectedAmount"), 212.50) and near(cO3d.get("activityDiscount"), 50.00),
+               "selectedAmount=%s 活动=%s" % (cO3d.get("selectedAmount"), cO3d.get("activityDiscount")))
+
+    # ===== P 券每人限领 =====
+    print("\n--- P 券领取限制 ---")
+    ok1, msg1 = receive_coupon(u6, 37)
+    ok2, msg2 = receive_coupon(u6, 37)
+    record("P", "P1 同一张券第一次可领", ok1, "msg=%s" % msg1)
+    record("P", "P2 同一张券第二次被拒", not ok2, "msg=%s" % msg2)
+    cnt = sql_one("SELECT COUNT(*) FROM user_coupon WHERE user_id=%s AND coupon_id=37" % u6["id"])
+    record("P", "P3 库里仍只有 1 张", str(cnt) == "1", "持有=%s" % cnt)
+
+    # ===== Q 边界：状态变化后的下单校验 =====
+    print("\n--- Q 边界：取消后再支付 / 商品失效 / 名额耗尽 ---")
+    if oid2:
+        code, res = http("POST", "/orders/%s/pay" % oid2, T1)
+        record("Q", "Q1 已取消订单再次支付 → 拒绝", code != 200,
+               "HTTP %s %s" % (code, res.get("message")))
+    code, res = http("POST", "/orders/preview", T1, pv(999999, 1))
+    record("Q", "Q2 不存在的商品下单 → 拒绝", code != 200,
+           "HTTP %s %s" % (code, res.get("message")))
+
+    # Q3/Q4 临时下架一个商品验证拦截，随即恢复（窗口 < 5s，用 finally 保证一定恢复）
+    old_status = sql_one("SELECT status FROM product WHERE id=133")
+    try:
+        sql_many(["UPDATE product SET status='OFF_SALE' WHERE id=133"])
+        code, res = http("POST", "/orders/preview", T1, pv(133, 1))
+        record("Q", "Q3 已下架商品下单 → 拒绝", code != 200,
+               "HTTP %s %s" % (code, res.get("message")))
+    finally:
+        if old_status:
+            sql_many(["UPDATE product SET status='%s' WHERE id=133" % old_status])
+        st133 = sql_one("SELECT status FROM product WHERE id=133")
+        record("Q", "Q4 商品状态已恢复（不能把用户商品忘在下架态）",
+               str(st133) == str(old_status), "状态=%s（原 %s）" % (st133, old_status))
+
+    # Q5/Q6 秒杀全场名额耗尽（临时拉满 sold_quota，测完恢复）
+    if has_cherry:
+        fs = sql_one("SELECT CONCAT(total_quota,'|',sold_quota) FROM flash_sale WHERE id=31")
+        tot, sold = (fs or "0|0").split("|")
+        try:
+            sql_many(["UPDATE flash_sale SET sold_quota=total_quota WHERE id=31"])
+            # 名额满 → 场次不再算「进行中」→ 修复前会**回落原价**成交（¥139 变 ¥199，还不占名额）。
+            # 修复后：独立秒杀品（kind=FLASH）无进行中场次即拒绝，预览和下单都必须拦住。
+            codeP, resP = http("POST", "/orders/preview", T1, pv(173, 1))
+            codeB, resB = http("POST", "/orders/quick-buy", T1,
+                               dict(pv(173, 1), pickupStoreId=1))
+            record("Q", "Q5 名额抢完：预览与真实下单都被拒（不得回落原价卖）",
+                   codeP != 200 and codeB != 200,
+                   "preview=%s buy=%s msg=%s" % (codeP, codeB, resB.get("message")))
+        finally:
+            sql_many(["UPDATE flash_sale SET sold_quota=%s WHERE id=31" % sold])
+            back = sql_one("SELECT sold_quota FROM flash_sale WHERE id=31")
+            record("Q", "Q6 名额已恢复", str(back) == str(sold), "sold=%s（原 %s）" % (back, sold))
+    else:
+        record("Q", "Q5/Q6 秒杀名额耗尽", None, "本库无进行中的 173 场次")
+
     # ===== 汇总 =====
     total = len(RESULTS)
     passed = sum(1 for r in RESULTS if r[2])
@@ -595,11 +855,13 @@ def main():
 
     # ===== 清理 =====
     if keep:
-        print("\n --keep：跳过清理。手动清理账号：%s %s %s" % (u1["name"], u2["name"], u3["name"]))
+        print("\n --keep：跳过清理。已建账号：%s" % ", ".join(u["name"] for u in _users))
         return 0 if not fails else 1
 
     print("\n--- 清理 ---")
-    cleanup([u1, u2, u3])
+    # 用 locals().get 兜底：任一组提前抛错时，后面还没创建的账号变量并不存在
+    _users = [x for x in (u1, u2, u3, locals().get("u4"), locals().get("u5"), locals().get("u6")) if x]
+    cleanup(_users, locals().get("adm"), locals().get("act_id"))
 
     # 清理自检：下单→取消→超时关单→cleanup 一条链走完，库存必须净零变化。
     # 只要这里报漂移，就说明「某条回补路径重复了」，别急着走，先校准库。
@@ -615,7 +877,7 @@ def main():
     return 0 if not fails else 1
 
 
-def cleanup(users):
+def cleanup(users, adm=None, act_id=None):
     """删测试账号及其全部关联数据，并按订单明细回补库存与秒杀名额。"""
     ids = ",".join(u["id"] for u in users)
     # 下单明细（用于回补库存）
@@ -623,11 +885,15 @@ def cleanup(users):
     # 系统**已经**把库存与秒杀名额还回去了，这里再按 order_item 加一遍就是重复回补。
     # 实测教训：原先不判状态，多跑几轮把商品3 库存从 152 抬到 444（库存虚高 = 超卖风险），
     # 商品173 也从 96 抬到 103。
+    # 同理「部分退款的订单」仍是 COMPLETED/PAID，但已退的那一行业务侧已回补过，
+    # 也要排除（实测再抬 10 件）—— 判据是 order_item.refunded。
+    # ⚠️ 下面几句是**隐式拼接的一个字符串**，注释不能插在中间，否则会被拆成多条 SQL。
     rows = sql_many([
         "SELECT CONCAT(oi.product_id,'|',oi.quantity,'|',IFNULL(oi.flash_sale_id,0)) "
         "FROM order_item oi JOIN orders o ON o.id=oi.order_id "
         "WHERE o.user_id IN (%s) "
-        "AND o.status IN ('PENDING_PAYMENT','PAID','SHIPPED','COMPLETED')" % ids,
+        "AND o.status IN ('PENDING_PAYMENT','PAID','SHIPPED','COMPLETED') "
+        "AND (oi.refunded IS NULL OR oi.refunded = 0)" % ids,
     ])
     back = {}
     flash_back = {}
@@ -663,6 +929,12 @@ def cleanup(users):
                      % (qty, qty, pid))
     for fsid, qty in flash_back.items():
         stmts.append("UPDATE flash_sale SET sold_quota=GREATEST(sold_quota-%d,0) WHERE id=%d" % (qty, fsid))
+    if adm:
+        stmts.append("UPDATE stock_log SET operator_id=NULL WHERE operator_id IN (%s)" % adm["id"])
+        stmts.append("DELETE FROM sys_user WHERE id IN (%s)" % adm["id"])
+    if act_id:
+        stmts.append("DELETE FROM activity WHERE id=%s" % act_id)
+    stmts.append("DELETE FROM member_day WHERE member_date=CURDATE()")
     stmts.append("SET FOREIGN_KEY_CHECKS=1")
     sql_many(stmts)
 

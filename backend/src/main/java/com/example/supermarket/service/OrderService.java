@@ -710,6 +710,17 @@ public class OrderService {
                 throw new BusinessException(409, "商品「" + product.getName() + "」库存不足（仅剩 "
                         + product.getStock() + " 件，购物车中有 " + qty + " 件），请调整数量后重试");
             }
+            // 【2026-11-21 修：秒杀名额抢完后被按原价卖出去】
+            // `FlashSaleRepository.findRunningByProductIds` 的 SQL 带 `f.soldQuota < f.totalQuota`，
+            // 名额一满，该场次就不再算「进行中」→ 这里 fs=null → 整行回落到常规价。
+            // 而独立秒杀商品（kind=FLASH）是**专为秒杀而建的克隆品**，购物车/列表都按秒杀价展示，
+            // 按原价成交等于「用户以为抢到了 139，实际花 199 买走，还一个名额都没占」——
+            // 与下面这段注释写的设计意图（名额用完后彻底禁买）完全相反。实测 sold=100/100 时
+            // 车厘子以 ¥199 下单成功，就是这条路径。
+            if (fs == null && Product.KIND_FLASH.equals(product.getKind())) {
+                throw new BusinessException(409,
+                        "「" + product.getName() + "」秒杀名额已抢完，下次早点来");
+            }
             // 走规格价时按折扣率判断：fs.flashPriceFor 返回 规格价×折扣率，必然 < 规格价(regular)；
             // 未走规格价时回落基准秒杀价，与改动前一致。三处口径必须与 CartItemResponse 一致。
             if (fs != null && fs.flashPriceFor(product.getPrice(), skuPrice).compareTo(regular) < 0) {
