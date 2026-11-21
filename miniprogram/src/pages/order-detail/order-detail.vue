@@ -270,7 +270,7 @@ async function confirm() {
 function cancelOrderAction() {
   uni.showModal({
     title: '取消订单',
-    content: '确定要取消该订单吗？已支付的金额将原路退回。',
+    content: '取消后订单不可恢复。已支付的款项会立即原路退回，占用的优惠券与积分一并返还。',
     success: async (r) => {
       if (!r.confirm) return
       uni.showLoading({ title: '处理中' })
@@ -297,7 +297,9 @@ function cancelOrderAction() {
 const canApplyAfterSale = computed(() => {
   const o = order.value
   if (!o) return false
-  if (!['PAID', 'SHIPPED', 'COMPLETED'].includes(o.status)) return false
+  // PAID（未发货）刻意不给售后入口：那个阶段点「取消订单」是秒退，不需要商家审核。
+  // 两个按钮并排会让用户以为要走审核（2026-11-21 用户反馈）。口径与后端 apply 一致。
+  if (!['SHIPPED', 'COMPLETED'].includes(o.status)) return false
   const rs = o.refundStatus || 'NONE'
   return rs === 'NONE' || rs === 'REJECTED'
 })

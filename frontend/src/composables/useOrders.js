@@ -129,7 +129,9 @@ export function useOrders({
     const order = (orders.items || []).find((item) => item.id === id);
     const confirmed = await askConfirm({
       title: '取消订单',
-      message: '取消后订单不可恢复，已占用的库存会立即释放。',
+      // 已支付未发货的取消是**秒退**（后端立即原路退款 + 释放库存/秒杀名额 + 返还券与积分），
+      // 文案必须让用户知道钱马上回来 —— 否则他会以为和「申请退款」一样要等商家审核。
+      message: '取消后订单不可恢复。已支付的款项会立即原路退回，占用的库存、优惠券与积分一并返还。',
       confirmText: '确认取消',
       danger: true,
       details: order ? [{ label: '订单号', value: order.orderNo }, { label: '金额', value: money(order.payAmount) }] : [],

@@ -107,12 +107,16 @@
                  （详情页才有逐商品行入口，同一订单不同商品可各自并行发起售后）。
                  2026-10-16 带 intent=refund：落地详情页后自动展开退款表单并定位，
                  不再让用户「列表点一次 → 详情页滚到底再点一次」。 -->
+            <!-- 售后入口只给「已发货 / 已收货」（2026-11-21 收紧，去掉 PAID）：
+                 未发货时用户走「取消订单」就能立即全额退款（还顺带释放库存/名额、返还券与积分），
+                 不需要商家审核。以前 PAID 两个按钮并排，用户不知道点哪个（后端 apply 也已拒绝 PAID）。 -->
             <button
-              v-if="(order.status === 'PAID' || order.status === 'SHIPPED' || order.status === 'COMPLETED') && (order.refundStatus === 'NONE' || order.refundStatus === 'REJECTED')"
+              v-if="(order.status === 'SHIPPED' || order.status === 'COMPLETED') && (order.refundStatus === 'NONE' || order.refundStatus === 'REJECTED')"
               class="ghost"
               @click="openOrderDetail(order, { intent: 'refund' })"
             >{{ (order.refundStatus === 'REJECTED' ? '重新' : '') + (order.status === 'COMPLETED' ? '申请售后' : '申请退款') }}</button>
-            <button v-if="order.status === 'PENDING_PAYMENT'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
+            <!-- 取消订单：未付款、以及**已付款未发货**都走这条 —— 后者后端会立即原路退款 + 逆向积分/券 -->
+            <button v-if="order.status === 'PENDING_PAYMENT' || order.status === 'PAID'" class="ghost" @click="cancelOrder(order.id)">取消订单</button>
             <button v-if="order.status === 'COMPLETED' && canReview(order)" class="ghost" @click="openReviewForm(order)">评价</button>
             <!-- 复购入口：生鲜的核心就是周期性买同样的东西。已付款之后的订单都该能一键回填购物车 -->
             <button v-if="order.status !== 'PENDING_PAYMENT'" class="ghost" @click="reorder(order)">再来一单</button>

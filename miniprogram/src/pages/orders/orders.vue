@@ -259,11 +259,16 @@ function pay(o) {
 
 /**
  * 退款/售后（列表页只做入口与文案，真正的表单在详情页）。
- * 口径与 PC 端 OrderDetailPage.canApplyRefund 一致：
- * status ∈ {PAID, SHIPPED, COMPLETED} 且 refundStatus ∈ {NONE, REJECTED}（驳回可重申）。
+ *
+ * ⚠️ 2026-11-21 用户反馈「未发货时同时出现取消订单和申请退款两个按钮」后收紧：
+ * **PAID（已付款未发货）不再给售后入口** —— 那个阶段「取消订单」就能立即全额退款
+ * （还会顺带释放库存/秒杀名额、返还券与积分），根本不需要商家审核。
+ * 两条路并排只会让用户不知道点哪个，而且资金动作不一样（秒退 vs 等审核）。
+ * 现在的分工：未付款/未发货 → 取消订单；已发货/已收货 → 申请退款·售后。
+ * 该口径与后端 ReturnRequestService.apply 一致（它也已拒绝 PAID 申请）。
  */
 function canApplyAfterSale(o) {
-  if (!['PAID', 'SHIPPED', 'COMPLETED'].includes(o.status)) return false
+  if (!['SHIPPED', 'COMPLETED'].includes(o.status)) return false
   const rs = o.refundStatus || 'NONE'
   return rs === 'NONE' || rs === 'REJECTED'
 }
@@ -293,7 +298,8 @@ function goRefund(id) {
 async function cancel(o) {
   uni.showModal({
     title: '取消订单',
-    content: '确定要取消该订单吗？',    success: async (r) => {
+    content: '取消后不可恢复。已支付的款项会立即原路退回，占用的优惠券与积分一并返还。',
+    success: async (r) => {
       if (!r.confirm) return
       try {
         await cancelOrder(o.id)

@@ -233,11 +233,15 @@
                    与 ReturnRequestService.apply 门禁一致；此前漏了 PAID，用户付完款找不到退款入口）
                SHIPPED 时补一句「确认收货前也可直接申请退款」——
                解释按钮为什么还在，不解释用户只会以为页面坏了（后端 409 文案他看不到）。 -->
-          <div v-if="canConfirmReceipt || canApplyRefund" class="pay-actions detail-actions">
+          <div v-if="canCancelPaid || canConfirmReceipt || canApplyRefund" class="pay-actions detail-actions">
+            <!-- 已付款未发货：走「取消订单」而不是售后 —— 立即全额原路退回，无需商家审核
+                 （2026-11-21 用户反馈：以前这里同时有「取消订单」和「申请退款」，用户不知道点哪个） -->
+            <button v-if="canCancelPaid" class="ghost" :disabled="acting" @click="cancelThisOrder">取消订单</button>
             <button v-if="canConfirmReceipt" class="primary" :disabled="acting" @click="confirmThisOrder">
               确认收货
             </button>
             <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">{{ applyRefundLabel }}</button>
+            <small v-if="canCancelPaid" class="refund-hint">商家还未发货，取消后款项立即原路退回，无需商家审核</small>
             <small v-if="canConfirmReceipt" class="refund-hint">确认收货前也可直接「申请退款」，商家审核后按原路退回</small>
           </div>
           <!-- 售后/退款申请表单：紧贴操作按钮下方（点哪个按钮就在哪展开，不再跳到页面顶部）。
@@ -342,14 +346,17 @@ export default {
     //   · 申请退款/售后：PAID / SHIPPED / COMPLETED，且不在审核中（ReturnRequestService.apply 同规则）
     const acting = ref(false);
     const canConfirmReceipt = computed(() => currentOrder.value?.status === 'SHIPPED');
-    // 2026-10-14「随时退款」：已付款(PAID)/已发货(SHIPPED)可「申请退款」、已收货(COMPLETED)可「申请售后」，
-    // 都走新售后链路（POST /returns，商家审核决定要不要寄回、运费谁出）。
-    // ⚠️ PAID 必须包含：用户付完款第一眼找的就是退款入口，漏了它就是「买完不能退款」。
-    // 未付款(PENDING_PAYMENT)用「取消订单」秒退，不在此列；已在售后流程中(APPLYING/APPROVED)不再显示入口。
+    /** 已付款未发货：只能取消（秒退），不给售后入口 —— 与后端 cancelOrder 允许的状态一致 */
+    const canCancelPaid = computed(() => currentOrder.value?.status === 'PAID');
+    // 售后入口：已发货(SHIPPED)「申请退款」、已收货(COMPLETED)「申请售后」，走 POST /returns（商家审核）。
+    // ⚠️ 2026-11-21 把 PAID（已付款未发货）移出这里：那个阶段「取消订单」是**秒退**
+    // （后端 cancelOrder 立即原路退款 + 释放库存/秒杀名额 + 返还券与积分），不需要商家审核。
+    // 两个入口并排会让用户以为退款要走审核（用户实测反馈），也给同单走两条路留了口子。
+    // 现在 PAID 只显示「取消订单」（canCancelPaid）；退款门禁与后端 ReturnRequestService.apply 一致。
     const canApplyRefund = computed(() => {
       const o = currentOrder.value;
       if (!o) return false;
-      if (o.status !== 'PAID' && o.status !== 'SHIPPED' && o.status !== 'COMPLETED') return false;
+      if (o.status !== 'SHIPPED' && o.status !== 'COMPLETED') return false;
       // 仅在「从未申请(NONE)」或「上次被驳回(REJECTED)」时显示入口；在途/已退款均不显示
       // （与 ReturnRequestService.apply 的按单拦截、REJECTED 可重申口径一致）
       return o.refundStatus === 'NONE' || o.refundStatus === 'REJECTED';
@@ -643,7 +650,7 @@ export default {
       };
     });
 
-    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canConfirmReceipt, canApplyRefund, applyRefundLabel, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, startRefundItem, closeRefund, sendRefund, refundTitle, itemCanRefund, itemOpenReturn, hasOpenWholeOrderReturn, wholeOrderReturnStatusLabel, returnStatusCls, userOrderStatus, routeOrderId, refundFormEl, orderReturns, refundReturnsDeducted, openReturnFrozenPoints, hasRefund };
+    return { ...appCtx, amount, timeRows, isPendingPay, payExpired, payMmss, payRemainingSec, paySubmitting, payNow, cancelThisOrder, acting, canCancelPaid, canConfirmReceipt, canApplyRefund, applyRefundLabel, confirmThisOrder, REFUND_REASONS, localRefund, startRefund, startRefundItem, closeRefund, sendRefund, refundTitle, itemCanRefund, itemOpenReturn, hasOpenWholeOrderReturn, wholeOrderReturnStatusLabel, returnStatusCls, userOrderStatus, routeOrderId, refundFormEl, orderReturns, refundReturnsDeducted, openReturnFrozenPoints, hasRefund };
   }
 };
 </script>

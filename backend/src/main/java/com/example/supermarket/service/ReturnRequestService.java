@@ -93,8 +93,16 @@ public class ReturnRequestService {
     /**
      * 用户提交售后申请。
      *
-     * <p>门禁与 OrderService 同步：PAID（已付款未发货）/ SHIPPED（已发货）/ COMPLETED（已收货）均可申请 ——
-     * 改前仅 COMPLETED 可申，导致「付完款想退款」和「收到货前发现问题」都没处申诉。
+     * <p>门禁：SHIPPED（已发货）/ COMPLETED（已收货）可申请。
+     *
+     * <p><b>2026-11-21 把 PAID（已付款未发货）排除掉</b>：那个阶段用户有更直接的路 ——
+     * {@code POST /orders/{id}/cancel} 立即全额退款 + 释放库存/秒杀名额 + 返还券与积分，
+     * 而且不需要商家审核。留着售后这条并行入口只会造成混乱：
+     * <ul>
+     *   <li>前端会同时出现「取消订单」和「申请退款」两个按钮（用户实测反馈），不知点哪个；
+     *   <li>两条路的资金动作不同（立刻退 vs 等审核），同一单还能被两条路各走一次。
+     * </ul>
+     * 统一为：未发货 → 只能取消（秒退）；已发货 → 只能申请退款（商家审核）。
      *
      * <p>多笔售后：每笔订单允许独立发起售后（不同订单的售后互不影响，可并行处理）；
      * 仅当「该订单」已有未终结的售后单时才拦，避免同一订单重复提交在途申请。
@@ -117,10 +125,13 @@ public class ReturnRequestService {
         // 拿到锁后重读，确保状态是最新的（等锁期间可能已被支付/取消/退款改写）
         order = orderRepository.findById(order.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        // COMPLETED / SHIPPED / PAID 在 OrderService 里是 private，这里用字面量；改动需与 OrderService 同步
+        // COMPLETED / SHIPPED 在 OrderService 里是 private，这里用字面量；改动需与 OrderService 同步。
+        // PAID 被刻意排除：未发货请直接取消订单（立即退款、无需商家审核），见方法注释。
         String st = order.getStatus();
-        if (!"COMPLETED".equals(st) && !"SHIPPED".equals(st) && !"PAID".equals(st)) {
-            throw new BusinessException(409, "当前订单状态不能申请退款/售后。");
+        if (!"COMPLETED".equals(st) && !"SHIPPED".equals(st)) {
+            throw new BusinessException(409, "PAID".equals(st)
+                    ? "商品尚未发货，无需申请退款，请直接取消订单，款项会立即原路退回。"
+                    : "当前订单状态不能申请退款/售后。");
         }
 
         ReturnRequest r = new ReturnRequest();
