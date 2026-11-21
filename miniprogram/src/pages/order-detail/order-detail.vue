@@ -107,6 +107,8 @@
         {{ afterSaleLabel }}
       </button>
       <button v-if="afterSaleInFlight" class="a ghost" disabled>{{ afterSaleInFlightText }}</button>
+      <!-- 退款已到账（APPROVED 终态）：钱已经退回来了，不再挂「退款处理中」的禁用按钮 -->
+      <text v-if="refundDone" class="a done">退款已到账</text>
     </view>
 
     <!-- 评价弹层 -->
@@ -162,9 +164,7 @@ const reviewContent = ref('')
 // 本单的全部售后单（按商品行并行售后时会有多条），用于在商品行上显示进度
 const itemReturns = ref([])
 
-// 没有「在途」售后的商品行才允许申请（已驳回的可以重新申请）
-const IN_FLIGHT = ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED']
-
+// 没有「在途」售后的商品行才允许申请（已驳回的可以重新申请）—— 由 canApplyItem 直接按售后单状态判
 function returnOfItem(itemId) {
   if (!itemId) return null
   return itemReturns.value.find((r) => Number(r.orderItemId) === Number(itemId)) || null
@@ -316,17 +316,20 @@ const afterSaleReasons = computed(() =>
 )
 
 // 在途状态用置灰按钮体现，而不是让入口直接消失（消失会让用户以为功能没了）
+// ⚠️ APPROVED 是终态（ReturnRequestService 已放款、整单退完订单直接 CLOSED），
+// 不能算在途，否则退款成功的订单还写着「退款处理中」（2026-11-21 用户截图反馈）。
 const afterSaleInFlight = computed(() => {
   const rs = order.value && order.value.refundStatus
-  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED'].includes(rs)
+  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK'].includes(rs)
 })
 const afterSaleInFlightText = computed(() => {
   const rs = order.value && order.value.refundStatus
   if (rs === 'WAITING_SHIP') return '待寄回商品'
   if (rs === 'SHIPPED_BACK') return '退货中'
-  if (rs === 'APPROVED') return '退款处理中'
   return order.value && order.value.status === 'COMPLETED' ? '售后审核中' : '退款审核中'
 })
+// 退款已成功：订单详情里没有退款状态条，所以这里给一句明确的结果
+const refundDone = computed(() => (order.value && order.value.refundStatus) === 'APPROVED')
 
 const sheetOpen = ref(false)
 const sheetItem = ref(null)
@@ -708,6 +711,13 @@ async function submitReviewOrder() {
   background: #fff;
   color: #666;
   border: 1rpx solid #ddd;
+}
+/* 退款已到账（APPROVED 终态）：只是结果说明、不可点，去掉左右内边距用主色加粗 */
+.a.done {
+  color: #0F6E56;
+  font-weight: bold;
+  padding-left: 0;
+  padding-right: 0;
 }
 .mask {
   position: fixed;

@@ -80,6 +80,10 @@
           class="a ghost"
           disabled
         >{{ afterSaleInFlightText(o) }}</button>
+        <!-- 退款已经是终态（APPROVED = 钱已原路退回、订单可能已 CLOSED）：
+             用一句话交代结果，而不是继续挂一个禁用的「退款中」——
+             2026-11-21 用户截图反馈「售后已通过 / 已关闭，底部却写着退款中」。 -->
+        <text v-if="o.refundStatus === 'APPROVED'" class="a done">退款已到账</text>
       </view>
     </view>
 
@@ -278,15 +282,21 @@ function afterSaleLabel(o) {
   return o.status === 'COMPLETED' ? '申请售后' : '申请退款'
 }
 
+/**
+ * 「在途」售后 = 还没出结果的三种状态。
+ *
+ * ⚠️ APPROVED 是**终态**（ReturnRequestService 放款成功 → 钱已退回钱包，整单退完时订单直接 CLOSED），
+ * 以前把它算作在途，导致「售后已通过 / 已关闭」的订单底部还挂着一个禁用的「退款中」，
+ * 用户以为钱一直没到（2026-11-21 反馈截图）。这里与 returns.vue 的 DOING 保持同一口径。
+ */
 function afterSaleInFlight(o) {
-  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK', 'APPROVED'].includes(o.refundStatus)
+  return ['APPLYING', 'WAITING_SHIP', 'SHIPPED_BACK'].includes(o.refundStatus)
 }
 
 function afterSaleInFlightText(o) {
   const rs = o.refundStatus
   if (rs === 'WAITING_SHIP') return '待寄回'
   if (rs === 'SHIPPED_BACK') return '退货中'
-  if (rs === 'APPROVED') return '退款中'
   return o.status === 'COMPLETED' ? '售后审核中' : '退款审核中'
 }
 
@@ -502,6 +512,14 @@ onPullDownRefresh(async () => {
   background: #fff;
   color: #666;
   border: 1rpx solid #ddd;
+}
+/* 退款已到账（APPROVED 终态）：只是结果说明、不可点，所以去掉左右内边距，用主色加粗 */
+.a.done {
+  color: #0F6E56;
+  font-weight: bold;
+  padding-left: 0;
+  padding-right: 0;
+  align-self: center;
 }
 /* ---------- 空态（不再是一行灰字） ---------- */
 /* 未登录引导 */
