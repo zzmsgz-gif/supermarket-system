@@ -212,7 +212,53 @@
       <view class="floor-empty" v-if="!fl.products.length">该分类暂无商品</view>
     </view>
 
-    <view class="footer-tip">已经到底啦 ~</view>
+    <!-- ===== 猜你喜欢（上拉加载）：复用楼层的双列卡样式 =====
+         楼层每类固定 8 件，一部分在售商品在楼层里出不来，滑到底继续按销量加载。 -->
+    <view class="floor" v-if="feed.length">
+      <view class="floor-head">
+        <text class="floor-t">猜你喜欢</text>
+      </view>
+      <view class="grid">
+        <view
+          v-for="p in feed"
+          :key="'feed-' + p.id"
+          class="pcard"
+          @click="goDetail(p.id)"
+        >
+          <view class="p-cover-wrap">
+            <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <view class="p-soldout" v-if="(p.stock || 0) <= 0">
+              <text class="p-soldout-t">售罄</text>
+            </view>
+          </view>
+          <view class="p-body">
+            <text class="p-name">{{ p.name }}</text>
+            <view class="p-price-row">
+              <text class="p-price">¥{{ p.price }}</text>
+              <text class="p-origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+            </view>
+            <view class="p-foot">
+              <text class="p-sales">{{ salesText(p) }}</text>
+              <view
+                class="p-add"
+                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
+                @click.stop="quickAdd(p)"
+              >
+                <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 底部三态：加载中 / 还能上拉 / 到底 -->
+    <view class="footer-tip">
+      <text v-if="feedLoading">加载中…</text>
+      <text v-else-if="feedHasMore">上拉加载更多</text>
+      <text v-else>已经到底啦 ~</text>
+    </view>
 
     <!-- 加购后的底部轻提示条（不常驻、不挡商品）：3 秒自动收起，可直接去购物车结算 -->
     <view class="cart-tip" :class="{ show: cartTipVisible }" @click="goCartFromTip">
@@ -246,7 +292,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { onShow, onHide, onUnload, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onShow, onHide, onUnload, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
@@ -263,6 +309,16 @@ const banners = ref([])
 const loadError = ref('')
 const flashSales = ref([])
 const floors = ref([])
+// ===== 「猜你喜欢」上拉加载流 =====
+// 楼层每类只放 8 件，112 件在售商品里有 32 件（冷冻速食 16 / 个人护理 5 / 清洁纸品 5 / 生鲜 4 / 乳品 2）
+// 在首页根本出不来，用户只能逐个点「查看全部」才能看到 —— 滑到底继续按销量加载更好。
+const feed = ref([])
+const feedPage = ref(0)
+const feedLoading = ref(false)
+const feedHasMore = ref(true)
+// 页容量取 20：销量前列的商品基本都已经在楼层里，一页 10 个过滤完只剩 4 个左右，
+// 用户要上拉十几次才能到底，翻起来很累。
+const FEED_SIZE = 20
 const addingId = ref(null)
 // 加号动画：popId 单独控制（不用 addingId —— 请求快时它一闪就空，动画来不及播）
 const popId = ref(null)
@@ -425,9 +481,63 @@ async function load() {
   }
   floors.value = floorsData
 
+  // 楼层就绪后再拉「猜你喜欢」首屏（要拿楼层已展示的 id 去重）
+  await loadFeed(true)
+
   // 分类是首页骨架：一件都拿不到就说明接口根本没通，把原因明确摆给用户（可点重试）
   if (categories.value.length === 0 && errors.length) {
     loadError.value = errors[0]
+  }
+}
+
+/**
+ * 「猜你喜欢」：上拉加载更多。
+ *
+ * - 按销量降序（sort=sales_desc），先热销后长尾
+ * - **跳过楼层已经展示过的商品**，避免同一件东西在首屏出现两次（用户会觉得列表在重复）
+ * - 用 `page*size < total` 判还有没有下一页，不猜
+ * - 失败时把 hasMore 置 false，否则上拉会无限重试同一个失败请求
+ */
+async function loadFeed(reset = false) {
+  if (feedLoading.value) return
+  if (reset) {
+    feedPage.value = 0
+    feed.value = []
+    feedHasMore.value = true
+  }
+  if (!feedHasMore.value) return
+  feedLoading.value = true
+  try {
+    // 楼层已展示的 id 一次性算好，后面的批次也塞进去，避免 feed 内部跨页重复
+    const shown = {}
+    for (const f of floors.value) {
+      for (const p of (f.products || [])) shown[p.id] = true
+    }
+    // 首屏至少拉 2 页：销量前列基本都在楼层里，只拉一页过滤完可能只剩一两个，
+    // 「猜你喜欢」区块就只剩一两件，看着像坏了。
+    // 之后每次上拉继续往后翻，直到**至少攒到 4 个新品**或到底 ——
+    // 实测后面几页每页只筛出 1 个新品，上拉一次只多 1 件会让用户觉得「滑了跟没滑一样」。
+    // guard 是硬上限，防止异常情况下一直翻页。
+    const minRounds = reset ? 2 : 1
+    let guard = 0
+    let added = 0
+    while (guard < 6 && feedHasMore.value && (guard < minRounds || added < 4)) {
+      guard += 1
+      const res = await listProducts({ page: feedPage.value + 1, size: FEED_SIZE, sort: 'sales_desc' })
+      const items = (res && res.items) || []
+      const fresh = items.filter((p) => !shown[p.id])
+      fresh.forEach((p) => { shown[p.id] = true })
+      feed.value = feed.value.concat(fresh)
+      feedPage.value += 1
+      added += fresh.length
+      const total = Number((res && res.total) || 0)
+      feedHasMore.value = feedPage.value * FEED_SIZE < total
+    }
+  } catch (e) {
+    // 加载失败就停住，别让上拉无限重试
+    feedHasMore.value = false
+  } finally {
+    feedLoading.value = false
   }
 }
 
@@ -653,6 +763,11 @@ onPullDownRefresh(async () => {
   } finally {
     uni.stopPullDownRefresh()
   }
+})
+
+// 上拉到底：继续加载「猜你喜欢」（loadFeed 内部自己防重入、防无限重试）
+onReachBottom(() => {
+  loadFeed()
 })
 
 </script>
