@@ -54,9 +54,20 @@
         <text class="k">寄回物流</text>
         <text class="v">{{ r.expressCompany }} {{ r.trackingNo }}</text>
       </view>
-      <view class="kv" v-if="r.frozenPoints">
+      <!-- 只在**在途态**提示「将按规则扣回」：已终态（APPROVED/REJECTED）还挂这句话时态不对
+           （早就扣完了），而且会和下面「积分扣回 66 分」并列，让人以为要扣 13+66=79。 -->
+      <view class="kv" v-if="r.frozenPoints && DOING.includes(r.status)">
         <text class="k">关联积分</text>
-        <text class="v">{{ r.frozenPoints }} 分（审核通过时按规则扣回）</text>
+        <text class="v">{{ r.frozenPoints }} 分（审核通过时按规则回收）</text>
+      </view>
+      <!-- 退款已完成、且申请后用户把发放的积分花掉了：收不回的那部分按 100 分 = 1 元
+           从退款现金里等价扣回（后端 refundAmount 已经是**净额**）。
+           不写清楚，用户只会看到「退款 ¥78.21」对不上自己算的 ¥79.00。 -->
+      <view class="kv" v-if="Number(r.pointsDeducted || 0) > 0">
+        <text class="k">积分扣回</text>
+        <text class="v warning">
+          {{ r.pointsDeducted }} 分已花掉，等价扣 ¥{{ (Number(r.pointsDeducted) / 100).toFixed(2) }}（原应退 ¥{{ origRefund(r).toFixed(2) }}）
+        </text>
       </view>
 
       <view class="next" v-if="r.nextStep">{{ r.nextStep }}</view>
@@ -144,6 +155,15 @@ function statusClass(s) {
   if (s === 'APPROVED') return 'st-done'
   if (s === 'WAITING_SHIP' || s === 'SHIPPED_BACK') return 'st-wait'
   return 'st-doing'
+}
+
+/**
+ * 原应退金额 = 退款净额 + 已花积分等价扣回额。
+ * 后端 refundAmount 落库时已经扣掉了积分缺口（1 分 = 0.01 元），
+ * 所以不能直接把它当「应退」展示 —— 用户按商品金额算的是全额，看到少了几分钱会以为被坑。
+ */
+function origRefund(r) {
+  return Number(r.refundAmount || 0) + Number(r.pointsDeducted || 0) / 100
 }
 
 const filtered = computed(() => {
@@ -398,6 +418,10 @@ onPullDownRefresh(async () => {
   color: #4B5563;
   line-height: 1.5;
   word-break: break-all;
+}
+/* 「积分扣回」用暖色：这是一条解释「钱为什么少了」的提示，不是普通字段 */
+.v.warning {
+  color: #B7791F;
 }
 
 .next {

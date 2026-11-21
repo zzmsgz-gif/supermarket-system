@@ -841,6 +841,98 @@ def main():
     else:
         record("Q", "Q5/Q6 秒杀名额耗尽", None, "本库无进行中的 173 场次")
 
+    # ===== R 退款积分冻结 / 已花积分现金等价扣回（方案D）=====
+    print("\n--- R 退款积分冻结 / 已花积分现金等价扣回 ---")
+    u7 = new_user("g", level=0, points=0, balance=1000)
+    T7 = u7["token"]
+    bal7_0 = 1000.0
+    clear_cart(T7)
+    http("POST", "/cart/items", T7, {"productId": 3, "quantity": 10, "skuSpec": SKU_SP70})   # 69.00
+    http("POST", "/cart/items", T7, {"productId": 2, "quantity": 4, "skuSpec": SKU_W350})    # 10.00
+    code, cR = http("GET", "/cart", T7)
+    idsR = [it.get("id") for it in ((cR.get("data") or {}).get("items") or [])]
+    code, oR = http("POST", "/orders", T7, {"cartItemIds": idsR, "fulfillmentType": "PICKUP",
+                                            "pickupStoreId": 1})
+    oRd = oR.get("data") or {}
+    oidR = oRd.get("id")
+    if code != 200 or not oidR:
+        record("R", "R1 订单A 建单（79.00，用来攒积分）", False, "HTTP %s %s" % (code, oR.get("message")))
+    else:
+        http("POST", "/orders/%s/pay" % oidR, T7)
+        ptsR = sql_one("SELECT points FROM sys_user WHERE id=%s" % u7["id"])
+        record("R", "R1 订单A 支付后得 79 分（发放积分）", str(ptsR) == "79", "积分=%s" % ptsR)
+
+        # 订单B：把这 79 分花掉（下单即扣），并支付，保证退款时余额为 0 → 产生 shortfall
+        clear_cart(T7)
+        http("POST", "/cart/items", T7, {"productId": 3, "quantity": 2, "skuSpec": SKU_SP70})
+        code, cR2 = http("GET", "/cart", T7)
+        idsR2 = [it.get("id") for it in ((cR2.get("data") or {}).get("items") or [])]
+        code, oR2 = http("POST", "/orders", T7, {"cartItemIds": idsR2, "fulfillmentType": "PICKUP",
+                                                "pickupStoreId": 1, "usePoints": True,
+                                                "pointsToUse": 79})
+        oR2d = oR2.get("data") or {}
+        oidR2 = oR2d.get("id")
+        if oidR2:
+            http("POST", "/orders/%s/pay" % oidR2, T7)
+        ptsR2 = int(sql_one("SELECT points FROM sys_user WHERE id=%s" % u7["id"]) or 0)
+        # ⚠️ 订单B 支付后又会**发放**积分（实付 13.01 → 13 分），所以余额不是 0 而是 13。
+        # 这一点第一版断言写错了（以为归 0），实测才看清：能收回的只有这 13 分，
+        # 剩下的 66 分才是真正的 shortfall。断言必须按公式算，不能拍数字。
+        payB = float(oR2d.get("payAmount") or 0)
+        earnB = int(payB)                      # 每满 1 元 1 分，向下取整
+        record("R", "R2 订单B 抵扣 79 分后支付，又发放 %d 分 → 余额 %d" % (earnB, ptsR2),
+               ptsR2 == earnB, "积分=%s 订单B实付=%s" % (ptsR2, payB))
+
+        # 订单A 走到 COMPLETED 才能申请售后
+        http("POST", "/admin/orders/%s/ready" % oidR, TA)
+        http("POST", "/orders/%s/confirm-receipt" % oidR, T7)
+        stR = sql_one("SELECT status FROM orders WHERE id=%s" % oidR)
+        record("R", "R3 订单A 备货完成+收货 → COMPLETED", str(stR) == "COMPLETED", "状态=%s" % stR)
+
+        code, retR = http("POST", "/returns", T7, {
+            "orderId": oidR, "type": "REFUND", "reason": "积分扣回验证（整单退）"})
+        ridR = (retR.get("data") or {}).get("id")
+        if not ridR:
+            record("R", "R4 申请售后", False, "HTTP %s %s" % (code, retR.get("message")))
+        else:
+            froz = int(sql_one("SELECT IFNULL(frozen_points,0) FROM return_request WHERE id=%s"
+                               % ridR) or 0)
+            # 申请时冻结的是「当前可用余额」（=订单B 发放的那 13 分），不是整单发放的 79 分
+            record("R", "R4 申请时冻结可用余额 %d 分（不是整单 79 分）" % ptsR2,
+                   froz == ptsR2, "冻结=%s 分（可用 %s）" % (froz, ptsR2))
+            shortfall = 79 - froz          # 已花掉、收不回的发放积分
+            net_refund = round(79 - shortfall / 100.0, 2)
+
+            code, revR = http("POST", "/admin/return-requests/%s/review" % ridR, TA,
+                              {"approved": True, "needReturn": False})
+            time.sleep(1)
+            row = sql_one("SELECT CONCAT(IFNULL(refund_amount,0),'|',IFNULL(points_deducted,0)) "
+                          "FROM return_request WHERE id=%s" % ridR)
+            ra, pd_ = (row or "0|0").split("|")
+            record("R", "R5 退款净额 = 79.00 − %.2f = %.2f，扣回 %d 分"
+                   % (shortfall / 100.0, net_refund, shortfall),
+                   near(ra, net_refund) and str(pd_) == str(shortfall),
+                   "净额=%s 扣回=%s 分（应 %s / %s）" % (ra, pd_, net_refund, shortfall))
+            wt = sql_one("SELECT CONCAT(amount,'|',IFNULL(points_deducted,0)) FROM wallet_transaction "
+                         "WHERE order_id=%s AND type='REFUND' ORDER BY id DESC LIMIT 1" % oidR)
+            wa, wp = (wt or "0|0").split("|")
+            record("R", "R6 钱包流水：入账 %.2f + 扣回额 %.2f = 原应退 79.00"
+                   % (net_refund, shortfall / 100.0),
+                   near(wa, net_refund) and near(wp, shortfall / 100.0),
+                   "amount=%s pointsDeducted=%s" % (wa, wp))
+            bal7 = sql_one("SELECT balance FROM sys_user WHERE id=%s" % u7["id"])
+            expect_bal = round(1000 - 79 - payB + net_refund, 2)
+            record("R", "R7 余额对账：1000 − 79 − %.2f + %.2f = %.2f" % (payB, net_refund, expect_bal),
+                   near(bal7, expect_bal), "余额=%s（应 %s）" % (bal7, expect_bal))
+            # 接口要能把这些字段透给前端（小程序「我的售后」「钱包明细」靠它展示）
+            code, lst = http("GET", "/returns?page=1&size=10", T7)
+            items = (lst.get("data") or {}).get("items") or []
+            hit = next((x for x in items if x.get("id") == int(ridR)), None)
+            record("R", "R8 售后接口透出 pointsDeducted / frozenPoints 给前端",
+                   bool(hit) and near(hit.get("pointsDeducted"), shortfall),
+                   "接口值 pointsDeducted=%s frozenPoints=%s" % (
+                       (hit or {}).get("pointsDeducted"), (hit or {}).get("frozenPoints")))
+
     # ===== 汇总 =====
     total = len(RESULTS)
     passed = sum(1 for r in RESULTS if r[2])
@@ -860,7 +952,7 @@ def main():
 
     print("\n--- 清理 ---")
     # 用 locals().get 兜底：任一组提前抛错时，后面还没创建的账号变量并不存在
-    _users = [x for x in (u1, u2, u3, locals().get("u4"), locals().get("u5"), locals().get("u6")) if x]
+    _users = [x for x in (u1, u2, u3, locals().get("u4"), locals().get("u5"), locals().get("u6"), locals().get("u7")) if x]
     cleanup(_users, locals().get("adm"), locals().get("act_id"))
 
     # 清理自检：下单→取消→超时关单→cleanup 一条链走完，库存必须净零变化。

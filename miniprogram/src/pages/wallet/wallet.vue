@@ -30,6 +30,12 @@
         <view class="tx-type">{{ txLabel(t.type) }}</view>
         <!-- 后端 remark 是财务对账用的内部备注（英文），这里翻成中文再显示 -->
         <view class="tx-remark" v-if="remarkZh(t.remark)">{{ remarkZh(t.remark) }}</view>
+        <!-- 退款时「已花掉、收不回」的发放积分会按 100 分 = 1 元从退款现金里等价扣回。
+             不说明的话，用户看到「退款 +¥78.21」对不上自己算的 ¥79.00，只会以为少退了钱。
+             入账金额是**净额**，原应退 = amount + pointsDeducted（与 PC 金额明细同口径）。 -->
+        <view class="tx-deduct" v-if="t.type === 'REFUND' && Number(t.pointsDeducted || 0) > 0">
+          已花积分等价扣回 ¥{{ Number(t.pointsDeducted).toFixed(2) }}（原应退 ¥{{ origRefund(t).toFixed(2) }}）
+        </view>
         <view class="tx-time">{{ formatTime(t.createdAt) }}</view>
       </view>
       <view class="tx-right">
@@ -89,6 +95,15 @@ function txLabel(type) {
  */
 function isOut(t) {
   return Number(t.direction) === 1
+}
+
+/**
+ * 退款行的「原应退金额」= 入账净额 + 已花积分等价扣回额。
+ * refundAmount 落库时已经是**扣过积分缺口**的净额，所以不能直接拿它当「应退」给用户看 ——
+ * 用户自己算的是「商品 79.00 全退」，看到 78.21 只会以为平台少退了。
+ */
+function origRefund(t) {
+  return Number(t.amount || 0) + Number(t.pointsDeducted || 0)
 }
 
 /**
@@ -289,6 +304,13 @@ onReachBottom(() => {
 .tx-remark {
   font-size: 22rpx;
   color: #999;
+  margin-top: 6rpx;
+}
+/* 「已花积分等价扣回」——用暖色小字，跟普通备注区分开：这是一条解释钱为什么变少的说明 */
+.tx-deduct {
+  font-size: 22rpx;
+  line-height: 1.45;
+  color: #B7791F;
   margin-top: 6rpx;
 }
 .tx-time {
