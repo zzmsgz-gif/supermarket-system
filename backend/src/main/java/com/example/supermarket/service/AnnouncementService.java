@@ -4,6 +4,7 @@ import com.example.supermarket.dto.AnnouncementRequest;
 import com.example.supermarket.dto.AnnouncementResponse;
 import com.example.supermarket.entity.Announcement;
 import com.example.supermarket.repository.AnnouncementRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.cache.annotation.Cacheable;
@@ -73,15 +74,27 @@ public class AnnouncementService {
         entity.setType(type);
         entity.setSortOrder(request.getSortOrder() == null ? 0 : request.getSortOrder());
         entity.setEnabled((byte) (Boolean.TRUE.equals(request.getEnabled()) ? 1 : 0));
+        // 时效窗口：前后台都透传；为空即「一直生效 / 永不自动过期」
+        entity.setEffectiveTime(request.getEffectiveTime());
+        entity.setExpiryTime(request.getExpiryTime());
     }
 
     @Cacheable("announcements")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<AnnouncementResponse> listEnabled() {
+        final java.time.LocalDateTime now = java.time.LocalDateTime.now();
         return announcementRepository
                 .findByEnabledAndDeletedOrderBySortOrderAscPublishTimeDesc(ENABLED, NOT_DELETED)
                 .stream()
+                .filter(a -> isEffective(a, now))
                 .map(AnnouncementResponse::from)
                 .collect(Collectors.toList());
+    }
+
+    /** 时效判定：在 [effectiveTime, expiryTime] 内才对外可见；任一边为 NULL 表示该边界不限制 */
+    private boolean isEffective(Announcement a, LocalDateTime now) {
+        if (a.getEffectiveTime() != null && now.isBefore(a.getEffectiveTime())) return false;
+        if (a.getExpiryTime() != null && now.isAfter(a.getExpiryTime())) return false;
+        return true;
     }
 }

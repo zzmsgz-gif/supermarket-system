@@ -39,6 +39,14 @@ public class Announcement {
     @Column(name = "publish_time", nullable = false)
     private LocalDateTime publishTime;
 
+    // 时效窗口：effectiveTime 之前不展示，expiryTime 之后自动下架。
+    // 两者皆可空 —— effective_time 为 NULL 表示从发布起一直生效；expiry_time 为 NULL 表示永不自动过期。
+    @Column(name = "effective_time")
+    private LocalDateTime effectiveTime;
+
+    @Column(name = "expiry_time")
+    private LocalDateTime expiryTime;
+
     @Column(nullable = false)
     private Byte deleted;
 
@@ -102,6 +110,22 @@ public class Announcement {
 
     public void setPublishTime(LocalDateTime publishTime) {
         this.publishTime = publishTime;
+    }
+
+    public LocalDateTime getEffectiveTime() {
+        return effectiveTime;
+    }
+
+    public void setEffectiveTime(LocalDateTime effectiveTime) {
+        this.effectiveTime = effectiveTime;
+    }
+
+    public LocalDateTime getExpiryTime() {
+        return expiryTime;
+    }
+
+    public void setExpiryTime(LocalDateTime expiryTime) {
+        this.expiryTime = expiryTime;
     }
 
     public Byte getDeleted() {

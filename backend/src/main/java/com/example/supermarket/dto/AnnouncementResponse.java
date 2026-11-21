@@ -12,6 +12,8 @@ public class AnnouncementResponse {
     private Integer sortOrder;
     private Integer enabled;
     private LocalDateTime publishTime;
+    private LocalDateTime effectiveTime;
+    private LocalDateTime expiryTime;
     private LocalDateTime createdAt;
 
     public static AnnouncementResponse from(Announcement a) {
@@ -23,6 +25,8 @@ public class AnnouncementResponse {
         r.setSortOrder(a.getSortOrder());
         r.setEnabled(Integer.valueOf(a.getEnabled()));
         r.setPublishTime(a.getPublishTime());
+        r.setEffectiveTime(a.getEffectiveTime());
+        r.setExpiryTime(a.getExpiryTime());
         r.setCreatedAt(a.getCreatedAt());
         return r;
     }
@@ -81,6 +85,22 @@ public class AnnouncementResponse {
 
     public void setPublishTime(LocalDateTime publishTime) {
         this.publishTime = publishTime;
+    }
+
+    public LocalDateTime getEffectiveTime() {
+        return effectiveTime;
+    }
+
+    public void setEffectiveTime(LocalDateTime effectiveTime) {
+        this.effectiveTime = effectiveTime;
+    }
+
+    public LocalDateTime getExpiryTime() {
+        return expiryTime;
+    }
+
+    public void setExpiryTime(LocalDateTime expiryTime) {
+        this.expiryTime = expiryTime;
     }
 
     public LocalDateTime getCreatedAt() {

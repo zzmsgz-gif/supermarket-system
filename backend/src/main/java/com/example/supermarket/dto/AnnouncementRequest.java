@@ -2,6 +2,7 @@ package com.example.supermarket.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDateTime;
 
 /**
  * 后台公告创建/编辑请求。
@@ -23,6 +24,12 @@ public class AnnouncementRequest {
 
     private Boolean enabled = true;
 
+    /** 生效时间：为空表示从发布起一直生效 */
+    private LocalDateTime effectiveTime;
+
+    /** 失效时间：为空表示永不自动过期 */
+    private LocalDateTime expiryTime;
+
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getContent() { return content; }
@@ -33,4 +40,10 @@ public class AnnouncementRequest {
     public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+
+    public LocalDateTime getEffectiveTime() { return effectiveTime; }
+    public void setEffectiveTime(LocalDateTime effectiveTime) { this.effectiveTime = effectiveTime; }
+
+    public LocalDateTime getExpiryTime() { return expiryTime; }
+    public void setExpiryTime(LocalDateTime expiryTime) { this.expiryTime = expiryTime; }
 }
