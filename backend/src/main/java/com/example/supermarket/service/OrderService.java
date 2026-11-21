@@ -559,14 +559,31 @@ public class OrderService {
         }
         OrderEntity fresh = orderRepository.findById(order.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        if (order.getPointsUsed() != null && order.getPointsUsed() > 0) {
-            memberService.refundRedeem(userId, orderId);
-        }
         if (wasPaid) {
-            walletService.refundOrder(userId, fresh.getId(), fresh.getPayAmount(), "Order cancel refund");
+            // 【2026-11-21 修：已支付取消没有做逆向，可以刷积分/刷会员等级】
+            // 实测：付 250.30 → 发 250 积分、累计消费 +250.30 → 取消 → 钱全额退回，
+            // 积分与累计消费**留在账户上**（315 行附近的 awardOnPaidOrder 没有对应的反操作）。
+            // 循环「下单-支付-取消」即可无限攒积分（100 分 = 1 元）并把会员等级刷到高等级。
+            // 因此这里必须与售后整单退款（ReturnRequestService.refundWholeOrder）走同一套逆向：
+            //   返还抵扣积分 + 回收发放积分 + 回退累计消费/会员等级，ratio=1（整单全退）。
+            // ⚠️ 顺序不能反：先回收积分算出 shortfall（已花掉、收不回的发放积分），
+            //   再从退款金额里等价扣回，否则等于把钱退满、积分白送。
+            long shortfallPts = memberService.recoverForRefund(userId, fresh.getId(),
+                    fresh.getPayAmount(), BigDecimal.ONE, 0L);
+            BigDecimal shortfallYuan = BigDecimal.valueOf(shortfallPts)
+                    .divide(MemberService.POINTS_PER_YUAN, 2, RoundingMode.HALF_UP);
+            BigDecimal cashRefund = fresh.getPayAmount() == null ? ZERO
+                    : fresh.getPayAmount().subtract(shortfallYuan).max(ZERO);
+            walletService.refundOrder(userId, fresh.getId(), cashRefund, "Order cancel refund", shortfallYuan);
             fresh.setPaymentStatus(PAYMENT_REFUNDED);
             paymentRecordRepository.findByOrderId(fresh.getId()).ifPresent(this::refundPaymentRecord);
+            // 整单取消 = 全额退，券必须还（未支付分支的 restoreIfUnpaid 与这里对称）
+            couponService.restoreForOrder(fresh);
         } else {
+            // 未支付取消：只返还抵扣的积分（此时还没发放积分，也没有累计消费）
+            if (order.getPointsUsed() != null && order.getPointsUsed() > 0) {
+                memberService.refundRedeem(userId, orderId);
+            }
             couponService.restoreIfUnpaid(fresh);
         }
         List<OrderItem> orderItems = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());

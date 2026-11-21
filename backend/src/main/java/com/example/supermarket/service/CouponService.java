@@ -426,15 +426,20 @@ public class CouponService {
     }
 
     /**
-     * 退款逆向：整单全额退款且订单已关闭（CLOSED）时，把下单时核销的券恢复为可用（与 restoreIfUnpaid 对称）。
+     * 退款逆向：整单全额退款且订单已终结（CLOSED / CANCELED）时，把下单时核销的券恢复为可用
+     * （与 restoreIfUnpaid 对称）。
      *
-     * <p>⚠️ 仅「整单全额退、订单 CLOSED」才恢复券；部分退款（订单仍 OPEN / PARTIAL）不动券 ——
+     * <p>⚠️ 仅「整单全额退、订单终结」才恢复券；部分退款（订单仍 OPEN / PARTIAL）不动券 ——
      * 因为券是按**整单**优惠核销的，退一件不能把整张券还回去，否则券会被反复薅。
-     * 调用方需保证在 {@code order.status == CLOSED} 之后再调本方法（本类不二次判状态，避免与订单落库顺序打架）。
+     *
+     * <p><b>CANCELED 也算终结（2026-11-21 补）</b>：已支付订单取消时钱是全额原路退回的，
+     * 券却因为这里只认 CLOSED 而没还 —— 用户白丢一张券，这是投诉的来源。
+     * 取消与整单退款在「钱全退、交易作废」上完全等价，券的处理必须一致。
      */
     @Transactional
     public void restoreForOrder(OrderEntity order) {
-        if (order.getUserCouponId() == null || !"CLOSED".equals(order.getStatus())) {
+        if (order.getUserCouponId() == null
+                || !("CLOSED".equals(order.getStatus()) || "CANCELED".equals(order.getStatus()))) {
             return;
         }
         userCouponRepository.findById(order.getUserCouponId()).ifPresent(userCoupon -> {

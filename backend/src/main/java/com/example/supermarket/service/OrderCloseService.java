@@ -30,6 +30,8 @@ public class OrderCloseService {
     private final FlashSaleService flashSaleService;
     /** 超时关单也要还库存，因此同样要失效商品读缓存，见 {@link ProductCacheEvictor} */
     private final ProductCacheEvictor productCacheEvictor;
+    /** 超时关单必须退回下单时抵扣掉的积分，见 closeTimeoutOrder 里的说明 */
+    private final MemberService memberService;
 
     public OrderCloseService(
             OrderRepository orderRepository,
@@ -39,7 +41,8 @@ public class OrderCloseService {
             CouponService couponService,
             MessageService messageService,
             FlashSaleService flashSaleService,
-            ProductCacheEvictor productCacheEvictor
+            ProductCacheEvictor productCacheEvictor,
+            MemberService memberService
     ) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
@@ -49,6 +52,7 @@ public class OrderCloseService {
         this.messageService = messageService;
         this.flashSaleService = flashSaleService;
         this.productCacheEvictor = productCacheEvictor;
+        this.memberService = memberService;
     }
 
     @Transactional
@@ -66,6 +70,14 @@ public class OrderCloseService {
             return;
         }
         couponService.restoreIfUnpaid(fresh);
+        // 【2026-11-21 修：超时关单没有退回抵扣积分】
+        // 下单时 reserveRedeem 已经把积分扣走了（未支付也扣，因为要占用额度）。
+        // 15 分钟没付款被自动关单时，这里原先只还了券、名额、库存，**没退积分** ——
+        // 用户什么都没买成，积分却永久消失，而且订单已 CLOSED、连对照都找不到。
+        // 与 cancelOrder 的未支付分支保持对称（同样只退抵扣积分，此时还没发放积分）。
+        if (fresh.getPointsUsed() != null && fresh.getPointsUsed() > 0) {
+            memberService.refundRedeem(fresh.getUserId(), fresh.getId());
+        }
         // 与库存回滚绑在一起：超时关闭也要把秒杀名额还回去
         flashSaleService.releaseQuotaForOrder(fresh.getId());
         List<OrderItem> items = orderItemRepository.findByOrderIdOrderByIdAsc(fresh.getId());
