@@ -19,3 +19,8 @@ export function createRechargeOrder(payload) {
 export function listWalletTransactions(params = {}) {
   return request('/wallet/transactions', { data: params })
 }
+
+// 收支汇总：totalIncome / totalOut —— 与 PC 金额明细页调的是同一个接口
+export function getWalletSummary() {
+  return request('/wallet/summary')
+}

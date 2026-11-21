@@ -7,6 +7,20 @@
     </view>
 
     <view class="list-title">交易明细</view>
+
+    <!-- 收支汇总：与 PC 金额明细页调同一个接口（GET /wallet/summary），
+         让用户一眼看到「一共花出去多少、收回来多少」，不用自己翻列表加。 -->
+    <view class="sum-card">
+      <view class="sum-item">
+        <text class="sum-lab">累计支出</text>
+        <text class="sum-num out">¥{{ summary.out }}</text>
+      </view>
+      <view class="sum-item">
+        <text class="sum-lab">累计收入</text>
+        <text class="sum-num in">¥{{ summary.income }}</text>
+      </view>
+    </view>
+
     <view
       v-for="t in txns"
       :key="t.id"
@@ -14,11 +28,15 @@
     >
       <view class="tx-left">
         <view class="tx-type">{{ txLabel(t.type) }}</view>
-        <view class="tx-remark" v-if="t.remark">{{ t.remark }}</view>
+        <!-- 后端 remark 是财务对账用的内部备注（英文），这里翻成中文再显示 -->
+        <view class="tx-remark" v-if="remarkZh(t.remark)">{{ remarkZh(t.remark) }}</view>
         <view class="tx-time">{{ formatTime(t.createdAt) }}</view>
       </view>
-      <view class="tx-amt" :class="amtClass(t.amount)">
-        {{ Number(t.amount) >= 0 ? '+' : '-' }}¥{{ Math.abs(Number(t.amount || 0)).toFixed(2) }}
+      <view class="tx-right">
+        <view class="tx-amt" :class="isOut(t) ? 'out' : 'in'">
+          {{ isOut(t) ? '-' : '+' }}¥{{ Math.abs(Number(t.amount || 0)).toFixed(2) }}
+        </view>
+        <view class="tx-balance" v-if="t.balanceAfter != null">余额 ¥{{ Number(t.balanceAfter).toFixed(2) }}</view>
       </view>
     </view>
 
@@ -31,7 +49,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow, onReachBottom } from '@dcloudio/uni-app'
-import { getWallet, recharge, listWalletTransactions } from '@/api/wallet'
+import { getWallet, getWalletSummary, recharge, listWalletTransactions } from '@/api/wallet'
 import { formatTime } from '@/utils/format'
 
 const balance = ref('0.00')
@@ -41,21 +59,65 @@ const size = ref(20)
 const total = ref(0)
 const loading = ref(false)
 const hasMore = ref(false)
+const summary = ref({ out: '0.00', income: '0.00' })
 
+/**
+ * 交易类型中文名。后端 WalletService 只有三个常量：RECHARGE / PAYMENT / REFUND。
+ *
+ * ⚠️ 原来映射写的是 PAY / ORDER_PAY / POINT_REDEEM —— 都是猜的名字，真正的 `PAYMENT`
+ * 没命中，于是界面上直接把英文 "PAYMENT" 怼出来（2026-11-21 用户反馈截图）。
+ * 未知类型一律回落到「交易」，不再暴露英文原始值。
+ */
 function txLabel(type) {
-  const map = {
-    RECHARGE: '充值',
-    PAY: '消费',
-    ORDER_PAY: '消费',
-    REFUND: '退款',
-    REFUND_RECEIVE: '退款',
-    POINT_REDEEM: '积分抵现'
-  }
-  return map[type] || type || '交易'
+  const map = { RECHARGE: '充值', PAYMENT: '支付', REFUND: '退款' }
+  return map[type] || '交易'
 }
 
-function amtClass(amount) {
-  return Number(amount) >= 0 ? 'in' : 'out'
+/**
+ * 是否支出。
+ *
+ * ⚠️ 后端 wallet_transaction.amount 存的是**绝对值**（恒为正），方向由 type 决定，
+ * 接口已经把它透成 `direction`（1 = 支出，-1 = 收入）。
+ * 原来这里用 `Number(amount) >= 0` 判正负 —— amount 永远 ≥ 0，结果每一笔都显示绿色「+」，
+ * 连支付也是加号（截图里 PAYMENT 显示 +¥20.90 就是这个 bug）。
+ */
+function isOut(t) {
+  return Number(t.direction) === 1
+}
+
+/**
+ * 后端 remark 是给财务对账用的内部备注，内容是英文
+ * （User recharge / Order payment / Refund approved…），夹在中文界面里既看不懂也没信息量。
+ * 这里映射成中文；**没命中映射且含英文的一律不显示**，
+ * 以后后端再加新文案也不会漏出英文（宁可少一行，不要露英文）。
+ */
+const REMARK_ZH = {
+  'User recharge': '余额充值',
+  '充值订单到账': '充值到账',
+  'Order payment': '订单支付',
+  'Order cancel refund': '取消订单退回',
+  'Admin order cancel refund': '平台取消订单退回',
+  'Refund approved': '退款到账',
+  'Refund approved (item)': '部分商品退款到账'
+}
+
+function remarkZh(r) {
+  if (!r) return ''
+  const hit = REMARK_ZH[r]
+  if (hit) return hit
+  return /[A-Za-z]{3,}/.test(r) ? '' : r
+}
+
+async function loadSummary() {
+  try {
+    const s = await getWalletSummary()
+    summary.value = {
+      out: Number((s && s.totalOut) || 0).toFixed(2),
+      income: Number((s && s.totalIncome) || 0).toFixed(2)
+    }
+  } catch (e) {
+    // 汇总失败不影响明细列表
+  }
 }
 
 async function loadWallet() {
@@ -131,6 +193,7 @@ function doRecharge() {
 
 onShow(() => {
   loadWallet()
+  loadSummary()
   loadTxns(true)
 })
 onReachBottom(() => {
@@ -173,6 +236,35 @@ onReachBottom(() => {
   color: #999;
   padding: 24rpx 32rpx 8rpx;
 }
+/* ===== 收支汇总（/wallet/summary）：支出红、收入绿，与列表颜色一致 ===== */
+.sum-card {
+  display: flex;
+  margin: 8rpx 16rpx 16rpx;
+  padding: 24rpx 8rpx;
+  background: #fff;
+  border-radius: 16rpx;
+}
+.sum-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.sum-lab {
+  font-size: 22rpx;
+  color: #8A8578;
+}
+.sum-num {
+  margin-top: 8rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+.sum-num.out {
+  color: #C0392B;
+}
+.sum-num.in {
+  color: #0F6E56;
+}
 .tx {
   display: flex;
   align-items: center;
@@ -201,6 +293,19 @@ onReachBottom(() => {
 .tx-amt {
   font-size: 30rpx;
   font-weight: bold;
+}
+/* 右侧两行：金额 + 变动后余额（让用户自己核对「这笔之后还剩多少」，PC 端已有） */
+.tx-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+.tx-balance {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #B4AEA2;
 }
 .tx-amt.in {
   color: #0F6E56;
