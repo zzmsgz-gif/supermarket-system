@@ -190,6 +190,13 @@ def main():
     for ln in base:
         print("    " + ln)
 
+    # 库存快照：跑完自检「测试只借用库存，清理后必须分毫回到原值」
+    stock_snapshot = {}
+    for _pid in (1, 2, 3, 95, 173, 187):
+        _v = sql_one("SELECT stock FROM product WHERE id=%d" % _pid)
+        if _v is not None:
+            stock_snapshot[_pid] = _v
+
     u1 = new_user("a", level=0, points=5000, balance=1000)
     u2 = new_user("b", level=2, points=0, balance=0)
     print("  测试账号：%s(普通,5000分) %s(金卡)" % (u1["name"], u2["name"]))
@@ -593,6 +600,18 @@ def main():
 
     print("\n--- 清理 ---")
     cleanup([u1, u2, u3])
+
+    # 清理自检：下单→取消→超时关单→cleanup 一条链走完，库存必须净零变化。
+    # 只要这里报漂移，就说明「某条回补路径重复了」，别急着走，先校准库。
+    drift = []
+    for _pid, _before in stock_snapshot.items():
+        _now = sql_one("SELECT stock FROM product WHERE id=%d" % _pid)
+        if str(_now) != str(_before):
+            drift.append("商品%s: %s → %s" % (_pid, _before, _now))
+    if drift:
+        print("  ⚠️ 库存漂移，需人工校准: " + "; ".join(drift))
+    else:
+        print("  ✓ 库存自检通过：全部回到测试前数值")
     return 0 if not fails else 1
 
 
@@ -600,9 +619,15 @@ def cleanup(users):
     """删测试账号及其全部关联数据，并按订单明细回补库存与秒杀名额。"""
     ids = ",".join(u["id"] for u in users)
     # 下单明细（用于回补库存）
+    # ⚠️ 只回补「还占着库存」的订单：已 CANCELED / CLOSED 的订单在取消、超时关单、退款时
+    # 系统**已经**把库存与秒杀名额还回去了，这里再按 order_item 加一遍就是重复回补。
+    # 实测教训：原先不判状态，多跑几轮把商品3 库存从 152 抬到 444（库存虚高 = 超卖风险），
+    # 商品173 也从 96 抬到 103。
     rows = sql_many([
         "SELECT CONCAT(oi.product_id,'|',oi.quantity,'|',IFNULL(oi.flash_sale_id,0)) "
-        "FROM order_item oi JOIN orders o ON o.id=oi.order_id WHERE o.user_id IN (%s)" % ids,
+        "FROM order_item oi JOIN orders o ON o.id=oi.order_id "
+        "WHERE o.user_id IN (%s) "
+        "AND o.status IN ('PENDING_PAYMENT','PAID','SHIPPED','COMPLETED')" % ids,
     ])
     back = {}
     flash_back = {}
