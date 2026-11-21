@@ -75,8 +75,16 @@
           class="a ghost"
           @click="goRefund(o.id)"
         >{{ afterSaleLabel(o) }}</button>
+        <!-- 待寄回：这是用户此刻唯一要做的事（商家已同意，等他寄件），必须可点直达填单。
+             以前一律渲染成禁用的「待寄回」灰按钮 → 用户知道要寄件却在小程序里找不到填单入口
+             （PC 端是订单卡片内嵌表单，小程序只能绕去「我的 → 我的售后」，2026-11-21 补）。 -->
         <button
-          v-if="afterSaleInFlight(o)"
+          v-if="o.refundStatus === 'WAITING_SHIP'"
+          class="a main"
+          @click="goReturns"
+        >填写寄回物流</button>
+        <button
+          v-if="afterSaleInFlight(o) && o.refundStatus !== 'WAITING_SHIP'"
           class="a ghost"
           disabled
         >{{ afterSaleInFlightText(o) }}</button>
@@ -254,6 +262,11 @@ function switchTab(key) {
 
 function goDetail(id) {
   uni.navigateTo({ url: '/pages/order-detail/order-detail?id=' + id })
+}
+
+/** 待寄回时直达「我的售后」——填快递单号/运单号的唯一入口就在那一页 */
+function goReturns() {
+  uni.navigateTo({ url: '/pages/returns/returns' })
 }
 
 function pay(o) {

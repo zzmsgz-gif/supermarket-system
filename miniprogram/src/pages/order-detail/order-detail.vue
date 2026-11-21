@@ -106,7 +106,10 @@
       <button v-if="canApplyAfterSale" class="a ghost" @click="applyRefund()">
         {{ afterSaleLabel }}
       </button>
-      <button v-if="afterSaleInFlight" class="a ghost" disabled>{{ afterSaleInFlightText }}</button>
+      <!-- 待寄回：商家已同意，用户此刻该去寄件并填单号 —— 直接给可点的主按钮，
+           而不是一个「待寄回商品」的灰按钮（填单入口在「我的售后」，跳过去才有输入框） -->
+      <button v-if="refundWaitingShip" class="a main" @click="goReturns">填写寄回物流</button>
+      <button v-if="afterSaleInFlight && !refundWaitingShip" class="a ghost" disabled>{{ afterSaleInFlightText }}</button>
       <!-- 退款已到账（APPROVED 终态）：钱已经退回来了，不再挂「退款处理中」的禁用按钮 -->
       <text v-if="refundDone" class="a done">退款已到账</text>
     </view>
@@ -328,6 +331,8 @@ const afterSaleInFlightText = computed(() => {
   if (rs === 'SHIPPED_BACK') return '退货中'
   return order.value && order.value.status === 'COMPLETED' ? '售后审核中' : '退款审核中'
 })
+// 待寄回单独拿出来：模板要把它渲染成**可点**的主按钮（跳「我的售后」填运单号）
+const refundWaitingShip = computed(() => (order.value && order.value.refundStatus) === 'WAITING_SHIP')
 // 退款已成功：订单详情里没有退款状态条，所以这里给一句明确的结果
 const refundDone = computed(() => (order.value && order.value.refundStatus) === 'APPROVED')
 
