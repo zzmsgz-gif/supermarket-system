@@ -116,7 +116,7 @@ onShow(load)
 .pts-more {
   font-size: 22rpx;
   color: rgba(255, 255, 255, 0.82);
-  text-decoration: underline;
+  text-decoration: none;
 }
 .disc {
   font-size: 24rpx;
