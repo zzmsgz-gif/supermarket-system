@@ -81,7 +81,11 @@
           <view class="reco-body">
             <text class="reco-name">{{ p.name }}</text>
             <view class="reco-foot">
-              <text class="reco-price">¥{{ fmt(p.price) }}</text>
+              <view class="reco-price-wrap">
+                <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || fmt(p.price) }}</text>
+                <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                <text class="reco-vip" v-if="memberView(p)">{{ memberRateText(memberView(p)) }}</text>
+              </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
           </view>
@@ -201,6 +205,7 @@ import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { formatAmount } from '@/utils/format'
+import { ensureMemberProfile, memberView, memberRateText } from '@/utils/memberPrice'
 
 const items = ref([])
 
@@ -459,6 +464,7 @@ const recommends = ref([])
 
 async function loadRecommends() {
   if (recommends.value.length) return
+  ensureMemberProfile()   // 会员价：与首页/详情页共用同一份 profile
   try {
     recommends.value = await listHotProducts(6)
   } catch (e) {
@@ -838,10 +844,28 @@ onShow(async () => {
   align-items: baseline;
   justify-content: space-between;
 }
+.reco-price-wrap {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6rpx;
+}
 .reco-price {
   color: #C0392B;
   font-size: 28rpx;
   font-weight: 700;
+}
+.reco-origin {
+  font-size: 18rpx;
+  color: #9CA3AF;
+  text-decoration: line-through;
+}
+.reco-vip {
+  font-size: 17rpx;
+  color: #0F6E56;
+  background: #E1F5EE;
+  border-radius: 6rpx;
+  padding: 1rpx 6rpx;
 }
 .reco-sales {
   font-size: 20rpx;
