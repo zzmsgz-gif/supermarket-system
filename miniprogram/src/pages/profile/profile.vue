@@ -75,9 +75,8 @@ import { updateStoredUser } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { nicknameColumns, NICKNAME_MAX_COLUMNS, NICKNAME_TOO_WIDE } from '@/utils/format'
 
-// 与 mine.vue 同款默认头像（内联 SVG，不额外占包体）
-const defaultAvatar =
-  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
+// 与 mine.vue 同款默认头像（静态剪影图，见 static/avatar-default.png）
+const defaultAvatar = '/static/avatar-default.png'
 
 const account = ref('')
 const saving = ref(false)

@@ -32,7 +32,8 @@ export function useAuth(deps) {
   const authOpen = ref(false);
   const authTab = ref('login');
   const authSubmitting = ref(false);
-  const loginForm = reactive({ username: '', password: '', remember: true });
+  // 登录表单也带协议勾选（2026-11-22 用户要求）：与小程序一致，未勾选不允许登录
+  const loginForm = reactive({ username: '', password: '', remember: true, agree: false });
   const registerForm = reactive({ username: '', password: '', confirmPassword: '', nickname: '', phone: '', email: '', agree: false });
   const authErrors = reactive({ username: '', password: '', confirmPassword: '', phone: '', email: '', nickname: '', agree: '' });
   const changeForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -55,6 +56,7 @@ export function useAuth(deps) {
     loginForm.username = '';
     loginForm.password = '';
     loginForm.remember = true;
+    loginForm.agree = false;
     registerForm.username = '';
     registerForm.password = '';
     registerForm.confirmPassword = '';
@@ -109,7 +111,9 @@ export function useAuth(deps) {
     resetAuthErrors();
     if (!loginForm.username.trim()) authErrors.username = '请输入用户名';
     if (!loginForm.password) authErrors.password = '请输入密码';
-    if (authErrors.username || authErrors.password) return { ok: false };
+    // 协议未勾选就停在这里，不发请求（与小程序 ensureAgreed 同一口径）
+    if (!loginForm.agree) authErrors.agree = '请先阅读并同意用户协议和隐私政策';
+    if (authErrors.username || authErrors.password || authErrors.agree) return { ok: false };
     authSubmitting.value = true;
     try {
       const data = await api.post('/auth/login', {

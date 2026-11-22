@@ -4,7 +4,7 @@
     <view class="hero" :style="{ paddingTop: statusBarHeight + 'px' }">
       <view class="hero-nav">
         <view class="brand">
-          <image class="brand-mark" src="/static/logo.png" mode="aspectFit" />
+          <image class="brand-mark" src="/static/logo-icon.png" mode="aspectFit" />
           <text class="brand-name">{{ BRAND_NAME }}</text>
         </view>
         <!-- 右侧必须留空：微信胶囊按钮就压在这个位置，放任何东西都会被挡住 -->
@@ -753,7 +753,7 @@ onReachBottom(() => {
   align-items: center;
 }
 .brand-mark {
-  /* 现在是真的 logo 图（/static/logo.png，144×144 圆角渐变 + 购物袋），
+  /* 现在是真的 logo 图（/static/logo-icon.png，圆角渐变底 + 购物袋，图标本身已居中），
      图本身带圆角，这里只控制尺寸与间距 */
   width: 44rpx;
   height: 44rpx;

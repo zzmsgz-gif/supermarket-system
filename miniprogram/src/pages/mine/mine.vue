@@ -126,7 +126,10 @@ import { clearCouponSelection } from '@/utils/couponPromo'
 import { requireLogin, goLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 
-const defaultAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2RkZCIvPjx0ZXh0IHg9IjUwIiB5PSI1OCIgZm9udC1zaXplPSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzk5OSI+5Lq6PC90ZXh0Pjwvc3ZnPg=='
+// 未登录 / 无头像时的占位：静态剪影（浅灰圆底 + 人像）。
+// 旧写法是内联 SVG 里塞一个「人」字 —— 头像尺寸下那个字就成了头像内容，看着像"头像里写了个字"
+// （2026-11-22 用户反馈）；而且小程序 image 对 data:image/svg+xml 支持不稳。
+const defaultAvatar = '/static/avatar-default.png'
 
 const user = reactive(getStoredUser() || { username: '微信用户' })
 // 是否已登录：未登录时整页显示登录引导，而不是把人弹去登录页

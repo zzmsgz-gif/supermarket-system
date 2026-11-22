@@ -31,6 +31,14 @@
           <input type="checkbox" v-model="appCtx.loginForm.remember" /> 记住我（7 天免登录）
           <span class="auth-forgot" @click="toReset">忘记密码？</span>
         </label>
+        <!-- 登录同样要勾协议（2026-11-22 用户要求，与小程序登录页一致）：
+             未勾选时 submitLogin 写入 authErrors.agree 并拒绝发请求 -->
+        <label class="auth-agree">
+          <input type="checkbox" v-model="appCtx.loginForm.agree" />
+          我已阅读并同意 <span class="auth-link" @click="appCtx.openLegal('TERMS')">《用户协议》</span>
+          与 <span class="auth-link" @click="appCtx.openLegal('PRIVACY')">《隐私政策》</span>
+          <small v-if="appCtx.authErrors.agree" class="field-hint warn">{{ appCtx.authErrors.agree }}</small>
+        </label>
         <button class="auth-submit" type="submit" :disabled="appCtx.authSubmitting.value">{{ appCtx.authSubmitting.value ? '登录中…' : '登录' }}</button>
       </form>
 

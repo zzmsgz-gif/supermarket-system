@@ -1,7 +1,7 @@
 <template>
   <view class="login">
     <view class="logo-wrap">
-      <image class="logo-img" src="/static/logo.png" mode="aspectFit" />
+      <image class="logo-img" src="/static/logo-icon.png" mode="aspectFit" />
       <text class="logo-name">{{ BRAND_NAME }}</text>
     </view>
     <button class="wx-btn" @click="onWechatLogin">微信一键登录</button>
