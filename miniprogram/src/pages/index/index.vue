@@ -162,66 +162,18 @@
       </scroll-view>
     </view>
 
-    <!-- 热搜模块已按需求移除（2026-11-08）：首页不再展示热搜词条，
-         分类楼层直接接在搜索区下方。api/hotSearch 与后台热搜管理仍然保留，
-         以后想恢复只需把这段 scroll-view 加回来。 -->
+    <!-- 热搜模块已按需求移除（2026-11-08）：首页不再展示热搜词条。
+         api/hotSearch 与后台热搜管理仍然保留，以后想恢复只需把这段 scroll-view 加回来。 -->
 
-    <!-- ===== 分类楼层（B 方案的双列卡：卖点标签 + 销量 + 一步加购） ===== -->
-    <view
-      v-for="fl in floors"
-      :key="fl.category.id"
-      :class="'floor floor-' + fl.category.id"
-    >
-      <view class="floor-head">
-        <text class="floor-t">{{ fl.category.name }}</text>
-        <text class="floor-more" @click="goCategory(fl.category.id)">查看全部</text>
-      </view>
-      <view class="grid">
-        <view
-          v-for="p in fl.products"
-          :key="p.id"
-          class="pcard"
-          @click="goDetail(p.id)"
-        >
-          <view class="p-cover-wrap">
-            <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
-            <view class="p-soldout" v-if="(p.stock || 0) <= 0">
-              <text class="p-soldout-t">售罄</text>
-            </view>
-          </view>
-          <view class="p-body">
-            <text class="p-name">{{ p.name }}</text>
-            <view class="p-price-row">
-              <text class="p-price">¥{{ p.price }}</text>
-              <text class="p-origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-            </view>
-            <view class="p-foot">
-              <text class="p-sales">{{ salesText(p) }}</text>
-              <view
-                class="p-add"
-                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
-                @click.stop="quickAdd(p)"
-              >
-                <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
-              </view>
-            </view>
-          </view>
-        </view>
-      </view>
-      <EmptyState
-        v-if="!fl.products.length"
-        icon="🧺"
-        title="该分类暂无商品"
-        compact
-      />
-    </view>
-
-    <!-- ===== 猜你喜欢（上拉加载）：复用楼层的双列卡样式 =====
-         楼层每类固定 8 件，一部分在售商品在楼层里出不来，滑到底继续按销量加载。 -->
+    <!-- ===== 全部商品（一整条随机流，上拉加载）=====
+         2026-11-22 用户要求：「商品不再按分类往下，直接全部商品打乱」——
+         原来的分类楼层（每类固定 8 件 + 查看全部）已整块移除，分类入口仍在顶部快捷区
+         和底部「分类」tab。这里直接是全部在售商品，顺序由随机 seed 决定
+         （页面实例创建时生成一次、下拉刷新换新），所以每次进来顺序都不同。
+         卡片样式沿用原楼层的双列卡（卖点标签 + 销量 + 一步加购）。 -->
     <view class="floor" v-if="feed.length">
       <view class="floor-head">
-        <text class="floor-t">猜你喜欢</text>
+        <text class="floor-t">全部商品</text>
       </view>
       <view class="grid">
         <view
@@ -257,6 +209,14 @@
         </view>
       </view>
     </view>
+
+    <!-- 一件商品都没拉到时（接口挂了/全下架）给个空态，不要留白屏 -->
+    <EmptyState
+      v-if="!feed.length && !feedLoading && !loadError"
+      icon="🧺"
+      title="还没有上架商品"
+      desc="补货中，晚点再来看看"
+    />
 
     <!-- 底部三态：加载中 / 还能上拉 / 到底 -->
     <view class="footer-tip">
@@ -314,7 +274,7 @@ const banners = ref([])
 // 首页加载失败原因（分类一件都没拿到时用它把问题摆出来，而不是留一片空白）
 const loadError = ref('')
 const flashSales = ref([])
-const floors = ref([])
+// 分类楼层已移除（2026-11-22 用户要求首页直接一条全部商品的随机流），不再保留 floors 状态
 // ===== 商品「每次进来换一批」的随机种子 =====
 // 后端约定 sort=random_<seed>：按固定 seed 洗牌再分页，所以同一 seed 下上拉加载
 // **不重不漏**（真用 ORDER BY RAND() 会每页各自随机，同一件反复出现、另一批永远刷不到）。
@@ -325,7 +285,7 @@ function newFeedSeed() {
 }
 const feedSeed = ref(newFeedSeed())
 const feedSort = computed(() => 'random_' + feedSeed.value)
-// ===== 「猜你喜欢」上拉加载流 =====
+// ===== 首页商品流（全部商品 + 随机顺序 + 上拉加载）=====
 // 楼层每类只放 8 件，112 件在售商品里有 32 件（冷冻速食 16 / 个人护理 5 / 清洁纸品 5 / 生鲜 4 / 乳品 2）
 // 在首页根本出不来，用户只能逐个点「查看全部」才能看到 —— 滑到底继续按销量加载更好。
 const feed = ref([])
@@ -485,36 +445,26 @@ async function load() {
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
 
-  // 分类楼层：每个分类取前 8 件（按 categoryId 分组现场取，避免只用分页第一页截断）
-  // sort=random_<seed> → 每次进首页各类挑出来的 8 件都不一样（用户反馈「老是同一个顺序」）
-  const floorsData = []
-  for (const c of categories.value) {
-    try {
-      const res = await listProducts({ categoryId: c.id, size: 8, sort: feedSort.value })
-      floorsData.push({ category: c, products: (res && res.items) ? res.items : [] })
-    } catch (e) {
-      floorsData.push({ category: c, products: [] })
-    }
-  }
-  floors.value = floorsData
-
-  // 楼层就绪后再拉「猜你喜欢」首屏（要拿楼层已展示的 id 去重）
+  // 2026-11-22：分类楼层已移除，首页直接是一条全部商品的随机流，这里不再按分类循环取数
+  // （顺带省掉 11 个接口请求，首屏更快）。
   await loadFeed(true)
 
-  // 分类是首页骨架：一件都拿不到就说明接口根本没通，把原因明确摆给用户（可点重试）
+  // 分类是首页骨架（顶部快捷入口要用）：一件都拿不到就说明接口根本没通，把原因摆给用户
   if (categories.value.length === 0 && errors.length) {
     loadError.value = errors[0]
   }
 }
 
 /**
- * 「猜你喜欢」：上拉加载更多。
+ * 首页商品流（原「猜你喜欢」，2026-11-22 分类楼层移除后它成了首页唯一的商品区）：上拉加载更多。
  *
  * - 顺序跟着首页的随机种子走（sort=random_<seed>）：同一 seed 下翻页稳定不重不漏，
- *   换 seed（重开小程序 / 下拉刷新）就是换一批。用户反馈「每次进来老是同一个顺序」后改的
- * - **跳过楼层已经展示过的商品**，避免同一件东西在首屏出现两次（用户会觉得列表在重复）
- * - 用 `page*size < total` 判还有没有下一页，不猜
+ *   换 seed（重开小程序 / 下拉刷新）就是换一批
+ * - 用 page*size < total 判还有没有下一页，不猜
  * - 失败时把 hasMore 置 false，否则上拉会无限重试同一个失败请求
+ *
+ * 以前还要「跳过分类楼层已展示过的商品」并为此一次多翻几页；楼层整块去掉后
+ * 这些补丁全部不再需要 —— 每页拿到的 20 件直接就是新的。
  */
 async function loadFeed(reset = false) {
   if (feedLoading.value) return
@@ -526,31 +476,15 @@ async function loadFeed(reset = false) {
   if (!feedHasMore.value) return
   feedLoading.value = true
   try {
-    // 楼层已展示的 id 一次性算好，后面的批次也塞进去，避免 feed 内部跨页重复
-    const shown = {}
-    for (const f of floors.value) {
-      for (const p of (f.products || [])) shown[p.id] = true
-    }
-    // 首屏至少拉 2 页：销量前列基本都在楼层里，只拉一页过滤完可能只剩一两个，
-    // 「猜你喜欢」区块就只剩一两件，看着像坏了。
-    // 之后每次上拉继续往后翻，直到**至少攒到 4 个新品**或到底 ——
-    // 实测后面几页每页只筛出 1 个新品，上拉一次只多 1 件会让用户觉得「滑了跟没滑一样」。
-    // guard 是硬上限，防止异常情况下一直翻页。
-    const minRounds = reset ? 2 : 1
-    let guard = 0
-    let added = 0
-    while (guard < 6 && feedHasMore.value && (guard < minRounds || added < 4)) {
-      guard += 1
-      const res = await listProducts({ page: feedPage.value + 1, size: FEED_SIZE, sort: feedSort.value })
-      const items = (res && res.items) || []
-      const fresh = items.filter((p) => !shown[p.id])
-      fresh.forEach((p) => { shown[p.id] = true })
-      feed.value = feed.value.concat(fresh)
-      feedPage.value += 1
-      added += fresh.length
-      const total = Number((res && res.total) || 0)
-      feedHasMore.value = feedPage.value * FEED_SIZE < total
-    }
+    const res = await listProducts({ page: feedPage.value + 1, size: FEED_SIZE, sort: feedSort.value })
+    const items = (res && res.items) || []
+    // 同 seed 下分页本就不会重复，这里仍按 id 兜一层（后端数据在翻页间变动时不至于出现重影）
+    const seen = {}
+    feed.value.forEach((p) => { seen[p.id] = true })
+    feed.value = feed.value.concat(items.filter((p) => !seen[p.id]))
+    feedPage.value += 1
+    const total = Number((res && res.total) || 0)
+    feedHasMore.value = feedPage.value * FEED_SIZE < total
   } catch (e) {
     // 加载失败就停住，别让上拉无限重试
     feedHasMore.value = false
@@ -777,7 +711,7 @@ onUnmounted(() => {
 // 必须写在 finally 里收掉刷新动画，否则请求失败时下拉圈会一直转。
 onPullDownRefresh(async () => {
   try {
-    // 下拉刷新 = 明确的「换一批」意图：换种子后再重拉，楼层与猜你喜欢都洗一遍
+    // 下拉刷新 = 明确的「换一批」意图：换种子后再重拉，整条商品流重新洗一遍
     feedSeed.value = newFeedSeed()
     await load()
   } finally {
@@ -785,7 +719,7 @@ onPullDownRefresh(async () => {
   }
 })
 
-// 上拉到底：继续加载「猜你喜欢」（loadFeed 内部自己防重入、防无限重试）
+// 上拉到底：继续加载商品流（loadFeed 内部自己防重入、防无限重试）
 onReachBottom(() => {
   loadFeed()
 })
