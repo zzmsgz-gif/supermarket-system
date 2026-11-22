@@ -5,6 +5,18 @@
       <text class="logo-name">{{ BRAND_NAME }}</text>
     </view>
     <button class="wx-btn" @click="onWechatLogin">微信一键登录</button>
+    <!-- 合规要求：登录动作前必须由用户主动勾选同意协议（2026-11-22 用户要求）。
+         勾选框自绘 —— 小程序原生 checkbox 的尺寸/取色跟主色对不齐，H5 与小程序表现也差得多。
+         协议名可点，跳 legal 页看全文（后端 docKey 会 toUpperCase，传小写即可）。 -->
+    <view class="agree-row">
+      <view class="agree-box" :class="{ on: agreed }" @click="agreed = !agreed">
+        <text v-if="agreed" class="agree-tick">✓</text>
+      </view>
+      <text class="agree-text" @click="agreed = !agreed">我已阅读并同意</text>
+      <text class="agree-link" @click.stop="openDoc('terms')">《用户协议》</text>
+      <text class="agree-text">和</text>
+      <text class="agree-link" @click.stop="openDoc('privacy')">《隐私政策》</text>
+    </view>
     <!-- 仅浏览器(H5)环境：微信登录在普通浏览器不可用，这里给账号密码登录，
          用自己的线上账号登进来预览（H5 预览可经 MINI_API_TARGET 连线上后端）。
          小程序运行时没有 window，isBrowser=false，这块不渲染，小程序只有微信登录。 -->
@@ -28,7 +40,23 @@ import { BRAND_NAME } from '@/config'
 // 仅浏览器(H5)环境才有 window；小程序运行时无 window，isBrowser=false，账号密码登录块不渲染
 const isBrowser = typeof window !== 'undefined'
 
+// ===== 协议勾选（登录必经）=====
+// 每次进登录页都要重新勾：不做本地记忆，避免"上次勾过"变成变相默认同意。
+const agreed = ref(false)
+
+function openDoc(docKey) {
+  uni.navigateTo({ url: '/pages/legal/legal?docKey=' + docKey })
+}
+
+/** 两个登录入口共用这道闸：没勾就不发请求，直接提示 */
+function ensureAgreed() {
+  if (agreed.value) return true
+  uni.showToast({ title: '请先阅读并同意用户协议和隐私政策', icon: 'none' })
+  return false
+}
+
 async function onWechatLogin() {
+  if (!ensureAgreed()) return
   uni.showLoading({ title: '登录中' })
   try {
     // uni.login 返回 Promise，code 用于后端换取 openid
@@ -50,6 +78,7 @@ const pwdLoading = ref(false)
 
 async function onPasswordLogin() {
   if (pwdLoading.value) return
+  if (!ensureAgreed()) return
   const username = pwdForm.username.trim()
   if (!username || !pwdForm.password) {
     uni.showToast({ title: '请输入用户名和密码', icon: 'none' })
@@ -105,6 +134,41 @@ async function onPasswordLogin() {
   background: #07c160;
   color: #fff;
   border-radius: 48rpx;
+}
+/* 协议勾选行：紧贴登录按钮下方，两行内自动换行居中，不挤在按钮里 */
+.agree-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  margin-top: 28rpx;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #6B7280;
+}
+.agree-box {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 10rpx;
+  border: 2rpx solid #C7CDD6;
+  border-radius: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+.agree-box.on {
+  background: #0F6E56;
+  border-color: #0F6E56;
+}
+.agree-tick {
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1;
+}
+.agree-link {
+  color: #0F6E56;
 }
 .tip {
   margin-top: 40rpx;
