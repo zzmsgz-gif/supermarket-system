@@ -268,7 +268,7 @@ import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
-import { getMemberProfile } from '@/api/member'
+import { ensureMemberProfile, memberView } from '@/utils/memberPrice'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'
@@ -310,10 +310,6 @@ const popId = ref(null)
 const noticeList = ref([])
 const noticeOpen = ref(false)
 
-// 当前用户会员信息（只拉一次，供首页所有卡片共用）：游客为 null，卡片显示原价。
-// 后端 /member/profile 直接给 memberLevel / discountRate，不用前端维护等级常量表。
-const memberProfile = ref(null)
-
 // 已收藏商品 id（卡片右上角心形）：与详情页共用同一套接口，登录时拉一次
 const favoriteIds = ref([])
 const favBusy = ref(false)
@@ -349,28 +345,6 @@ async function toggleFav(p) {
   } finally {
     favBusy.value = false
   }
-}
-
-/**
- * 会员实付价视图（与 PC 端 productMemberView / 后端 unitPriceFor 同口径）：
- *   min(商品专属会员价, 售价 × 等级折扣)，两者取低、不叠加。
- * 游客或非会员返回 null —— 卡片走原价展示。
- * 秒杀行不在这里处理：秒杀价优先且更低，卡片另有 flash 分支。
- */
-function memberView(p) {
-  const prof = memberProfile.value
-  if (!prof || !Number(prof.memberLevel)) return null
-  const base = Number(p && p.price || 0)
-  if (!base) return null
-  const rate = Number(prof.discountRate || 1)
-  if (!(rate > 0 && rate < 1)) return null
-  const mp = Number(p.memberPrice || 0)
-  let price = base
-  if (mp > 0 && mp < price) price = mp
-  const levelPrice = Math.round(base * rate * 100) / 100
-  if (levelPrice < price) price = levelPrice
-  if (price >= base) return null
-  return { price: price.toFixed(2), rate }
 }
 
 function openNotice() {
@@ -497,6 +471,7 @@ async function load() {
   // 首页只渲染静态头部，数据区全空、底部显示"已经到底啦"，**且没有任何错误提示**，
   // 现场很难判断是网络问题还是没数据。改为逐个 catch：一个挂了不影响其他，并记录首个错误用于提示。
   const errors = []
+  const memberReady = ensureMemberProfile()
   const grab = async (promise, fallback, label) => {
     try {
       return await promise
@@ -506,21 +481,19 @@ async function load() {
     }
   }
   // 会员信息/收藏只拉一次供所有卡片共用；游客不请求（避免 401），直接走原价/空收藏
-  const profilePromise = isLoggedIn() ? getMemberProfile() : Promise.resolve(null)
-  const [cats, bn, fs, nts, prof, favIds] = await Promise.all([
+  const [cats, bn, fs, nts, favIds] = await Promise.all([
     grab(listCategories(), [], '分类'),
     grab(listBanners(), [], '轮播'),
     grab(listFlashSales(), [], '秒杀'),
     grab(listAnnouncements(), [], '公告'),
-    grab(profilePromise, null, '会员信息'),
     grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
-  memberProfile.value = prof || null
   favoriteIds.value = Array.isArray(favIds) ? favIds : []
+  await memberReady
 
   // 2026-11-22：分类楼层已移除，首页直接是一条全部商品的随机流，这里不再按分类循环取数
   // （顺带省掉 11 个接口请求，首屏更快）。

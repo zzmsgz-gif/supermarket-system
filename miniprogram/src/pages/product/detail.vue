@@ -31,11 +31,18 @@
         <text class="flash-tip">秒杀商品不参与满减与优惠券</text>
       </view>
       <view class="price-row">
-        <text class="p-now"><text class="p-yen">¥</text>{{ displayPrice }}</text>
-        <text class="p-origin" v-if="showOriginal">¥{{ displayOriginal }}</text>
+        <text class="p-now"><text class="p-yen">¥</text>{{ effectivePrice }}</text>
+        <text class="p-origin" v-if="showEffectiveOriginal">¥{{ effectiveOriginal }}</text>
         <text class="p-off" v-if="discountSave > 0">立省 ¥{{ discountSave }}<text class="p-rate" v-if="discountRate">· {{ discountRate }} 折</text></text>
       </view>
-      <view class="member-row" v-if="showMemberPrice">
+      <!-- 会员已生效：主价已是折后价，这里只需说明来源，不再重复挂一个「会员价 ¥X」造成两个价混淆 -->
+      <view class="member-row" v-if="priceView">
+        <text class="m-badge">会员价</text>
+        <text class="m-price">{{ memberRateText(priceView) }} 已生效</text>
+        <text class="m-tip">已为你省 ¥{{ memberSave }}</text>
+      </view>
+      <!-- 游客/普通用户：仍给升级引导（商品专属会员价） -->
+      <view class="member-row" v-else-if="showMemberPrice">
         <text class="m-badge">会员价</text>
         <text class="m-price">¥{{ product.memberPrice }}</text>
         <text class="m-tip">升级会员再省 ¥{{ memberSave }}</text>
@@ -194,7 +201,11 @@
           <view class="reco-body">
             <text class="reco-name">{{ p.name }}</text>
             <view class="reco-foot">
-              <text class="reco-price">¥{{ p.price }}</text>
+              <view class="reco-price-wrap">
+                <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+                <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                <text class="reco-vip" v-if="memberView(p)">{{ memberRateText(memberView(p)) }}</text>
+              </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
           </view>
@@ -231,6 +242,7 @@ import { request } from '@/api/request'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { starString, formatTime } from '@/utils/format'
+import { ensureMemberProfile, memberView, memberRateText } from '@/utils/memberPrice'
 
 const product = ref(null)
 // 生效中的活动（商品角标用）
@@ -349,13 +361,26 @@ const discountRate = computed(() => {
   if (!d || !p || p >= d) return ''
   return (p / d * 10).toFixed(1)
 })
-// 会员价：只有真正低于当前售价才展示
+// 会员实付价（与首页卡片 / PC 同口径）：基于当前 SKU 价取 min(专属会员价, 等级折扣)
+const priceView = computed(() => memberView(product.value, displayPrice.value))
+const effectivePrice = computed(() => (priceView.value ? priceView.value.price : displayPrice.value))
+// 有会员折扣时划线价取「售价」，让「省了多少」跟实际下单口径一致；否则用原促销原价
+const effectiveOriginal = computed(() => (priceView.value ? displayPrice.value : displayOriginal.value))
+const showEffectiveOriginal = computed(() => {
+  if (priceView.value) return true
+  return showOriginal.value
+})
+
+// 会员价：只有真正低于当前售价才展示（给游客/普通用户的升级引导）
 const showMemberPrice = computed(() => {
   const m = Number(product.value?.memberPrice || 0)
   const p = Number(displayPrice.value || 0)
   return m > 0 && m < p
 })
 const memberSave = computed(() => {
+  if (priceView.value) {
+    return (Number(displayPrice.value) - Number(priceView.value.price)).toFixed(2)
+  }
   if (!showMemberPrice.value) return '0.00'
   return (Number(displayPrice.value) - Number(product.value.memberPrice)).toFixed(2)
 })
@@ -501,6 +526,7 @@ onLoad(async (opts) => {
     for (const k in first) selectedSpec[k] = first[k]
   }
   // 首屏关键内容先出（商品已渲染），下面这些并行拉、失败不影响主体
+  ensureMemberProfile()   // 会员价：与首页共用同一份 profile，不重复请求
   loadFav()
   loadReviews()
   loadRatingSummary()
@@ -1088,10 +1114,28 @@ function buyNow() {
   align-items: baseline;
   justify-content: space-between;
 }
+.reco-price-wrap {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6rpx;
+}
 .reco-price {
   color: #C0392B;
   font-size: 28rpx;
   font-weight: 700;
+}
+.reco-origin {
+  font-size: 18rpx;
+  color: #9CA3AF;
+  text-decoration: line-through;
+}
+.reco-vip {
+  font-size: 17rpx;
+  color: #0F6E56;
+  background: #E1F5EE;
+  border-radius: 6rpx;
+  padding: 1rpx 6rpx;
 }
 .reco-sales {
   font-size: 20rpx;
