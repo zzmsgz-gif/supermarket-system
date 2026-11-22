@@ -241,7 +241,6 @@
               确认收货
             </button>
             <button v-if="canApplyRefund" class="ghost" :disabled="acting" @click="startRefund">{{ applyRefundLabel }}</button>
-            <small v-if="canCancelPaid" class="refund-hint">商家还未发货，取消后款项立即原路退回，无需商家审核</small>
             <small v-if="canConfirmReceipt" class="refund-hint">确认收货前也可直接「申请退款」，商家审核后按原路退回</small>
           </div>
           <!-- 售后/退款申请表单：紧贴操作按钮下方（点哪个按钮就在哪展开，不再跳到页面顶部）。
