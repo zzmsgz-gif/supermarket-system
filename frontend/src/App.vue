@@ -29,7 +29,7 @@
              router-link 渲染成带 href 的真链接 → 用户能右键复制链接 / 新标签打开，
              搜索引擎也能当作站内跳转线索。div+@click 出来的东西两者都给不了。 -->
         <router-link to="/shop" class="brand brand-link" title="回到首页" aria-label="回到首页">
-          <img src="/logo.svg" class="brand-logo" alt="超市购物系统" />
+          <img src="/logo-mark.png" class="brand-logo" alt="好玛特鲜生" />
           <div>
             <strong>超市购物系统</strong>
             <small>Supermarket Mall</small>
@@ -220,7 +220,7 @@
       <div class="footer-inner">
         <div class="footer-brand">
           <div class="footer-logo">
-            <img src="/logo.svg" class="brand-logo footer-logo-img" alt="超市购物系统" />
+            <img src="/logo-mark.png" class="brand-logo footer-logo-img" alt="好玛特鲜生" />
             <span>超市购物系统</span>
           </div>
           <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>

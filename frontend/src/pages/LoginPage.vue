@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-logo" role="button" tabindex="0" title="回到首页" aria-label="回到首页"
          @click="appCtx.navigate('shop')" @keydown.enter.prevent="appCtx.navigate('shop')">
-      <img src="/logo-full.svg" alt="超市购物系统" />
+      <img src="/logo-full.png" alt="好玛特鲜生" />
     </div>
     <div class="modal auth-modal" role="dialog" aria-modal="true">
       <button v-if="!forcedChange" class="modal-close" type="button" @click="back" aria-label="关闭">×</button>

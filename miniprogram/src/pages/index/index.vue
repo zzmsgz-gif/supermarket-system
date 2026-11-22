@@ -753,7 +753,7 @@ onReachBottom(() => {
   align-items: center;
 }
 .brand-mark {
-  /* 现在是真的 logo 图（/static/logo-icon.png，圆角渐变底 + 购物袋，图标本身已居中），
+  /* 品牌 logo（/static/logo-icon.png，深绿圆角底 + 购物袋，与微信头像同源），
      图本身带圆角，这里只控制尺寸与间距 */
   width: 44rpx;
   height: 44rpx;
