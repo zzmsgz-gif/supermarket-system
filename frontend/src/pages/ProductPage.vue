@@ -224,7 +224,7 @@
 
 <script>
 import { inject } from 'vue';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 export default {
   name: 'ProductPage',
   setup() {
@@ -394,6 +394,10 @@ export default {
       const pay = Number(detailPrice.value || 0);
       return salePrice.value > pay ? salePrice.value - pay : 0;
     });
+    // 动态设置浏览器标题：进入商品详情时改为「商品名 - 好玛特鲜生」，便于分享/SEO/多标签区分。
+    watch(() => appCtx.productDetail.data?.name, (name) => {
+      document.title = name ? `${name} - 好玛特鲜生` : '好玛特鲜生';
+    }, { immediate: true });
     return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, salePrice, saveVsSale, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
   }
 };

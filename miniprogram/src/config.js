@@ -35,9 +35,9 @@ export const API_ORIGIN = PROD_API_HOST
 export const APP_ID = 'wx3a6edd169faeba2e'
 
 // 全站品牌名：首页、登录页统一引用它。
-// 2026-11-08 之前小程序叫「好玛特鲜生」、web 端叫「超市购物系统」，两端不一致（用户反馈"名字不对"）。
+// 2026-11-22 两端统一为「好玛特鲜生」（此前两端都叫过「超市购物系统」等别名，用户反馈名字不一致）。
 // ⚠️ pages.json 里的 navigationBarTitleText 是静态 JSON，改名时要一起改。
-export const BRAND_NAME = '超市购物系统'
+export const BRAND_NAME = '好玛特鲜生'
 
 // 把后端返回的相对路径图片拼成可访问地址。
 // 关键：图片资源分两类，不能都走 /api 前缀，否则后端 SecurityConfig 未放行的路径会 401。

@@ -136,7 +136,7 @@
       <div class="pay-qr-card">
         <div class="pay-head">
           <span class="pay-method" :class="qrChannel === 'ALIPAY' ? 'alipay' : 'wechat'">{{ qrMethodLabel }}</span>
-          <h3>向「超市购物系统」付款</h3>
+          <h3>向「好玛特鲜生」付款</h3>
         </div>
         <div class="pay-amount">{{ money(order.payAmount) }}</div>
         <div class="pay-qr">

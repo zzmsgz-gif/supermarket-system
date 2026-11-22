@@ -89,7 +89,7 @@
                 <span class="pay-method" :class="recharge.method === 'ALIPAY' ? 'alipay' : 'wechat'">
                   {{ methodLabel(recharge.method) }}
                 </span>
-                <h3>向「超市购物系统」付款</h3>
+                <h3>向「好玛特鲜生」付款</h3>
               </div>
               <div class="pay-amount">{{ money(recharge.order?.amount || 0) }}</div>
               <div class="pay-qr">

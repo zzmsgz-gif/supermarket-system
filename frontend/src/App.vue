@@ -31,8 +31,8 @@
         <router-link to="/shop" class="brand brand-link" title="回到首页" aria-label="回到首页">
           <img src="/logo-mark.png" class="brand-logo" alt="好玛特鲜生" />
           <div>
-            <strong>超市购物系统</strong>
-            <small>Supermarket Mall</small>
+            <strong>好玛特鲜生</strong>
+            <small>HAOMART</small>
           </div>
         </router-link>
 
@@ -165,8 +165,8 @@
          那两页各自需要一个 H1，否则最该被收录的两个页面反而一个标题都没有
          （2026-10-07 第 14 条：外部检测报 h1Count=0，根因就在这个 v-if）。
          用 .sr-only 视觉隐藏：H1 是给爬虫和无障碍读屏用的，不该改变页面视觉。 -->
-      <h1 v-if="view === 'shop'" class="sr-only">{{ currentTitle.title }} · 超市购物系统</h1>
-      <h1 v-else-if="view === 'product'" class="sr-only">{{ productDetail.data?.name || '商品详情' }} · 超市购物系统</h1>
+      <h1 v-if="view === 'shop'" class="sr-only">{{ currentTitle.title }} · 好玛特鲜生</h1>
+      <h1 v-else-if="view === 'product'" class="sr-only">{{ productDetail.data?.name || '商品详情' }} · 好玛特鲜生</h1>
       <header class="topbar" v-if="view !== 'product' && view !== 'shop' && view !== 'login'">
         <h1>{{ currentTitle.title }}</h1>
         <button v-if="['orders', 'coupons', 'points', 'favorites', 'messages'].includes(view)" class="ghost" @click="refreshCurrentPage">刷新</button>
@@ -221,9 +221,9 @@
         <div class="footer-brand">
           <div class="footer-logo">
             <img src="/logo-mark.png" class="brand-logo footer-logo-img" alt="好玛特鲜生" />
-            <span>超市购物系统</span>
+            <span>好玛特鲜生</span>
           </div>
-          <p>Supermarket Mall · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
+          <p>HAOMART · 让每一次下单都简单可靠。产地直采、冷链到家，把新鲜交还给每一个清晨。</p>
           <form class="footer-sub" novalidate @submit.prevent="footerSubscribe">
             <input v-model="subEmail" type="email" placeholder="输入邮箱，订阅促销情报" aria-label="订阅邮箱" />
             <button type="button" @click="footerSubscribe">订阅</button>
@@ -259,7 +259,7 @@
           </div>
         </div>
       </div>
-      <div class="footer-copy">© 2026 Supermarket Mall 超市购物系统 · 新鲜好物，一站购齐</div>
+      <div class="footer-copy">© 2026 HAOMART 好玛特鲜生 · 新鲜好物，一站购齐</div>
     </footer>
 
     <div v-if="confirmDialog.open" class="modal-mask modal-mask--float" @click.self="resolveConfirm(false)">
