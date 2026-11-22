@@ -185,15 +185,20 @@
           <view class="p-cover-wrap">
             <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
             <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <view class="p-fav" :class="{ on: isFaved(p.id) }" @click.stop="toggleFav(p)">
+              <text class="p-fav-ico">{{ isFaved(p.id) ? '♥' : '♡' }}</text>
+            </view>
             <view class="p-soldout" v-if="(p.stock || 0) <= 0">
               <text class="p-soldout-t">售罄</text>
             </view>
           </view>
           <view class="p-body">
             <text class="p-name">{{ p.name }}</text>
+            <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
             <view class="p-price-row">
-              <text class="p-price">¥{{ p.price }}</text>
-              <text class="p-origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+              <text class="p-origin" v-if="memberView(p) || showOrigin(p)">¥{{ p.price }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ (memberView(p).rate * 10).toFixed(1) }}折</text>
             </view>
             <view class="p-foot">
               <text class="p-sales">{{ salesText(p) }}</text>
@@ -263,6 +268,9 @@ import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
+import { getMemberProfile } from '@/api/member'
+import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
+import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'
 import { fullUrl, BRAND_NAME } from '@/config'
 import { flashStateLabel, formatCountdown } from '@/utils/format'
@@ -301,6 +309,69 @@ const popId = ref(null)
 // 系统公告（后台「内容管理 → 公告」维护）：顶部竖向轮播条 + 点击看全文
 const noticeList = ref([])
 const noticeOpen = ref(false)
+
+// 当前用户会员信息（只拉一次，供首页所有卡片共用）：游客为 null，卡片显示原价。
+// 后端 /member/profile 直接给 memberLevel / discountRate，不用前端维护等级常量表。
+const memberProfile = ref(null)
+
+// 已收藏商品 id（卡片右上角心形）：与详情页共用同一套接口，登录时拉一次
+const favoriteIds = ref([])
+const favBusy = ref(false)
+
+async function loadFavorites() {
+  if (!isLoggedIn()) { favoriteIds.value = []; return }
+  try {
+    const ids = await listFavoriteIds()
+    favoriteIds.value = Array.isArray(ids) ? ids : []
+  } catch (e) {
+    favoriteIds.value = []
+  }
+}
+
+function isFaved(id) {
+  return favoriteIds.value.includes(id)
+}
+
+async function toggleFav(p) {
+  if (favBusy.value) return
+  if (!requireLogin('收藏商品')) return
+  favBusy.value = true
+  try {
+    if (isFaved(p.id)) {
+      await removeFavorite(p.id)
+      favoriteIds.value = favoriteIds.value.filter((x) => x !== p.id)
+    } else {
+      await addFavorite(p.id)
+      favoriteIds.value = [...favoriteIds.value, p.id]
+    }
+  } catch (e) {
+    // 失败保持原状态
+  } finally {
+    favBusy.value = false
+  }
+}
+
+/**
+ * 会员实付价视图（与 PC 端 productMemberView / 后端 unitPriceFor 同口径）：
+ *   min(商品专属会员价, 售价 × 等级折扣)，两者取低、不叠加。
+ * 游客或非会员返回 null —— 卡片走原价展示。
+ * 秒杀行不在这里处理：秒杀价优先且更低，卡片另有 flash 分支。
+ */
+function memberView(p) {
+  const prof = memberProfile.value
+  if (!prof || !Number(prof.memberLevel)) return null
+  const base = Number(p && p.price || 0)
+  if (!base) return null
+  const rate = Number(prof.discountRate || 1)
+  if (!(rate > 0 && rate < 1)) return null
+  const mp = Number(p.memberPrice || 0)
+  let price = base
+  if (mp > 0 && mp < price) price = mp
+  const levelPrice = Math.round(base * rate * 100) / 100
+  if (levelPrice < price) price = levelPrice
+  if (price >= base) return null
+  return { price: price.toFixed(2), rate }
+}
 
 function openNotice() {
   if (!noticeList.value.length) return
@@ -434,16 +505,22 @@ async function load() {
       return fallback
     }
   }
-  const [cats, bn, fs, nts] = await Promise.all([
+  // 会员信息/收藏只拉一次供所有卡片共用；游客不请求（避免 401），直接走原价/空收藏
+  const profilePromise = isLoggedIn() ? getMemberProfile() : Promise.resolve(null)
+  const [cats, bn, fs, nts, prof, favIds] = await Promise.all([
     grab(listCategories(), [], '分类'),
     grab(listBanners(), [], '轮播'),
     grab(listFlashSales(), [], '秒杀'),
-    grab(listAnnouncements(), [], '公告')
+    grab(listAnnouncements(), [], '公告'),
+    grab(profilePromise, null, '会员信息'),
+    grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
+  memberProfile.value = prof || null
+  favoriteIds.value = Array.isArray(favIds) ? favIds : []
 
   // 2026-11-22：分类楼层已移除，首页直接是一条全部商品的随机流，这里不再按分类循环取数
   // （顺带省掉 11 个接口请求，首屏更快）。
@@ -1387,6 +1464,22 @@ onReachBottom(() => {
   padding: 2rpx 10rpx;
   border-radius: 8rpx;
 }
+/* 收藏心形：与 PC 卡片右上角一致，游客点了走 requireLogin 引导 */
+.p-fav {
+  position: absolute;
+  right: 12rpx;
+  top: 12rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #9CA3AF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.p-fav.on { color: #C0392B; }
+.p-fav-ico { font-size: 30rpx; line-height: 1; }
 .p-soldout {
   position: absolute;
   left: 0;
@@ -1429,11 +1522,31 @@ onReachBottom(() => {
   color: #C0392B;
   font-weight: 500;
 }
+.p-sub {
+  display: block;
+  font-size: 21rpx;
+  color: #9CA3AF;
+  line-height: 1.3;
+  margin-top: 4rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .p-origin {
   font-size: 20rpx;
   color: #9CA3AF;
   text-decoration: line-through;
   margin-left: 8rpx;
+}
+/* 会员折扣标签：与 PC 卡片「X折会员价」同语义，小尺寸下只放折率 */
+.p-vip {
+  font-size: 18rpx;
+  color: #0F6E56;
+  background: #E1F5EE;
+  border-radius: 6rpx;
+  padding: 2rpx 6rpx;
+  margin-left: 8rpx;
+  line-height: 1.4;
 }
 .p-foot {
   display: flex;

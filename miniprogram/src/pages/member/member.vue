@@ -13,7 +13,7 @@
 
     <view class="card" v-if="profile">
       <view class="prog-t" v-if="profile.nextLevelName">
-        距「{{ profile.nextLevelName }}」还需消费 ¥{{ profile.nextLevelThreshold }}
+        距「{{ profile.nextLevelName }}」还需消费 ¥{{ amountToNext }}
       </view>
       <view class="bar" v-if="profile.nextLevelName">
         <view class="bar-in" :style="{ width: progressPct + '%' }"></view>
@@ -58,6 +58,16 @@ const memberDays = ref([])
 function goPoints() {
   uni.navigateTo({ url: '/pages/points/points' })
 }
+
+// 距下一等级还差多少消费额：后端给的是「下一档门槛」和「累计消费」，
+// 差额要自己算 —— 以前直接显示门槛（写死 ¥5000），用户累计消费 ¥1009 还显示差 ¥5000，
+// 与 PC 端 PointsPage 的 nextLevelThreshold - totalSpent 口径一致。
+const amountToNext = computed(() => {
+  const p = profile.value
+  if (!p || !p.nextLevelName) return '0.00'
+  const gap = Number(p.nextLevelThreshold || 0) - Number(p.totalSpent || 0)
+  return (gap > 0 ? gap : 0).toFixed(2)
+})
 
 const progressPct = computed(() => {
   const p = profile.value && profile.value.progressToNext
