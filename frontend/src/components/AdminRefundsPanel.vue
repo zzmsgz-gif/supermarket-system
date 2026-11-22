@@ -99,7 +99,6 @@ onMounted(() => {
                     <img v-if="r.itemCoverUrl" :src="r.itemCoverUrl" class="rp-item-img" alt="商品" loading="lazy" decoding="async" />
                     <div class="rp-item-text">
                       <div class="rp-item-name">{{ r.itemProductName }}</div>
-                      <small>{{ money(r.itemUnitPrice) }} × {{ r.itemQuantity }}</small>
                     </div>
                   </div>
                 </template>
