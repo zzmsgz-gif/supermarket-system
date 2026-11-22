@@ -51,6 +51,7 @@
           <AdminActivitiesPanel v-if="adminMenu === 'activities'" :api="api" :activity-discount-label="activityDiscountLabel" :activity-form="activityForm" :activity-products="activityProducts" :activity-scope-label="activityScopeLabel" :activity-type-label="activityTypeLabel" :admin-activities="adminActivities" v-model:admin-activity-jump-page="adminActivityJumpPage" v-model:admin-activity-keyword="adminActivityKeyword" :admin-activity-total-pages="adminActivityTotalPages" :categories="categories" :change-admin-activity-page="changeAdminActivityPage" :change-admin-activity-page-size="changeAdminActivityPageSize" :delete-activity="deleteActivity" :edit-activity="editActivity" :fill-activity-period="fillActivityPeriod" :on-activity-scope-change="onActivityScopeChange" :reset-activity-form="resetActivityForm" :reset-admin-activity-search="resetAdminActivitySearch" :save-activity="saveActivity" :search-admin-activities="searchAdminActivities" :toggle-activity="toggleActivity"/>
 
           <AdminNoticesPanel v-if="adminMenu === 'notices'" :admin-ctx="adminCtx" :notice-type-label="noticeTypeLabel" :notice-type-class="noticeTypeClass" />
+          <AdminLegalPanel v-if="adminMenu === 'legal'" :admin-ctx="adminCtx" />
           <AdminHotSearchesPanel v-if="adminMenu === 'hotSearches'" :admin-ctx="adminCtx" />
 
           <!-- 首页氛围：切换 hero 区节日装饰（日常/中秋/关闭）。配置走后端 system_config.festive_theme，
@@ -98,6 +99,7 @@ const AdminInsightsPanel = defineAsyncComponent(() => import('./AdminInsightsPan
 const AdminProductsPanel = defineAsyncComponent(() => import('./AdminProductsPanel.vue'));
 const AdminBannersPanel = defineAsyncComponent(() => import('./AdminBannersPanel.vue'));
 const AdminNoticesPanel = defineAsyncComponent(() => import('./AdminNoticesPanel.vue'));
+const AdminLegalPanel = defineAsyncComponent(() => import('./AdminLegalPanel.vue'));
 const AdminHotSearchesPanel = defineAsyncComponent(() => import('./AdminHotSearchesPanel.vue'));
 const AdminRefundsPanel = defineAsyncComponent(() => import('./AdminRefundsPanel.vue'));
 const AdminReviewsPanel = defineAsyncComponent(() => import('./AdminReviewsPanel.vue'));
@@ -157,6 +159,7 @@ const adminIcons = {
   banners: adminIcon('<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M3 9.5h18M7.5 13.5h4"/><path d="M8 20.5 12 17l4 3.5"/>'),
   reviews: adminIcon('<path d="M12 3.6 14.5 9l6 .9-4.3 4.1 1 6-5.2-2.8L6.8 20l1-6-4.3-4.1 6-.9L12 3.6z"/>'),
   festive: adminIcon('<path d="M12 3v3M12 18v3M4.2 7.2l2.1 2.1M17.7 14.7l2.1 2.1M3 12h3M18 12h3M4.2 16.8l2.1-2.1M17.7 9.3l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/>'),
+  legal: adminIcon('<path d="M6 3.5h9L19 7v13.5H6a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M15 3.5V7h4"/><path d="M8 11h7M8 14.5h7M8 18h4"/>'),
 };
 
 const adminMenuItems = computed(() => [
@@ -176,6 +179,7 @@ const adminMenuItems = computed(() => [
   { key: 'festive', label: '首页氛围', desc: '切换首页 hero 区的节日装饰：日常特效 / 中秋特效 / 关闭，切完前台即时生效', group: '管理' },
   { key: 'stores', label: '门店自提', desc: '维护门店/自提点：名称、地址、营业时间与自提须知，停用后前台不可选', group: '管理', badge: adminStores.value.filter((s) => s.status === 1).length || '' },
   { key: 'banners', label: '轮播管理', desc: '维护首页轮播位：图片、文案、跳转商品与排序', group: '管理', badge: adminBanners.value.length || '' },
+  { key: 'legal', label: '协议与隐私', desc: '编辑用户协议与隐私政策正文（含加粗/小节排版规则），保存后 PC 与小程序同时生效', group: '管理' },
   { key: 'users', label: '用户管理', desc: '查看账号余额，启用或禁用账号', group: '管理', badge: (adminUsers.total || 0) || '' },
   { key: 'passwordResets', label: '找回密码', desc: '核对身份后重置为一次性临时密码，用户首次登录强制改密', group: '管理', badge: passwordResets.pending || '', warn: true },
 ]);

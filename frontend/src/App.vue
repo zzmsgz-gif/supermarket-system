@@ -710,7 +710,7 @@ const { flashSales, nowTick, runningFlashSales, FLASH_TICK_WINDOW_SECONDS, loadF
 const { hotProducts, newProducts, guessProducts, dwellRankProducts, CHANNEL_PAGE, channelPool, channelCursor, channelRefs, channelPage, loadChannel, rotateChannel, channelRotatable, loadHot, loadNew, loadGuess, loadDwellRank, loadHomeChannels } = useChannels();
 
 const ROUTE_VIEWS = ['shop', 'product', 'cart', 'checkout', 'orders', 'coupons', 'addresses', 'recharge', 'points', 'amountRecords', 'profile', 'returns', 'favorites', 'messages', 'terms', 'privacy', 'admin'];
-const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'festive', 'stores', 'banners', 'users', 'passwordResets'];
+const ADMIN_MENU_KEYS = ['insights', 'orders', 'refunds', 'reviews', 'stock', 'products', 'categories', 'coupons', 'activities', 'flashSales', 'notices', 'hotSearches', 'memberDays', 'festive', 'stores', 'banners', 'legal', 'users', 'passwordResets'];
 
 // ⚠️ 装配点必须在 ADMIN_MENU_KEYS 定义之后（要用它做 tab 白名单校验）——
 // 放它前面会 TDZ: Cannot access 'ADMIN_MENU_KEYS' before initialization，整页白屏。
