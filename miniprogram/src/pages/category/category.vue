@@ -263,7 +263,10 @@ function goDetail(id) {
 }
 
 onLoad((options) => {
-  startCategoryId = options && options.categoryId ? Number(options.categoryId) : null
+  // 首页「会员专区 → 查看全部」带 vip=1 进来：直接选中会员专区，别让用户自己在侧栏找
+  startCategoryId = options && options.categoryId
+    ? Number(options.categoryId)
+    : (options && options.vip ? VIP_ZONE_ID : null)
   loadCategories()
   refreshCartBadge()
 })

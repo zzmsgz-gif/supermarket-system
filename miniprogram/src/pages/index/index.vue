@@ -172,13 +172,18 @@
           <text class="vipzone-t">会员专区</text>
           <text class="vipzone-sub">{{ memberProfile ? '专属会员价' : '开通会员享专属价' }}</text>
         </view>
+        <!-- 首页只铺 4 件，剩下的进分类页会员专区看（带 vip=1，落地自动选中该分类） -->
+        <view class="vipzone-more" v-if="vipProducts.length > VIP_PREVIEW_SIZE" @click="goVipZoneAll">
+          <text>查看全部</text>
+          <text class="vipzone-more-arrow">›</text>
+        </view>
       </view>
       <!-- 卡片与下方「全部商品」完全同款同尺寸（336rpx 双列）：
            同一批商品不该有两套卡。用户反馈「会员卡要跟普通卡一样大」，故弃用 232rpx 横滑小卡。
            ⚠️ 这段 pcard 与文件末尾「全部商品」的 pcard 必须同步改，否则又会出现两套卡。 -->
       <view class="grid vipzone-grid">
         <view
-          v-for="p in vipProducts"
+          v-for="p in vipPreview"
           :key="'vip-' + p.id"
           class="pcard"
           @click="goDetail(p.id)"
@@ -362,6 +367,8 @@ const feedHasMore = ref(true)
 // 页容量取 20：销量前列的商品基本都已经在楼层里，一页 10 个过滤完只剩 4 个左右，
 // 用户要上拉十几次才能到底，翻起来很累。
 const FEED_SIZE = 20
+// 首页会员专区展示件数：双列卡一行 2 件，2 行 = 4 件，再多会把「全部商品」推得太靠下
+const VIP_PREVIEW_SIZE = 4
 const addingId = ref(null)
 // 加号动画：popId 单独控制（不用 addingId —— 请求快时它一闪就空，动画来不及播）
 const popId = ref(null)
@@ -369,8 +376,11 @@ const popId = ref(null)
 const noticeList = ref([])
 const noticeOpen = ref(false)
 
-// 会员专区横滑商品（有专属会员价的那批）：与商品流并行拉一次
+// 会员专区商品（有专属会员价的那批）：与商品流并行拉一次全量（分类页会员专区同源）
 const vipProducts = ref([])
+// 首页只铺 2 行（4 件）做曝光，剩下的走「查看全部」进分类页会员专区
+// 不能在模板里写 vipProducts.slice(0,4) —— 小程序 wxml 不支持调用 JS 方法
+const vipPreview = computed(() => vipProducts.value.slice(0, VIP_PREVIEW_SIZE))
 
 // 已收藏商品 id（卡片右上角心形）：与详情页共用同一套接口，登录时拉一次
 const favoriteIds = ref([])
@@ -783,6 +793,12 @@ function goSearch(keyword, categoryId) {
 
 function goDetail(id) {
   uni.navigateTo({ url: '/pages/product/detail?id=' + id })
+}
+
+// 「查看全部」→ 分类页会员专区。带 vip=1 让落地页 onLoad 自动选中该分类，
+// 只跳分类页首页让用户自己找侧栏 = 半成品（本项目的固定约定）
+function goVipZoneAll() {
+  uni.navigateTo({ url: '/pages/category/category?vip=1' })
 }
 
 function onBanner(b) {
@@ -1318,6 +1334,18 @@ onReachBottom(() => {
   font-size: 21rpx;
   color: #B08A3A;
   margin-left: 12rpx;
+}
+/* 「查看全部」：与标题同一行右端，金色文字 + 箭头，点击进分类页会员专区 */
+.vipzone-more {
+  display: flex;
+  align-items: center;
+  font-size: 21rpx;
+  color: #8A5A00;
+}
+.vipzone-more-arrow {
+  margin-left: 4rpx;
+  font-size: 24rpx;
+  line-height: 1;
 }
 /* 容器已自带 margin，网格不再加水平 padding，卡片才能与主商品流左右严格对齐。
    ⚠️ 选择器必须带 .vipzone 前缀：.grid 的定义在文件更后面，同权重会被它覆盖（踩过）。 */
