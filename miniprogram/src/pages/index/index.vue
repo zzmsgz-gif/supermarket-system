@@ -162,6 +162,39 @@
       </scroll-view>
     </view>
 
+    <!-- ===== 会员专区（横滑）：只放标了专属会员价的商品 =====
+         与下面的商品随机流并存 —— 会员商品本来就在流里，但占比低（5/105 ≈ 5%），
+         随机下常常几屏都刷不到；这里给一条固定曝光位，让会员价有稳定的露出。
+         游客也能看到（价格显示原价 + 会员价提示），是开通会员的转化入口。 -->
+    <view class="vipzone" v-if="vipProducts.length">
+      <view class="vipzone-head">
+        <view class="vipzone-title-wrap">
+          <text class="vipzone-t">会员专区</text>
+          <text class="vipzone-sub">{{ memberProfile ? '专属会员价' : '开通会员享专属价' }}</text>
+        </view>
+      </view>
+      <scroll-view scroll-x class="vipzone-scroll" :show-scrollbar="false">
+        <view v-for="p in vipProducts" :key="'vip-' + p.id" class="vcard" @click="goDetail(p.id)">
+          <view class="v-cover-wrap">
+            <image class="v-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+            <text class="v-badge">会员</text>
+          </view>
+          <view class="v-info">
+            <text class="v-name">{{ p.name }}</text>
+            <view class="v-price-row">
+              <text class="v-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+              <text class="v-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+            </view>
+            <text class="v-tip" v-if="!memberView(p) && Number(p.memberPrice || 0) > 0">
+              会员价 ¥{{ p.memberPrice }}
+            </text>
+            <text class="v-tip v-tip-tier" v-else-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+          </view>
+        </view>
+        <view class="vipzone-tail"></view>
+      </scroll-view>
+    </view>
+
     <!-- 热搜模块已按需求移除（2026-11-08）：首页不再展示热搜词条。
          api/hotSearch 与后台热搜管理仍然保留，以后想恢复只需把这段 scroll-view 加回来。 -->
 
@@ -270,7 +303,8 @@ import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
-import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
+// memberProfile 也要 import：模板里「会员专区」副标题按它切换文案（会员→专属会员价 / 游客→开通入口）
+import { ensureMemberProfile, memberView, memberLabel, memberProfile } from '@/utils/memberPrice'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'
@@ -311,6 +345,9 @@ const popId = ref(null)
 // 系统公告（后台「内容管理 → 公告」维护）：顶部竖向轮播条 + 点击看全文
 const noticeList = ref([])
 const noticeOpen = ref(false)
+
+// 会员专区横滑商品（有专属会员价的那批）：与商品流并行拉一次
+const vipProducts = ref([])
 
 // 已收藏商品 id（卡片右上角心形）：与详情页共用同一套接口，登录时拉一次
 const favoriteIds = ref([])
@@ -483,18 +520,22 @@ async function load() {
     }
   }
   // 会员信息/收藏只拉一次供所有卡片共用；游客不请求（避免 401），直接走原价/空收藏
-  const [cats, bn, fs, nts, favIds] = await Promise.all([
+  // 会员专区（横滑）与商品流是两条独立数据源：专区固定取有专属会员价的商品，
+  // 商品流仍是全量随机 —— 会员商品本来就混在流里，专区只是额外给个曝光位
+  const [cats, bn, fs, nts, favIds, vips] = await Promise.all([
     grab(listCategories(), [], '分类'),
     grab(listBanners(), [], '轮播'),
     grab(listFlashSales(), [], '秒杀'),
     grab(listAnnouncements(), [], '公告'),
-    grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏')
+    grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏'),
+    grab(listProducts({ memberOnly: true, size: 10 }), { items: [] }, '会员专区')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
   flashSales.value = (fs || []).map((f) => ({ ...f, remaining: f.countdownSeconds || 0 }))
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
   favoriteIds.value = Array.isArray(favIds) ? favIds : []
+  vipProducts.value = (vips && vips.items) || []
   await memberReady
 
   // 2026-11-22：分类楼层已移除，首页直接是一条全部商品的随机流，这里不再按分类循环取数
@@ -1222,6 +1263,104 @@ onReachBottom(() => {
 .flash-scroll {
   white-space: nowrap;
 }
+
+/* ---------- 会员专区（横滑） ---------- */
+.vipzone {
+  margin: 0 24rpx 24rpx;
+  padding: 22rpx 0 20rpx 22rpx;
+  background: linear-gradient(180deg, #FFFDF7, #FFF9EC);
+  border: 2rpx solid #F0E2C2;
+  border-radius: 20rpx;
+}
+.vipzone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 22rpx;
+  margin-bottom: 18rpx;
+}
+.vipzone-title-wrap {
+  display: flex;
+  align-items: baseline;
+}
+.vipzone-t {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #8A5A00;
+  letter-spacing: 1rpx;
+}
+.vipzone-sub {
+  font-size: 21rpx;
+  color: #B08A3A;
+  margin-left: 12rpx;
+}
+.vipzone-scroll {
+  white-space: nowrap;
+}
+.vcard {
+  display: inline-block;
+  width: 232rpx;
+  background: #FFFFFF;
+  border-radius: 16rpx;
+  margin-right: 16rpx;
+  overflow: hidden;
+  vertical-align: top;
+}
+.v-cover-wrap {
+  position: relative;
+  width: 232rpx;
+  height: 232rpx;
+}
+.v-cover {
+  width: 232rpx;
+  height: 232rpx;
+  background: #F6F2E9;
+}
+.v-badge {
+  position: absolute;
+  left: 10rpx;
+  top: 10rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  background: #C8912E;
+  color: #FFFFFF;
+  font-size: 19rpx;
+}
+.v-info {
+  padding: 12rpx 14rpx 16rpx;
+}
+.v-name {
+  display: block;
+  font-size: 24rpx;
+  color: #111827;
+  line-height: 1.35;
+  height: 64rpx;
+  overflow: hidden;
+}
+.v-price-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 6rpx;
+}
+.v-price {
+  font-size: 30rpx;
+  color: #C0392B;
+  font-weight: 600;
+}
+.v-origin {
+  font-size: 19rpx;
+  color: #9CA3AF;
+  text-decoration: line-through;
+  margin-left: 8rpx;
+}
+.v-tip {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 19rpx;
+  color: #B08A3A;
+}
+.v-tip-tier { color: #0F6E56; }
+.vipzone-tail { display: inline-block; width: 22rpx; height: 1rpx; }
 .fcard {
   display: inline-block;
   width: 232rpx;
