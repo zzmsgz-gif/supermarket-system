@@ -37,9 +37,11 @@ public class ProductController {
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
             @RequestParam(required = false) String brand,
-            @RequestParam(required = false) String sort
+            @RequestParam(required = false) String sort,
+            // 会员专区：只要标了专属会员价（member_price > 0）的在售商品
+            @RequestParam(required = false, defaultValue = "false") boolean memberOnly
     ) {
-        return ApiResponse.ok(productService.searchProducts(page, size, categoryId, keyword, minPrice, maxPrice, brand, sort));
+        return ApiResponse.ok(productService.searchProducts(page, size, categoryId, keyword, minPrice, maxPrice, brand, sort, memberOnly));
     }
 
     @GetMapping("/hot")

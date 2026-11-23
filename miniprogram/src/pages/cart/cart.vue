@@ -84,7 +84,7 @@
               <view class="reco-price-wrap">
                 <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || fmt(p.price) }}</text>
                 <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="reco-vip" v-if="memberView(p)">{{ memberRateText(memberView(p)) }}</text>
+                <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
@@ -205,7 +205,7 @@ import { listHotProducts } from '@/api/product'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { formatAmount } from '@/utils/format'
-import { ensureMemberProfile, memberView, memberRateText } from '@/utils/memberPrice'
+import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
 
 const items = ref([])
 

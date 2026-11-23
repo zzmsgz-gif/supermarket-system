@@ -35,10 +35,11 @@
         <text class="p-origin" v-if="showEffectiveOriginal">¥{{ effectiveOriginal }}</text>
         <text class="p-off" v-if="discountSave > 0">立省 ¥{{ discountSave }}<text class="p-rate" v-if="discountRate">· {{ discountRate }} 折</text></text>
       </view>
-      <!-- 会员已生效：主价已是折后价，这里只需说明来源，不再重复挂一个「会员价 ¥X」造成两个价混淆 -->
+      <!-- 会员已生效：主价已是折后价，这里只说明来源。
+           来源不同说法不同：专属会员价 → 「会员专享价」；等级折扣 → 「银卡9.8折」 -->
       <view class="member-row" v-if="priceView">
-        <text class="m-badge">会员价</text>
-        <text class="m-price">{{ memberRateText(priceView) }} 已生效</text>
+        <text class="m-badge">{{ priceView.source === 'member' ? '会员专享价' : (shortTier(priceView.levelName) + ' ' + memberRateText(priceView)) }}</text>
+        <text class="m-price">已生效</text>
         <text class="m-tip">已为你省 ¥{{ memberSave }}</text>
       </view>
       <!-- 游客/普通用户：仍给升级引导（商品专属会员价） -->
@@ -204,7 +205,7 @@
               <view class="reco-price-wrap">
                 <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
                 <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="reco-vip" v-if="memberView(p)">{{ memberRateText(memberView(p)) }}</text>
+                <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
@@ -242,7 +243,7 @@ import { request } from '@/api/request'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { starString, formatTime } from '@/utils/format'
-import { ensureMemberProfile, memberView, memberRateText } from '@/utils/memberPrice'
+import { ensureMemberProfile, memberView, memberRateText, memberLabel, shortTier } from '@/utils/memberPrice'
 
 const product = ref(null)
 // 生效中的活动（商品角标用）

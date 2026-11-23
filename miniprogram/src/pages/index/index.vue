@@ -198,7 +198,7 @@
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
               <text class="p-origin" v-if="memberView(p) || showOrigin(p)">¥{{ p.price }}</text>
-              <text class="p-vip" v-if="memberView(p)">{{ (memberView(p).rate * 10).toFixed(1) }}折</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
             </view>
             <view class="p-foot">
               <text class="p-sales">{{ salesText(p) }}</text>
@@ -268,7 +268,7 @@ import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
 import { addToCart } from '@/api/cart'
-import { ensureMemberProfile, memberView } from '@/utils/memberPrice'
+import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'

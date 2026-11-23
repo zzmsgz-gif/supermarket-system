@@ -95,10 +95,18 @@ public class ProductService {
             int page, int size, Long categoryId, String keyword,
             BigDecimal minPrice, BigDecimal maxPrice, String brand, String sort
     ) {
+        return searchProducts(page, size, categoryId, keyword, minPrice, maxPrice, brand, sort, false);
+    }
+
+    /** 带「仅会员价商品」筛选的版本（会员专区用）。 */
+    public PageResponse<ProductSummaryResponse> searchProducts(
+            int page, int size, Long categoryId, String keyword,
+            BigDecimal minPrice, BigDecimal maxPrice, String brand, String sort, boolean memberOnly
+    ) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         List<Long> categoryIds = expandCategoryIds(categoryId);
-        Specification<Product> spec = buildPublicSearchSpec(categoryIds, keyword, minPrice, maxPrice, brand);
+        Specification<Product> spec = buildPublicSearchSpec(categoryIds, keyword, minPrice, maxPrice, brand, memberOnly);
         // 首页「每次进来换一批」：走固定 seed 洗牌，见 randomSlice 的注释
         if (isRandomSort(sort)) {
             return randomSlice(spec, safePage, safeSize, parseSeed(sort));
@@ -377,7 +385,8 @@ public class ProductService {
     }
 
     private Specification<Product> buildPublicSearchSpec(
-            List<Long> categoryIds, String keyword, BigDecimal minPrice, BigDecimal maxPrice, String brand
+            List<Long> categoryIds, String keyword, BigDecimal minPrice, BigDecimal maxPrice, String brand,
+            boolean memberOnly
     ) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -395,6 +404,11 @@ public class ProductService {
             }
             if (StringUtils.hasText(brand)) {
                 predicates.add(cb.equal(cb.lower(root.get("brand")), brand.trim().toLowerCase()));
+            }
+            // 会员专区：只取标了专属会员价的商品（member_price 非空且 > 0）
+            if (memberOnly) {
+                predicates.add(cb.isNotNull(root.get("memberPrice")));
+                predicates.add(cb.greaterThan(root.get("memberPrice"), BigDecimal.ZERO));
             }
             if (StringUtils.hasText(keyword)) {
                 String pattern = "%" + keyword.trim().toLowerCase() + "%";

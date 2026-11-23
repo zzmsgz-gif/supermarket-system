@@ -38,15 +38,41 @@ export function memberView(product, basePrice) {
   const rate = Number(prof.discountRate || 1)
   if (!(rate > 0 && rate < 1)) return null
   const mp = Number(product && product.memberPrice || 0)
+  // source 决定标签文案：商品自己标了更低的会员价 → 'member'（挂「会员价」）；
+  // 否则是等级折扣更低 → 'tier'（挂「银卡9.8折」）。
+  // 不能一律写成「9.8折」—— 走专属会员价的商品用折率表达会与实际金额对不上。
   let price = base
-  if (mp > 0 && mp < price) price = mp
+  let source = 'tier'
+  if (mp > 0 && mp < price) { price = mp; source = 'member' }
   const levelPrice = Math.round(base * rate * 100) / 100
-  if (levelPrice < price) price = levelPrice
+  if (levelPrice < price) { price = levelPrice; source = 'tier' }
   if (price >= base) return null
-  return { price: price.toFixed(2), rate, original: base.toFixed(2) }
+  return {
+    price: price.toFixed(2),
+    rate,
+    original: base.toFixed(2),
+    source,
+    levelName: prof.levelName || ''
+  }
 }
 
-/** 会员等级折扣文案，如「9.8折」 */
+/** 等级名去掉「会员」二字：银卡会员 → 银卡（与 PC 端 shortTier 一致） */
+export function shortTier(name) {
+  return String(name || '').replace(/会员/g, '')
+}
+
+/** 等级折扣文案，如「9.8折」 */
 export function memberRateText(view) {
   return view ? (view.rate * 10).toFixed(1) + '折' : ''
+}
+
+/**
+ * 价格旁那枚会员标签的统一文案（四处商品卡共用）：
+ *   source='member' → 「会员价」（价格本身已是折后价，小尺寸下不重复写金额）
+ *   source='tier'   → 「银卡9.8折」
+ */
+export function memberLabel(view) {
+  if (!view) return ''
+  if (view.source === 'member') return '会员价'
+  return shortTier(view.levelName) + (view.rate * 10).toFixed(1) + '折'
 }

@@ -17,6 +17,16 @@
         :scroll-with-animation="true"
         :show-scrollbar="false"
       >
+        <!-- 会员专区（虚拟分类，id=-1）：只列标了专属会员价的商品。
+             放在最前面 —— 会员折扣是这套小程序的主打卖点，不该埋在一堆分类下面 -->
+        <view
+          id="side--1"
+          class="side-item side-vip"
+          :class="{ on: activeId === VIP_ZONE_ID }"
+          @click="pick(VIP_ZONE_ID)"
+        >
+          <text class="side-t">会员专区</text>
+        </view>
         <view
           v-for="c in categories"
           :key="c.id"
@@ -55,8 +65,9 @@
             <view class="p-body">
               <text class="p-name">{{ p.name }}</text>
               <view class="p-price-row">
-                <text class="p-price">¥{{ p.price }}</text>
-                <text class="p-origin" v-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+                <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+                <text class="p-origin" v-if="memberView(p) || showOrigin(p)">¥{{ p.price }}</text>
+                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               </view>
               <view class="p-foot">
                 <text class="p-sales">{{ salesText(p) }}</text>
@@ -102,6 +113,7 @@ import { syncCartBadge } from '@/utils/cartBadge'
 import { requireLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 import EmptyState from '@/components/EmptyState/EmptyState.vue'
+import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
 
 const PAGE_SIZE = 20
 
@@ -121,7 +133,11 @@ const cartTipCount = ref(0)
 let cartTipTimer = null
 let startCategoryId = null
 
+// 会员专区是虚拟分类（后端没有这条记录），用一个不会与真实分类 id 冲突的负数标记
+const VIP_ZONE_ID = -1
+
 const activeName = computed(() => {
+  if (activeId.value === VIP_ZONE_ID) return '会员专区'
   const hit = categories.value.find((c) => c.id === activeId.value)
   return hit ? hit.name : '全部商品'
 })
@@ -151,11 +167,11 @@ async function loadPage(target) {
   if (loading.value) return
   loading.value = true
   try {
-    const res = await listProducts({
-      categoryId: activeId.value,
-      page: target,
-      size: PAGE_SIZE
-    })
+    // 会员专区：不传 categoryId，改传 memberOnly=true（后端按 member_price > 0 筛）
+    const params = { page: target, size: PAGE_SIZE }
+    if (activeId.value === VIP_ZONE_ID) params.memberOnly = true
+    else params.categoryId = activeId.value
+    const res = await listProducts(params)
     const items = (res && res.items) || []
     total.value = (res && res.total) || 0
     products.value = target === 1 ? items : products.value.concat(items)
@@ -187,6 +203,7 @@ function loadMore() {
 }
 
 async function loadCategories() {
+  ensureMemberProfile()   // 会员价：与首页/详情共用同一份 profile
   const cats = await listCategories()
   categories.value = cats || []
   const wanted = startCategoryId || (categories.value[0] && categories.value[0].id)
@@ -326,6 +343,22 @@ onPullDownRefresh(async () => {
   color: #0F6E56;
   font-weight: 500;
 }
+/* 会员专区：用浅金底+加粗跟普通分类区分，一眼能看出是特殊入口 */
+.side-vip {
+  background: linear-gradient(90deg, #FFF7E6, #FFFFFF);
+}
+.side-vip .side-t {
+  color: #8A5A00;
+  font-weight: 500;
+}
+.side-vip.on {
+  background: #FFF3DC;
+  border-left-color: #C8912E;
+}
+.side-vip.on .side-t {
+  color: #8A5A00;
+  font-weight: 600;
+}
 .side-pad {
   height: 40rpx;
 }
@@ -425,6 +458,16 @@ onPullDownRefresh(async () => {
   font-size: 28rpx;
   color: #C0392B;
   font-weight: 500;
+}
+/* 会员价标签：文案由 memberLabel 决定（专属会员价→「会员价」/ 等级折扣→「金卡9.5折」） */
+.p-vip {
+  font-size: 18rpx;
+  color: #0F6E56;
+  background: #E1F5EE;
+  border-radius: 6rpx;
+  padding: 2rpx 6rpx;
+  margin-left: 8rpx;
+  line-height: 1.4;
 }
 .p-origin {
   font-size: 19rpx;
