@@ -173,26 +173,49 @@
           <text class="vipzone-sub">{{ memberProfile ? '专属会员价' : '开通会员享专属价' }}</text>
         </view>
       </view>
-      <scroll-view scroll-x class="vipzone-scroll" :show-scrollbar="false">
-        <view v-for="p in vipProducts" :key="'vip-' + p.id" class="vcard" @click="goDetail(p.id)">
-          <view class="v-cover-wrap">
-            <image class="v-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <text class="v-badge">会员</text>
-          </view>
-          <view class="v-info">
-            <text class="v-name">{{ p.name }}</text>
-            <view class="v-price-row">
-              <text class="v-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <text class="v-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+      <!-- 卡片与下方「全部商品」完全同款同尺寸（336rpx 双列）：
+           同一批商品不该有两套卡。用户反馈「会员卡要跟普通卡一样大」，故弃用 232rpx 横滑小卡。
+           ⚠️ 这段 pcard 与文件末尾「全部商品」的 pcard 必须同步改，否则又会出现两套卡。 -->
+      <view class="grid vipzone-grid">
+        <view
+          v-for="p in vipProducts"
+          :key="'vip-' + p.id"
+          class="pcard"
+          @click="goDetail(p.id)"
+        >
+          <view class="p-cover-wrap">
+            <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
+            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <view class="p-fav" :class="{ on: isFaved(p.id) }" @click.stop="toggleFav(p)">
+              <text class="p-fav-ico">{{ isFaved(p.id) ? '♥' : '♡' }}</text>
             </view>
-            <text class="v-tip" v-if="!memberView(p) && Number(p.memberPrice || 0) > 0">
-              会员价 ¥{{ p.memberPrice }}
-            </text>
-            <text class="v-tip v-tip-tier" v-else-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+            <view class="p-soldout" v-if="(p.stock || 0) <= 0">
+              <text class="p-soldout-t">售罄</text>
+            </view>
+          </view>
+          <view class="p-body">
+            <text class="p-name">{{ p.name }}</text>
+            <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
+            <view class="p-price-row">
+              <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+              <!-- 划线价按身份区分（与 PC 端同口径）：会员划售价，非会员划吊牌原价 -->
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+            </view>
+            <view class="p-foot">
+              <text class="p-sales">{{ salesText(p) }}</text>
+              <view
+                class="p-add"
+                :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
+                @click.stop="quickAdd(p)"
+              >
+                <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
+              </view>
+            </view>
           </view>
         </view>
-        <view class="vipzone-tail"></view>
-      </scroll-view>
+      </view>
     </view>
 
     <!-- 热搜模块已按需求移除（2026-11-08）：首页不再展示热搜词条。
@@ -1266,8 +1289,10 @@ onReachBottom(() => {
 
 /* ---------- 会员专区（横滑） ---------- */
 .vipzone {
-  margin: 0 24rpx 24rpx;
-  padding: 22rpx 0 20rpx 22rpx;
+  /* 左右 22rpx = 标准 24rpx 边距 − 容器 2rpx border：让内部卡片与主商品流严格左右对齐 */
+  margin: 0 22rpx 24rpx;
+  /* 左右 padding 归零：内部复用 .grid + .pcard，卡片左边缘才能与下方「全部商品」严格对齐 */
+  padding: 22rpx 0 6rpx;
   background: linear-gradient(180deg, #FFFDF7, #FFF9EC);
   border: 2rpx solid #F0E2C2;
   border-radius: 20rpx;
@@ -1276,7 +1301,7 @@ onReachBottom(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-right: 22rpx;
+  padding: 0 22rpx;
   margin-bottom: 18rpx;
 }
 .vipzone-title-wrap {
@@ -1294,73 +1319,11 @@ onReachBottom(() => {
   color: #B08A3A;
   margin-left: 12rpx;
 }
-.vipzone-scroll {
-  white-space: nowrap;
+/* 容器已自带 margin，网格不再加水平 padding，卡片才能与主商品流左右严格对齐。
+   ⚠️ 选择器必须带 .vipzone 前缀：.grid 的定义在文件更后面，同权重会被它覆盖（踩过）。 */
+.vipzone .vipzone-grid {
+  padding: 0;
 }
-.vcard {
-  display: inline-block;
-  width: 232rpx;
-  background: #FFFFFF;
-  border-radius: 16rpx;
-  margin-right: 16rpx;
-  overflow: hidden;
-  vertical-align: top;
-}
-.v-cover-wrap {
-  position: relative;
-  width: 232rpx;
-  height: 232rpx;
-}
-.v-cover {
-  width: 232rpx;
-  height: 232rpx;
-  background: #F6F2E9;
-}
-.v-badge {
-  position: absolute;
-  left: 10rpx;
-  top: 10rpx;
-  padding: 2rpx 10rpx;
-  border-radius: 8rpx;
-  background: #C8912E;
-  color: #FFFFFF;
-  font-size: 19rpx;
-}
-.v-info {
-  padding: 12rpx 14rpx 16rpx;
-}
-.v-name {
-  display: block;
-  font-size: 24rpx;
-  color: #111827;
-  line-height: 1.35;
-  height: 64rpx;
-  overflow: hidden;
-}
-.v-price-row {
-  display: flex;
-  align-items: baseline;
-  margin-top: 6rpx;
-}
-.v-price {
-  font-size: 30rpx;
-  color: #C0392B;
-  font-weight: 600;
-}
-.v-origin {
-  font-size: 19rpx;
-  color: #9CA3AF;
-  text-decoration: line-through;
-  margin-left: 8rpx;
-}
-.v-tip {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 19rpx;
-  color: #B08A3A;
-}
-.v-tip-tier { color: #0F6E56; }
-.vipzone-tail { display: inline-block; width: 22rpx; height: 1rpx; }
 .fcard {
   display: inline-block;
   width: 232rpx;
