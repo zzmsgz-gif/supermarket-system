@@ -197,7 +197,9 @@
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <text class="p-origin" v-if="memberView(p) || showOrigin(p)">¥{{ p.price }}</text>
+              <!-- 划线价按身份区分（与 PC 端同口径）：会员划售价，非会员划吊牌原价 -->
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
               <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
             </view>
             <view class="p-foot">
