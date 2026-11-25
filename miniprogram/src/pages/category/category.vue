@@ -66,12 +66,14 @@
               <text class="p-name">{{ p.name }}</text>
               <view class="p-price-row">
                 <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-                <!-- 划线价按身份区分（与 PC 端同口径）：
+                <!-- 第二行：划线价 + 会员折标（与 PC / 首页卡片同布局）。划线价按身份取：
                      会员 → 划「售价」（实付基于售价打折，基准必须一致）；
                      非会员 → 划「吊牌原价」。混用会让「省多少」对不上 -->
-                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+                  <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                  <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+                  <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                </view>
               </view>
               <view class="p-foot">
                 <text class="p-sales">{{ salesText(p) }}</text>
@@ -456,15 +458,25 @@ onPullDownRefresh(async () => {
   height: 64rpx;
   overflow: hidden;
 }
+/* 价格区两行布局（对齐 PC 卡片）：第一行实付价独占整行，第二行划线价 + 会员折标。
+   分类页卡片只有 246rpx 宽（3 列），字号别跟着首页放大，否则折标会被挤掉 */
 .p-price-row {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-start;
   margin-top: 6rpx;
 }
 .p-price {
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #C0392B;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.p-price-sub {
+  display: flex;
+  align-items: center;
+  margin-top: 2rpx;
+  max-width: 100%;
 }
 /* 会员价标签：文案由 memberLabel 决定（专属会员价→「会员价」/ 等级折扣→「金卡9.5折」） */
 .p-vip {
@@ -480,7 +492,6 @@ onPullDownRefresh(async () => {
   font-size: 19rpx;
   color: #9CA3AF;
   text-decoration: line-through;
-  margin-left: 6rpx;
 }
 .p-foot {
   display: flex;

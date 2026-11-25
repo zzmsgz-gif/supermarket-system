@@ -203,10 +203,13 @@
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <!-- 划线价按身份区分（与 PC 端同口径）：会员划售价，非会员划吊牌原价 -->
-              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+              <!-- 第二行：划线价 + 会员折标（与 PC 卡片同布局 —— 实付价独占第一行，
+                   划线价在左下、折扣/会员价在右下）。划线价按身份取：会员划售价、非会员划吊牌价 -->
+              <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+              </view>
             </view>
             <view class="p-foot">
               <text class="p-sales">{{ salesText(p) }}</text>
@@ -258,10 +261,13 @@
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <!-- 划线价按身份区分（与 PC 端同口径）：会员划售价，非会员划吊牌原价 -->
-              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+              <!-- 第二行：划线价 + 会员折标（与 PC 卡片同布局 —— 实付价独占第一行，
+                   划线价在左下、折扣/会员价在右下）。划线价按身份取：会员划售价、非会员划吊牌价 -->
+              <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+              </view>
             </view>
             <view class="p-foot">
               <text class="p-sales">{{ salesText(p) }}</text>
@@ -1617,15 +1623,24 @@ onReachBottom(() => {
   height: 68rpx;
   overflow: hidden;
 }
+/* 价格区两行布局（对齐 PC 卡片）：第一行大号实付价独占整行，第二行划线价 + 会员折标 */
 .p-price-row {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: flex-start;
   margin-top: 8rpx;
 }
 .p-price {
-  font-size: 30rpx;
+  font-size: 32rpx;
   color: #C0392B;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.p-price-sub {
+  display: flex;
+  align-items: center;
+  margin-top: 2rpx;
+  max-width: 100%;
 }
 .p-sub {
   display: block;
@@ -1641,7 +1656,6 @@ onReachBottom(() => {
   font-size: 20rpx;
   color: #9CA3AF;
   text-decoration: line-through;
-  margin-left: 8rpx;
 }
 /* 会员折扣标签：与 PC 卡片「X折会员价」同语义，小尺寸下只放折率 */
 .p-vip {

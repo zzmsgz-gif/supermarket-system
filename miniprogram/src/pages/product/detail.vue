@@ -33,7 +33,9 @@
       <view class="price-row">
         <text class="p-now"><text class="p-yen">¥</text>{{ effectivePrice }}</text>
         <text class="p-origin" v-if="showEffectiveOriginal">¥{{ effectiveOriginal }}</text>
-        <text class="p-off" v-if="discountSave > 0">立省 ¥{{ discountSave }}<text class="p-rate" v-if="discountRate">· {{ discountRate }} 折</text></text>
+        <!-- 「立省」必须与屏幕上这两个数字自洽：划线价 − 实付价。
+             会员价生效时不显示 —— 下面会员行已经写了「已为你省 ¥X」，同一数字说两遍反而啰嗦 -->
+        <text class="p-off" v-if="discountSave > 0 && !priceView">立省 ¥{{ discountSave }}</text>
       </view>
       <!-- 会员已生效：主价已是折后价，这里只说明来源。
            来源不同说法不同：专属会员价 → 「会员专享价」；等级折扣 → 「银卡9.8折」 -->
@@ -204,8 +206,12 @@
             <view class="reco-foot">
               <view class="reco-price-wrap">
                 <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-                <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                <!-- 第二行：划线价 + 会员折标（与 PC / 首页卡片同布局） -->
+                <view class="reco-price-sub" v-if="memberView(p) || recoShowOrigin(p)">
+                  <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                  <text class="reco-origin" v-else>¥{{ p.originalPrice }}</text>
+                  <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                </view>
               </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
@@ -348,20 +354,15 @@ const displayOriginal = computed(() => {
   if (selectedSku.value && selectedSku.value.originalPrice != null) return selectedSku.value.originalPrice
   return product.value?.originalPrice
 })
+
+// 「猜你喜欢」推荐卡的非会员划线价：吊牌价确实高于售价才划（与首页/分类页卡片同口径）。
+// 必须写成函数 —— 小程序 wxml 不能调用 Number() 之类的 JS 方法。
+function recoShowOrigin(p) {
+  return p && p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
+}
 const showOriginal = computed(
   () => displayOriginal.value != null && Number(displayOriginal.value) > Number(displayPrice.value || 0)
 )
-// 立省 / 折扣率（只在有原价且高于现价时显示，避免编造）
-const discountSave = computed(() => {
-  if (!showOriginal.value) return 0
-  return Math.round((Number(displayOriginal.value) - Number(displayPrice.value)) * 100) / 100
-})
-const discountRate = computed(() => {
-  const d = Number(displayOriginal.value) || 0
-  const p = Number(displayPrice.value) || 0
-  if (!d || !p || p >= d) return ''
-  return (p / d * 10).toFixed(1)
-})
 // 会员实付价（与首页卡片 / PC 同口径）：基于当前 SKU 价取 min(专属会员价, 等级折扣)
 const priceView = computed(() => memberView(product.value, displayPrice.value))
 const effectivePrice = computed(() => (priceView.value ? priceView.value.price : displayPrice.value))
@@ -370,6 +371,14 @@ const effectiveOriginal = computed(() => (priceView.value ? displayPrice.value :
 const showEffectiveOriginal = computed(() => {
   if (priceView.value) return true
   return showOriginal.value
+})
+// 「立省」= 屏幕上那条划线价 − 当前实付价，保证两个数字自洽。
+// 旧写法用 displayOriginal - displayPrice（吊牌价 − 售价），会员登录后主价已换成会员价、
+// 划线也换成售价，于是出现「划线 25.8 / 主价 23.9 / 立省 6.20」这种对不上的结果（用户报的 bug）。
+const discountSave = computed(() => {
+  if (!showEffectiveOriginal.value) return 0
+  const saved = Number(effectiveOriginal.value) - Number(effectivePrice.value)
+  return saved > 0 ? Math.round(saved * 100) / 100 : 0
 })
 
 // 会员价：只有真正低于当前售价才展示（给游客/普通用户的升级引导）
@@ -718,9 +727,6 @@ function buyNow() {
   color: #C0392B;
   font-size: 22rpx;
   border-radius: 8rpx;
-}
-.p-rate {
-  margin-left: 4rpx;
 }
 .member-row {
   margin-top: 16rpx;
@@ -1115,16 +1121,23 @@ function buyNow() {
   align-items: baseline;
   justify-content: space-between;
 }
+/* 价格区两行布局（对齐 PC / 首页卡片）：第一行实付价，第二行划线价 + 会员折标 */
 .reco-price-wrap {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6rpx;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .reco-price {
   color: #C0392B;
   font-size: 28rpx;
   font-weight: 700;
+  line-height: 1.15;
+}
+.reco-price-sub {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 2rpx;
 }
 .reco-origin {
   font-size: 18rpx;

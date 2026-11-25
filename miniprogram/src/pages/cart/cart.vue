@@ -83,8 +83,12 @@
             <view class="reco-foot">
               <view class="reco-price-wrap">
                 <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || fmt(p.price) }}</text>
-                <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                <!-- 第二行：划线价 + 会员折标（与 PC / 首页卡片同布局） -->
+                <view class="reco-price-sub" v-if="memberView(p) || recoShowOrigin(p)">
+                  <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                  <text class="reco-origin" v-else>¥{{ p.originalPrice }}</text>
+                  <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+                </view>
               </view>
               <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
             </view>
@@ -368,6 +372,12 @@ const fmt = (n) => formatAmount(n)
 
 function showOrigin(it) {
   return it.productOriginalPrice != null && Number(it.productOriginalPrice) > Number(it.productPrice)
+}
+
+// 空车推荐卡的非会员划线价：吊牌价确实高于售价才划（与首页/分类页卡片同口径）。
+// 与上面的 showOrigin 不同 —— 那个读的是购物车项字段（productOriginalPrice），这里读的是商品本体。
+function recoShowOrigin(p) {
+  return p && p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
 }
 
 // skuSpec 存的是「规格:70g」这种带维度名的串（线上存量数据全是这个格式），
@@ -844,16 +854,23 @@ onShow(async () => {
   align-items: baseline;
   justify-content: space-between;
 }
+/* 价格区两行布局（对齐 PC / 首页卡片）：第一行实付价，第二行划线价 + 会员折标 */
 .reco-price-wrap {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6rpx;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .reco-price {
   color: #C0392B;
   font-size: 28rpx;
   font-weight: 700;
+  line-height: 1.15;
+}
+.reco-price-sub {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 2rpx;
 }
 .reco-origin {
   font-size: 18rpx;
