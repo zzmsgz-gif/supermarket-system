@@ -1,6 +1,11 @@
 /**
- * 商品卡图区角标 —— 对齐 PC `ProductCard.vue` 的 `.badge-row`：
- *   类目标签 → 省¥X → 热 → 新 → 会员价
+ * 商品卡图区角标 —— 与 PC `ProductCard.vue` 的 `.badge-row` **完全一致**：
+ *   省¥X → 热 → 新 → 会员价
+ *
+ * 2026-11-25：用户要求「去掉小程序卡片上的营销标签、跟 PC 统一」。
+ * 实际差异只在一点 —— 小程序原来还会把后台 `tags` 的第一个词（「咖啡」「速冻」「烘焙」…）
+ * 做成绿色角标，而 PC 卡片从来不显示 tags（PC 只在名称下方显示品牌·副标题）。
+ * 所以这里去掉类目标签，其余四个角标保留。
  *
  * ⚠️ 为什么必须横排（模板里是 flex + wrap）：
  * PC 端这四个角标原来各自 `absolute; top:8px; left:8px`，同现时互相叠盖只露最后一个。
@@ -11,16 +16,6 @@
  */
 import { memberView } from '@/utils/memberPrice'
 import { productActivityTag } from '@/utils/activity'
-
-/** 商品自带的类目标签（后台 tags 字段第一个）。**不回退** isHot/isNew —— 那两个走独立角标 */
-export function customTagOf(p) {
-  const raw = p && p.tags
-  if (!raw || !String(raw).trim()) return ''
-  const first = String(raw).split(/[,，\s]+/).filter(Boolean)[0]
-  if (!first) return ''
-  // 卡片图区就一小条，超过 4 个字必被截断，不如自己截干净
-  return first.length > 4 ? first.slice(0, 4) : first
-}
 
 /**
  * 「省¥X」—— 会员省了多少。
@@ -42,11 +37,9 @@ export function hasMemberPriceBadge(p) {
   return mp > 0 && mp < Number((p && p.price) || 0)
 }
 
-/** 图区角标数组：`k` 决定配色（tag/save/hot/new/vip），模板用 `'p-badge-' + b.k` */
+/** 图区角标数组：`k` 决定配色（save/hot/new/vip），模板用 `'p-badge-' + b.k` */
 export function pcardBadges(p) {
   const out = []
-  const c = customTagOf(p)
-  if (c) out.push({ t: c, k: 'tag' })
   const save = saveBadgeText(p)
   if (save) out.push({ t: save, k: 'save' })
   if (Number((p && p.isHot) === 1)) out.push({ t: '热', k: 'hot' })

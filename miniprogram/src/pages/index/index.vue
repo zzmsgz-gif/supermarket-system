@@ -190,7 +190,8 @@
         >
           <view class="p-cover-wrap">
             <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <!-- 图区角标横排（对齐 PC 的 .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+            <!-- 图区角标横排（与 PC 的 .badge-row 完全一致）：省¥X → 热 → 新 → 会员价。
+                 不含后台 tags（类目/卖点词）—— PC 卡片从不显示它们，2026-11-25 按要求去掉。
                  必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见（PC 踩过） -->
             <view class="p-badge-row" v-if="pcardBadges(p).length">
               <text
@@ -259,7 +260,8 @@
         >
           <view class="p-cover-wrap">
             <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <!-- 图区角标横排（对齐 PC 的 .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+            <!-- 图区角标横排（与 PC 的 .badge-row 完全一致）：省¥X → 热 → 新 → 会员价。
+                 不含后台 tags（类目/卖点词）—— PC 卡片从不显示它们，2026-11-25 按要求去掉。
                  必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见（PC 踩过） -->
             <view class="p-badge-row" v-if="pcardBadges(p).length">
               <text
@@ -1610,9 +1612,7 @@ onReachBottom(() => {
   background: #C0392B;
   box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.18);
 }
-/* 类目标签（后台 tags 维护的卖点词，如「身体乳」「速冻」）—— 主色绿 */
-.p-badge-tag { background: #0F6E56; }
-/* 会员省了多少：红色，力度感最强，放类目标签右侧 */
+/* 会员省了多少：红色，力度感最强 */
 .p-badge-save { background: linear-gradient(180deg, #e0503c, #c0392b); }
 /* 后台标记的热卖 / 新品 */
 .p-badge-hot { background: linear-gradient(180deg, #ff5a3c, #e23b1e); }

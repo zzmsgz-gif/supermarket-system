@@ -75,6 +75,13 @@
                 <span class="detail-unit">/ {{ formatUnit(productDetail.data.unit) }}</span>
               </div>
 
+              <!-- 营销 / 卖点标签：活动标签在最前（只对限定了分类、单品的活动显示），
+                   后面跟商品 tags。与小程序 detail.vue 的 tag-row 完全同口径
+                   （2026-11-25 用户要求 PC 补上，此前只有小程序有）。 -->
+              <div class="detail-taglist" v-if="detailTagList.length">
+                <span v-for="t in detailTagList" :key="t" class="detail-tag">{{ t }}</span>
+              </div>
+
               <p v-if="flashPrice" class="flash-excl-hint">⚡ 秒杀商品为独立优惠，不参与全场满减、活动与优惠券</p>
               <dl class="detail-meta">
                 <!-- 2026-10-07 去掉「剩余库存」：对普通商品是废话（能买就说明有货），
@@ -231,6 +238,20 @@ export default {
     const appCtx = inject('appCtx');
     // 当前商品的平均星级（ratingSummaryMap 无该商品时为 null，即暂无评价）
     const detailRating = computed(() => (appCtx.ratingSummaryMap.value || {})[appCtx.productDetail.data.id] || null);
+    // 营销 / 卖点标签（活动在最前 + 商品 tags，最多 5 个）。
+    // 口径与小程序 detail.vue 的 tagList 完全一致：活动只算限定了分类/单品的（全场活动由页头公告宣传），
+    // 后端 tags 是逗号分隔字符串（如「中秋,月饼,蛋黄」）。
+    const detailTagList = computed(() => {
+      const data = appCtx.productDetail.data;
+      if (!data) return [];
+      const tags = String(data.tags || '')
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 4);
+      const act = typeof appCtx.productActivityTag === 'function' ? appCtx.productActivityTag(data) : '';
+      return act ? [act, ...tags].slice(0, 5) : tags;
+    });
     // 限时秒杀：从 appCtx 已加载的秒杀列表按 productId 匹配（无需商品接口透出秒杀价）
     const flashSale = computed(() => {
       const list = (appCtx.flashSales && appCtx.flashSales.value) || [];
@@ -398,7 +419,7 @@ export default {
     watch(() => appCtx.productDetail.data?.name, (name) => {
       document.title = name ? `${name} - 好玛特鲜生` : '好玛特鲜生';
     }, { immediate: true });
-    return { ...appCtx, detailRating, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, salePrice, saveVsSale, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
+    return { ...appCtx, detailRating, detailTagList, memberPrice, favorited, flashSale, flashPrice, flashOrigin, detailPrice, detailOrigin, memberView, salePrice, saveVsSale, flashCapped, flashCappedReason, flashMyLeft, flashAllLeft, qtyOverQuota, flashQuotaShortMsg, buyDisabledTitle, openOriginalProduct, addCartLabel, buyNowLabel };
   }
 };
 </script>

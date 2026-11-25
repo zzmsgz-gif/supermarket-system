@@ -1915,6 +1915,27 @@ button.ghost.sm { min-height: 30px; padding: 5px 13px; font-size: 13px; }
 .tag.warn { background: #fdeae6; color: var(--danger); }
 .tag.muted { background: #f4f1ed; color: var(--muted); }
 .tag.amber { background: #fff3e0; color: #046a4a; }
+
+/* 详情页营销 / 卖点标签（活动标语 + 商品 tags），数据同小程序 detail.vue 的 tag-row。
+   用**实心主色底白字**，跟上面那排 pill 形「分类 / 状态」标签（浅底深字）区分开 ——
+   两排挨着出现时，用户要能一眼看出哪些是卖点、哪些是元信息。 */
+.detail-taglist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.detail-tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 7px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
 .tag.info { background: #e8f1fd; color: #2f74d0; }
 /* 点7/点8：订单列表退款/售后状态条（显眼化 + 驳回可感知） */
 .refund-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 8px 0 4px; padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; }

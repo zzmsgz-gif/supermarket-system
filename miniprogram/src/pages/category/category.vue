@@ -57,7 +57,8 @@
           <view v-for="p in products" :key="p.id" class="pcard" @click="goDetail(p.id)">
             <view class="p-cover-wrap">
               <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-              <!-- 图区角标横排（对齐 PC .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+              <!-- 图区角标横排（与 PC .badge-row / 首页完全一致）：省¥X → 热 → 新 → 会员价。
+                   不含后台 tags（类目/卖点词）—— PC 卡片从不显示它们，2026-11-25 按要求去掉。
                    必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见 -->
               <view class="p-badge-row" v-if="pcardBadges(p).length">
                 <text
@@ -450,7 +451,6 @@ onPullDownRefresh(async () => {
   background: #C0392B;
   box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.18);
 }
-.p-badge-tag { background: #0F6E56; }
 .p-badge-save { background: linear-gradient(180deg, #e0503c, #c0392b); }
 .p-badge-hot { background: linear-gradient(180deg, #ff5a3c, #e23b1e); }
 .p-badge-new { background: linear-gradient(180deg, #34b47a, #1f915f); }
