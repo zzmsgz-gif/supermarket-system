@@ -57,7 +57,18 @@
           <view v-for="p in products" :key="p.id" class="pcard" @click="goDetail(p.id)">
             <view class="p-cover-wrap">
               <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-              <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+              <!-- 图区角标横排（对齐 PC .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+                   必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见 -->
+              <view class="p-badge-row" v-if="pcardBadges(p).length">
+                <text
+                  class="p-badge"
+                  v-for="b in pcardBadges(p)"
+                  :key="b.k"
+                  :class="'p-badge-' + b.k"
+                >{{ b.t }}</text>
+              </view>
+              <!-- 活动标签（满减/折扣）：右下，且只有限定了分类/单品的活动才标 -->
+              <view class="p-activity" v-if="activityTagOf(activities, p)">{{ activityTagOf(activities, p) }}</view>
               <view class="p-soldout" v-if="(p.stock || 0) <= 0">
                 <text class="p-soldout-t">售罄</text>
               </view>
@@ -120,8 +131,13 @@ import { requireLogin } from '@/utils/authGuard'
 import { fullUrl } from '@/config'
 import EmptyState from '@/components/EmptyState/EmptyState.vue'
 import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
+import { listActiveActivities } from '@/api/activity'
+// 图区角标（类目标签/省¥X/热/新/会员价）与活动标签：与首页、PC 卡片同一套口径
+import { pcardBadges, activityTagOf } from '@/utils/productBadge'
 
 const PAGE_SIZE = 20
+// 进行中的营销活动（卡片右下角活动标签用）：与首页、PC 同口径（全场活动不显示）
+const activities = ref([])
 
 const categories = ref([])
 const activeId = ref(null)
@@ -152,15 +168,7 @@ function showOrigin(p) {
   return p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
 }
 
-function tagOf(p) {
-  if (p.tags && String(p.tags).trim()) {
-    const first = String(p.tags).split(/[,，\s]+/).filter(Boolean)[0]
-    if (first) return first.length > 4 ? first.slice(0, 4) : first
-  }
-  if (p.isNew === 1) return '新品'
-  if (p.isHot === 1) return '热卖'
-  return ''
-}
+/** 商品卡卖点标签已并入图区角标行（utils/productBadge.pcardBadges），原 tagOf 不再需要 */
 
 function salesText(p) {
   const n = Number(p.sales || 0)
@@ -210,6 +218,10 @@ function loadMore() {
 
 async function loadCategories() {
   ensureMemberProfile()   // 会员价：与首页/详情共用同一份 profile
+  // 活动标签单独并行拉：失败只影响右下角标签，不影响分类骨架
+  listActiveActivities()
+    .then((list) => { activities.value = Array.isArray(list) ? list : [] })
+    .catch(() => {})
   const cats = await listCategories()
   categories.value = cats || []
   const wanted = startCategoryId || (categories.value[0] && categories.value[0].id)
@@ -416,15 +428,51 @@ onPullDownRefresh(async () => {
   height: 246rpx;
   background: #EDF0EE;
 }
-.p-tag {
+/* 图区角标行（对齐 PC .badge-row / 首页同款）：flex 横排，放不下换行。
+   分类页图区没有收藏心形，所以右边界不留位（卡片只有 246rpx，留位会挤掉一个角标） */
+.p-badge-row {
   position: absolute;
   left: 10rpx;
   top: 10rpx;
-  background: #0F6E56;
-  color: #ffffff;
-  font-size: 19rpx;
+  right: 10rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4rpx;
+  pointer-events: none;
+}
+.p-badge {
   padding: 2rpx 8rpx;
   border-radius: 6rpx;
+  font-size: 17rpx;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.4;
+  background: #C0392B;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.18);
+}
+.p-badge-tag { background: #0F6E56; }
+.p-badge-save { background: linear-gradient(180deg, #e0503c, #c0392b); }
+.p-badge-hot { background: linear-gradient(180deg, #ff5a3c, #e23b1e); }
+.p-badge-new { background: linear-gradient(180deg, #34b47a, #1f915f); }
+.p-badge-vip { background: linear-gradient(180deg, #b9923f, #8a6b22); }
+/* 活动标签：右下白底绿描边（与实心折扣角标区分，别被读成又一种优惠力度） */
+.p-activity {
+  position: absolute;
+  right: 10rpx;
+  bottom: 10rpx;
+  max-width: calc(100% - 20rpx);
+  padding: 2rpx 8rpx;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0F6E56;
+  border: 1rpx solid #0F6E56;
+  border-radius: 6rpx;
+  font-size: 15rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.12);
 }
 .p-soldout {
   position: absolute;

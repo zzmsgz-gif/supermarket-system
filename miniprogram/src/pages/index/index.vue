@@ -190,10 +190,21 @@
         >
           <view class="p-cover-wrap">
             <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <!-- 图区角标横排（对齐 PC 的 .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+                 必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见（PC 踩过） -->
+            <view class="p-badge-row" v-if="pcardBadges(p).length">
+              <text
+                class="p-badge"
+                v-for="b in pcardBadges(p)"
+                :key="b.k"
+                :class="'p-badge-' + b.k"
+              >{{ b.t }}</text>
+            </view>
             <view class="p-fav" :class="{ on: isFaved(p.id) }" @click.stop="toggleFav(p)">
               <text class="p-fav-ico">{{ isFaved(p.id) ? '♥' : '♡' }}</text>
             </view>
+            <!-- 活动标签（满减/折扣）：与 PC 同位置（右下），且只有限定了分类/单品的活动才标 -->
+            <view class="p-activity" v-if="activityTagOf(activities, p)">{{ activityTagOf(activities, p) }}</view>
             <view class="p-soldout" v-if="(p.stock || 0) <= 0">
               <text class="p-soldout-t">售罄</text>
             </view>
@@ -248,10 +259,21 @@
         >
           <view class="p-cover-wrap">
             <image class="p-cover" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
-            <view class="p-tag" v-if="tagOf(p)">{{ tagOf(p) }}</view>
+            <!-- 图区角标横排（对齐 PC 的 .badge-row）：类目标签 → 省¥X → 热 → 新 → 会员价。
+                 必须 flex 横排 —— 各自 absolute 在左上会互相叠盖，只剩最后一个可见（PC 踩过） -->
+            <view class="p-badge-row" v-if="pcardBadges(p).length">
+              <text
+                class="p-badge"
+                v-for="b in pcardBadges(p)"
+                :key="b.k"
+                :class="'p-badge-' + b.k"
+              >{{ b.t }}</text>
+            </view>
             <view class="p-fav" :class="{ on: isFaved(p.id) }" @click.stop="toggleFav(p)">
               <text class="p-fav-ico">{{ isFaved(p.id) ? '♥' : '♡' }}</text>
             </view>
+            <!-- 活动标签（满减/折扣）：与 PC 同位置（右下），且只有限定了分类/单品的活动才标 -->
+            <view class="p-activity" v-if="activityTagOf(activities, p)">{{ activityTagOf(activities, p) }}</view>
             <view class="p-soldout" v-if="(p.stock || 0) <= 0">
               <text class="p-soldout-t">售罄</text>
             </view>
@@ -336,9 +358,13 @@ import { listCategories, listProducts } from '@/api/product'
 import { listBanners } from '@/api/banner'
 import { listAnnouncements } from '@/api/announcement'
 import { listFlashSales } from '@/api/flashSale'
+import { listActiveActivities } from '@/api/activity'
+import { productActivityTag } from '@/utils/activity'
 import { addToCart } from '@/api/cart'
 // memberProfile 也要 import：模板里「会员专区」副标题按它切换文案（会员→专属会员价 / 游客→开通入口）
 import { ensureMemberProfile, memberView, memberLabel, memberProfile } from '@/utils/memberPrice'
+// 图区角标（类目标签/省¥X/热/新/会员价）与活动标签：与 PC 卡片同一套口径
+import { pcardBadges, activityTagOf } from '@/utils/productBadge'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'
@@ -375,6 +401,9 @@ const feedHasMore = ref(true)
 const FEED_SIZE = 20
 // 首页会员专区展示件数：双列卡一行 2 件，2 行 = 4 件，再多会把「全部商品」推得太靠下
 const VIP_PREVIEW_SIZE = 4
+// 进行中的营销活动（卡片右下角「活动」标签用）：load 时与商品流并行拉一次。
+// 判定走 utils/activity.productActivityTag —— 与 PC ProductCard、详情页完全同口径
+const activities = ref([])
 const addingId = ref(null)
 // 加号动画：popId 单独控制（不用 addingId —— 请求快时它一闪就空，动画来不及播）
 const popId = ref(null)
@@ -523,16 +552,7 @@ function showOrigin(p) {
   return p.originalPrice != null && Number(p.originalPrice) > Number(p.price || 0)
 }
 
-/** 商品卡卖点标签：优先用后台维护的 tags，其次按 isNew / isHot 兜底 */
-function tagOf(p) {
-  if (p.tags && String(p.tags).trim()) {
-    const first = String(p.tags).split(/[,，\s]+/).filter(Boolean)[0]
-    if (first) return first.length > 4 ? first.slice(0, 4) : first
-  }
-  if (p.isNew === 1) return '新品'
-  if (p.isHot === 1) return '热卖'
-  return ''
-}
+/** 商品卡卖点标签已并入图区角标行（utils/productBadge.pcardBadges），原 tagOf 不再需要 */
 
 function salesText(p) {
   const n = Number(p.sales || 0)
@@ -561,13 +581,14 @@ async function load() {
   // 会员信息/收藏只拉一次供所有卡片共用；游客不请求（避免 401），直接走原价/空收藏
   // 会员专区（横滑）与商品流是两条独立数据源：专区固定取有专属会员价的商品，
   // 商品流仍是全量随机 —— 会员商品本来就混在流里，专区只是额外给个曝光位
-  const [cats, bn, fs, nts, favIds, vips] = await Promise.all([
+  const [cats, bn, fs, nts, favIds, vips, acts] = await Promise.all([
     grab(listCategories(), [], '分类'),
     grab(listBanners(), [], '轮播'),
     grab(listFlashSales(), [], '秒杀'),
     grab(listAnnouncements(), [], '公告'),
     grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏'),
-    grab(listProducts({ memberOnly: true, size: 10 }), { items: [] }, '会员专区')
+    grab(listProducts({ memberOnly: true, size: 10 }), { items: [] }, '会员专区'),
+    grab(listActiveActivities(), [], '活动')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
@@ -575,6 +596,7 @@ async function load() {
   noticeList.value = (nts || []).filter((n) => n.enabled !== false)
   favoriteIds.value = Array.isArray(favIds) ? favIds : []
   vipProducts.value = (vips && vips.items) || []
+  activities.value = Array.isArray(acts) ? acts : []
   await memberReady
 
   // 2026-11-22：分类楼层已移除，首页直接是一条全部商品的随机流，这里不再按分类循环取数
@@ -1228,8 +1250,8 @@ onReachBottom(() => {
 }
 
 /* 2026-11-10 首页活动横幅已按用户要求移除（.promo/.p-more + 横幅专用的 .p-tag/.p-text 已删）。
-   注意：下面第 1063 行附近的 .p-tag 是**商品卡卖点标签**的另一套样式，模板里 tagOf(p) 在用，别误删。
-   活动仍在购物车凑单条与商品详情标签展示，逻辑见 utils/activity.js */
+   2026-11-25 商品卡图区改成角标行后，原来的单标签 .p-tag / tagOf() 也一并被 .p-badge-* 取代
+   （见上方 .p-badge-row）。活动仍在购物车凑单条与商品详情标签展示，逻辑见 utils/activity.js */
 
 /* ---------- 圆形品类 ---------- */
 .quick {
@@ -1565,15 +1587,56 @@ onReachBottom(() => {
   height: 336rpx;
   background: #EDF0EE;
 }
-.p-tag {
+/* 图区角标行（对齐 PC .badge-row）：多个角标 flex 横排，放不下就换行。
+   右边界让出 76rpx 给右上角的收藏心形（12 偏移 + 48 宽 + 16 间隙），否则会压在心上。
+   角标不拦截点击（pointer-events: none），点角标等于点卡片 */
+.p-badge-row {
   position: absolute;
   left: 12rpx;
   top: 12rpx;
-  background: #0F6E56;
-  color: #ffffff;
-  font-size: 20rpx;
+  right: 76rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6rpx;
+  pointer-events: none;
+}
+.p-badge {
   padding: 2rpx 10rpx;
   border-radius: 8rpx;
+  font-size: 18rpx;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.4;
+  background: #C0392B;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.18);
+}
+/* 类目标签（后台 tags 维护的卖点词，如「身体乳」「速冻」）—— 主色绿 */
+.p-badge-tag { background: #0F6E56; }
+/* 会员省了多少：红色，力度感最强，放类目标签右侧 */
+.p-badge-save { background: linear-gradient(180deg, #e0503c, #c0392b); }
+/* 后台标记的热卖 / 新品 */
+.p-badge-hot { background: linear-gradient(180deg, #ff5a3c, #e23b1e); }
+.p-badge-new { background: linear-gradient(180deg, #34b47a, #1f915f); }
+/* 有专属会员价的商品 */
+.p-badge-vip { background: linear-gradient(180deg, #b9923f, #8a6b22); }
+/* 活动标签（满减/折扣）：与 PC 一致放右下，白底绿描边，跟实心折扣角标区分开 —— 免得被读成又一种优惠力度 */
+.p-activity {
+  position: absolute;
+  right: 12rpx;
+  bottom: 12rpx;
+  max-width: calc(100% - 24rpx);
+  padding: 2rpx 10rpx;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0F6E56;
+  border: 1rpx solid #0F6E56;
+  border-radius: 8rpx;
+  font-size: 16rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.12);
 }
 /* 收藏心形：与 PC 卡片右上角一致，游客点了走 requireLogin 引导 */
 .p-fav {
