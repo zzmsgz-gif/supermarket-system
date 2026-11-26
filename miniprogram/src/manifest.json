@@ -15,6 +15,7 @@
     "usingComponents": true
   },
   "h5": {
-    "router": { "mode": "hash" }
+    "title": "好玛特鲜生",
+    "router": { "mode": "hash", "base": "/m/" }
   }
 }

@@ -4,7 +4,9 @@
       <image class="logo-img" src="/static/logo-icon.png" mode="aspectFit" />
       <text class="logo-name">{{ BRAND_NAME }}</text>
     </view>
-    <button class="wx-btn" @click="onWechatLogin">微信一键登录</button>
+    <!-- H5（浏览器部署版）没有微信登录能力，整块隐藏，只留下面的账号密码登录。
+         这样发给别人看的网页版不会出现一个点了必然失败的绿色按钮。 -->
+    <button v-if="!isBrowser" class="wx-btn" @click="onWechatLogin">微信一键登录</button>
     <!-- 合规要求：登录动作前必须由用户主动勾选同意协议（2026-11-22 用户要求）。
          勾选框自绘 —— 小程序原生 checkbox 的尺寸/取色跟主色对不齐，H5 与小程序表现也差得多。
          协议名可点，跳 legal 页看全文（后端 docKey 会 toUpperCase，传小写即可）。 -->
@@ -25,8 +27,9 @@
       <input v-model="pwdForm.password" class="pwd-input" type="password" placeholder="密码" :disabled="pwdLoading" @confirm="onPasswordLogin" />
       <button class="pwd-btn" :disabled="pwdLoading" @click="onPasswordLogin">{{ pwdLoading ? '登录中…' : '账号密码登录' }}</button>
     </view>
-    <!-- 2026-11-08 按用户要求移除：「（首期未接入真实微信支付）」这类开发期说明不该出现在用户界面 -->
-    <view v-if="isBrowser" class="tip dev-tip">微信一键登录仅在微信客户端/开发者工具内可用；浏览器预览请用上方账号密码登录。</view>
+    <!-- 2026-11-08 按用户要求移除：「（首期未接入真实微信支付）」这类开发期说明不该出现在用户界面。
+         2026-11-26 同样移除「浏览器预览请用账号密码登录」那条 —— H5 版是要给别人看的成品，
+         不该出现"预览""开发者工具"这类字眼。 -->
   </view>
 </template>
 

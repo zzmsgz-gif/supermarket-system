@@ -50,7 +50,17 @@ export function fullUrl(u) {
   if (!u) return ''
   if (u.startsWith('http')) return u
   // #ifdef H5
-  // H5：同源，原样返回即可（/api/uploads 走 vite 代理，/seed-products 走静态中间件）
+  // H5：**必须返回绝对地址**（location.origin + 路径）。
+  // 为什么不能像以前那样原样返回相对路径（vite dev 下没问题、一部署到子路径就全裂）：
+  // uni-app 的 <image> 组件在 h5.router.base 非 '/' 时，会给所有以 '/' 开头的 src
+  // 自动加 base 前缀 —— 部署在 /m/ 下就变成 /m/api/uploads/xxx、/m/seed-products/xxx，全部 404。
+  // 拼成 https://host/api/... 后命中文件头的 startsWith('http') 直接返回，组件不再二次处理；
+  // 仍然是同源地址，不引入 CORS。
+  // （2026-11-26 首次上 /m/ 实测：36 张图里 30 张空白，就是这条导致的）
+  if (u.startsWith('/api/') || u.startsWith('/seed-products') || u.startsWith('/seed-avatars')) {
+    return location.origin + u
+  }
+  // /static/** 是构建产物内的资源（打包时已被 vite 打上 base 前缀），保持原样交给框架处理
   return u
   // #endif
   // #ifndef H5
