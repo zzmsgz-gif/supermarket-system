@@ -22,6 +22,8 @@ export function useCartUi({ cartBadgeCount, getView }) {
   const cartPillEl = ref(null);     // 页头购物车胶囊（飞入落点）
   const cartBadgeEl = ref(null);    // 胶囊上的角标
   let flyingGhosts = 0;
+  let pendingFly = false;            // 点过加购按钮、飞入尚未落地：期间的数量变更 watcher 不弹，交给落地弹
+  let pendingFlyTimer = null;
 
   function motionAllowed() {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -36,7 +38,9 @@ export function useCartUi({ cartBadgeCount, getView }) {
     );
   }
 
-  // 角标是 v-if="cartBadgeCount"：0 → 1 时要等 nextTick 它才在 DOM 里，所以必须更新后再弹
+  // 角标是 v-if="cartBadgeCount"：0 → 1 时要等 nextTick 它才在 DOM 里，所以必须更新后再弹。
+  // 加购流程里本函数只由「飞入落地 done()」调用（见下）；数量变更的 watcher 在飞入进行中会跳过，
+  // 避免「点 + 号先弹一下、图飞进去又弹一下」连抖两下。
   async function popCartBadge() {
     await nextTick();
     bob(cartPillEl.value);
@@ -46,7 +50,11 @@ export function useCartUi({ cartBadgeCount, getView }) {
   // 从 sourceEl（一般是商品卡里的商品图）飞向页头购物车胶囊。
   // 拿不到源/目标、或用户关了动效 → 静默跳过（角标仍会弹），绝不阻断加购主流程。
   function flyToCart(sourceEl, imageUrl) {
-    if (!motionAllowed() || !sourceEl || !document.body) return;
+    // 飞入真正发生：消费掉「等待落地」标记（落地会弹），并清掉兜底定时器。
+    pendingFly = false;
+    if (pendingFlyTimer) { clearTimeout(pendingFlyTimer); pendingFlyTimer = null; }
+    if (!motionAllowed() || !document.body) return;          // 关了动效：不弹（尊重 prefers-reduced-motion）
+    if (!sourceEl) { popCartBadge(); return; }               // 有动效但卡片没图：兜底弹一下，免得「加了没反应」
     const target = cartPillEl.value;
     if (!target || typeof target.getBoundingClientRect !== 'function') return;
     const s = sourceEl.getBoundingClientRect();
@@ -99,6 +107,11 @@ export function useCartUi({ cartBadgeCount, getView }) {
     if (!btn) return;
     const card = btn.closest('.product-card');
     lastAddSource = (card && card.querySelector('.product-image img')) || card || btn;
+    // 标记「加购飞入流程开始」：让数量变更的 watcher 在飞入落地前不要弹（那一下由落地统一弹）。
+    // 1s 兜底清除：若加购被拦截（如未登录）从未真正改变数量，标记也会自动失效，不影响后续购物车加减件的弹跳。
+    pendingFly = true;
+    if (pendingFlyTimer) clearTimeout(pendingFlyTimer);
+    pendingFlyTimer = setTimeout(() => { pendingFly = false; pendingFlyTimer = null; }, 1000);
   }
   function takeAddSource() {
     const el = lastAddSource;
@@ -106,10 +119,13 @@ export function useCartUi({ cartBadgeCount, getView }) {
     return el;
   }
 
-  // 角标数量变化本身就值得弹一下（购物车页加减件也走这里）；
-  // 但飞入进行中不弹 —— 那次飞入落地时自己会弹，免得同一秒弹两下。
+  // 角标数量变化本身就值得弹一下（购物车页加减件、删除商品也走这里）。
+  // 但「加购飞入流程」中（pendingFly 为真）不弹 —— 那一下交给飞入落地 done() 弹，
+  // 这样点 + 号时购物车不会提前弹，等图片真飞进去才弹一次，避免连抖两下。
   watch(cartBadgeCount, (now, prev) => {
-    if (now !== prev && flyingGhosts === 0) popCartBadge();
+    if (now === prev) return;
+    if (pendingFly) return;                             // 飞入流程中：等落地统一弹
+    popCartBadge();
   });
 
   // 切视图淡入。刻意不重建组件、不动数据流：只播一段一次性动画，
