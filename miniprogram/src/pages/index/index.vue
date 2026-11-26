@@ -589,7 +589,9 @@ async function load() {
     grab(listFlashSales(), [], '秒杀'),
     grab(listAnnouncements(), [], '公告'),
     grab(isLoggedIn() ? listFavoriteIds() : Promise.resolve([]), [], '收藏'),
-    grab(listProducts({ memberOnly: true, size: 10 }), { items: [] }, '会员专区'),
+    // 会员专区也跟首页的随机 seed 走：否则这 10 件永远同一个顺序，首屏 4 件永远不变
+    // （后端 random_<seed> 与 memberOnly 可共存，已验证两个 seed 顺序不同、集合一致）
+    grab(listProducts({ memberOnly: true, size: 10, sort: feedSort.value }), { items: [] }, '会员专区'),
     grab(listActiveActivities(), [], '活动')
   ])
   categories.value = cats || []

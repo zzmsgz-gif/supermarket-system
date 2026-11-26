@@ -210,6 +210,8 @@ import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { formatAmount } from '@/utils/format'
 import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
+// 「大家都在买」每次进入换一批：热销池内按 seed 洗牌（同 seed 顺序稳定，避免重渲染乱跳）
+import { seededPick, newSeed } from '@/utils/randomPick'
 
 const items = ref([])
 
@@ -469,16 +471,27 @@ async function clearAll() {
 }
 
 // —— 空车时的"大家都在买"推荐 ——
-// 空购物车是最容易流失的页面，给点可点的东西；拉过就不再重复拉（tabBar 页每次 onShow 都会触发）
+// 空购物车是最容易流失的页面，给点可点的东西。
+// 2026-11-26 用户反馈：「一直是那几个」。原来直接取热销前 6，销量不变 → 结果永远一样。
+// 现在的做法：热销池取 30 条缓存起来，再按 seed 在池内洗牌取 6 件 ——
+// 既保持"大家都在买"仍是热销品，又让每次进入空车页换一批（seed 在 onShow 时更新）。
+const RECO_COUNT = 6
+const RECO_POOL = 30
 const recommends = ref([])
+// 热销池缓存：页面切走切回不重复请求接口，只本地重洗牌
+let recoPool = null
+let recoSeed = newSeed()
 
-async function loadRecommends() {
-  if (recommends.value.length) return
+async function loadRecommends(refresh = false) {
   ensureMemberProfile()   // 会员价：与首页/详情页共用同一份 profile
   try {
-    recommends.value = await listHotProducts(6)
+    if (!recoPool || refresh) {
+      recoPool = await listHotProducts(RECO_POOL)
+    }
+    recommends.value = seededPick(recoPool, RECO_COUNT, recoSeed)
   } catch (e) {
-    recommends.value = []
+    // 池子拉失败就清空，不要留着上一批让人以为还能点（点进去是旧数据更糟）
+    if (!recoPool) recommends.value = []
   }
 }
 
@@ -576,8 +589,13 @@ onShow(async () => {
       activities.value = []
     }
   }
-  // 空车才去拉推荐（有商品时不浪费一次请求）
-  if (items.value.length === 0) loadRecommends()
+  // 空车才去拉推荐（有商品时不浪费一次请求）。
+  // 每次进入空车页都换 seed 重洗一批：池子有缓存、不重复请求接口，
+  // 但「清空购物车再进来」不会再看到一模一样的 6 件（2026-11-26 用户反馈的问题）
+  if (items.value.length === 0) {
+    recoSeed = newSeed()
+    loadRecommends()
+  }
   measureFooter()
 })
 </script>
