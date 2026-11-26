@@ -1,6 +1,10 @@
 <template>
-  <article class="product-card clickable" @click="$emit('open', product)">
-    <div class="product-image" @click.stop="$emit('open', product)">
+  <!-- SEO：整卡包成可抓取链接（href 让搜索引擎与中键/新标签打开生效）；
+       SPA 内点击由 onCardClick 走 appCtx.openProductDetail 无刷新跳转。
+       收藏/加购按钮带 @click.stop.prevent（.prevent 才真正拦住原生 <a> 跳转）。 -->
+  <a class="product-card-link" :href="'/product/' + product.id" @click.prevent="onCardClick">
+    <article class="product-card clickable">
+    <div class="product-image">
       <img v-if="product.coverUrl" :src="product.coverUrl" :alt="product.name" @error="imgFallback($event, product.name)"  loading="lazy" decoding="async"/>
       <span v-else>{{ initials(product.name) }}</span>
       <!-- 左上角标横排：原先 省X/热/新/会员 四个都 absolute 在 top:8/left:8 同一坐标，
@@ -26,12 +30,12 @@
         :class="{ on: favorited }"
         :aria-label="favorited ? '取消收藏' : '收藏'"
         :title="favorited ? '已收藏，点击取消' : '收藏（降价会提醒你）'"
-        @click.stop="onToggleFavorite"
+        @click.stop.prevent="onToggleFavorite"
       >
         <svg viewBox="0 0 24 24" :fill="favorited ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.9-7-10.2A4.3 4.3 0 0 1 12 7.9 4.3 4.3 0 0 1 19 10.8C19 16.1 12 21 12 21z"/></svg>
       </button>
     </div>
-    <h3 @click.stop="$emit('open', product)">{{ product.name }}</h3>
+    <h3>{{ product.name }}</h3>
     <!-- 品牌 + 副标题合并为一行：原先两行同灰度小字糊成一片，合一行更清爽 -->
     <p>{{ [product.brand, product.subtitle || formatUnit(product.unit)].filter(Boolean).join(' · ') }}</p>
     <p v-if="extra" class="brand-line">{{ extra }}</p>
@@ -49,11 +53,14 @@
           <span v-else-if="!flashPrice && memberPrice" class="member-price-tag">会员价 {{ money(memberPrice) }}</span>
         </div>
         <!-- 右下角圆形「＋」加购（生鲜电商主流做法）：替代旧的双通栏按钮，卡片更轻盈。
-             整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。 -->
-        <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop="$emit('add', product)">＋</button>
+             整卡可点看详情，不再需要「查看详情」按钮；秒杀角标在图上有了，价格旁不再重复标。
+             ⚠️ 2026-10-29 修复：加购/收藏按钮必须加 .prevent —— 卡片是 <a href="/product/ID">，
+             @click.stop 只挡住冒泡到锚点的 Vue 处理器，没调 preventDefault，浏览器原生 <a> 跳转照常触发，
+             于是点「＋」既加购又整页跳详情页。补 .prevent 后原生导航被取消，只加购不跳转。 -->
+        <button v-if="addable && !flashCapped" type="button" class="add-fab" aria-label="加入购物车" title="加入购物车" @click.stop.prevent="$emit('add', product)">＋</button>
         <span v-else-if="flashCapped" class="flash-cap-note">
           {{ flashSale && flashSale.myUnpaidOrderId ? '待支付订单占用名额' : flashCappedReason }}
-          <button v-if="flashSale && flashSale.sourceProductId && !flashSale.myUnpaidOrderId" type="button" class="link-btn" @click.stop="openOriginal">去原商品</button>
+          <button v-if="flashSale && flashSale.sourceProductId && !flashSale.myUnpaidOrderId" type="button" class="link-btn" @click.stop.prevent="openOriginal">去原商品</button>
         </span>
         <span v-else-if="isAdmin" class="admin-inline-note">管理员仅查看上架商品</span>
       </div>
@@ -95,6 +102,7 @@
       </div>
     </template>
   </article>
+  </a>
 </template>
 
 <script setup>
@@ -290,9 +298,30 @@ const favorited = computed(() => (appCtx && typeof appCtx.isFavorite === 'functi
 function onToggleFavorite() {
   if (appCtx && typeof appCtx.toggleFavorite === 'function') appCtx.toggleFavorite(props.product);
 }
+// 整卡点击：SPA 内走 openProductDetail 无刷新跳转；href 负责 SEO 与中键/新标签打开。
+// 收藏/加购按钮带 @click.stop 已阻止冒泡，不会触发此处。
+function onCardClick() {
+  if (appCtx && typeof appCtx.openProductDetail === 'function') {
+    appCtx.openProductDetail(props.product);
+  }
+}
 // 限购买满后引导去独立原商品按原价购买（sourceProductId 由秒杀列表透出）
 function openOriginal() {
   const srcId = flashSale.value && flashSale.value.sourceProductId;
   if (srcId && appCtx && typeof appCtx.openProductDetail === 'function') appCtx.openProductDetail({ id: srcId });
 }
 </script>
+
+<style scoped>
+/* 整卡可抓取链接：去掉下划线、继承文字色，hover 给轻微抬升反馈（与卡片本身 hover 一致） */
+.product-card-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.product-card-link:hover .product-card {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+</style>
+
