@@ -82,9 +82,16 @@ backend/args_tmp.txt
 backend/test.png
 
 # 部署目录临时探针脚本
+# 部署目录临时探针脚本（一次性排查用，跑完就废）
+# ⚠️ 回归脚本 deploy/verify-*.py 不在此列 —— 那是可复现验证资产，必须入库。
+# 曾经误加过一条 `deploy/verify-*.py`，结果 verify-refund-reversal.py、
+# verify-oversell-concurrency.py 这些关键回归脚本在仓库里根本没有，2026-11-26 已删掉该规则。
 deploy/_*.py
+# 例外：这两个是回归脚本的公共底座（临时管理员/库连接），必须入库，否则脚本换机跑不起来。
+# 两者都不含真实凭据：admin 密码是「注册→提权→用完删」的临时号固定值，库凭据从 application.yml/env 读。
+!deploy/_admin_token.py
+!deploy/_db.py
 deploy/_*.json
-deploy/verify-*.py
 deploy/probe-*.py
 deploy/make-*.py
 
@@ -92,3 +99,12 @@ deploy/make-*.py
 _backups/
 miniprogram/dist/
 frontend/dist_*.tgz
+
+# Maven 构建残留：旧 target 被改名保留下来的目录（曾有一个 71MB 的 target_stale_* 一直躺在工作区）
+backend/target_stale*/
+
+# 验证过程的界面快照（跑脚本时截的图，属于过程产物，不入库）
+_verify/
+
+# 小程序 H5 预览时的 dev server 日志
+miniprogram/dev-h5.log
