@@ -73,11 +73,32 @@ async function request(path, options = {}) {
 
   let payload = null;
   const text = await response.text();
-  if (text) {
-    payload = JSON.parse(text);
+  try {
+    if (text) {
+      payload = JSON.parse(text);
+    }
+  } catch (e) {
+    // 响应体不是合法 JSON（典型如 nginx 限流返回的 429 HTML 页、网关错误页）。
+    // 绝不能让原始 SyntaxError 冒泡——否则 request() 直接崩，调用方连可读错误都拿不到，
+    // 表现为「接口失效 / 整个页面卡死」。这里吞掉解析错误，交给下面的错误分支走兜底文案。
+    payload = null;
   }
 
   if (!response.ok || (payload && payload.code !== 0)) {
+    // 限流：nginx 返回 429 时响应体是 HTML，payload 为 null。给出专门文案，
+    // 并透出 Retry-After（秒），让调用方可以优雅退避而不是反复打。
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After');
+      const message = retryAfter
+        ? `请求过于频繁，请 ${retryAfter} 秒后再试`
+        : '请求过于频繁，请稍后再试';
+      const err = new Error(message);
+      err.status = 429;
+      err.code = 429;
+      err.retryAfter = retryAfter ? Number(retryAfter) : null;
+      throw err;
+    }
+
     const message = payload?.message || `HTTP ${response.status}`;
     const authFailed = response.status === 401 && !!token;
     if (authFailed) {
