@@ -36,7 +36,8 @@ export const routes = [
   // 后台面板：路由表映射 AdminPanel（语义清晰），但 App.vue 用 v-else 直接挂载并传 props，
   // 因此此处映射实际不参与渲染，仅保证路由可被识别。真实懒加载在 App.vue 用 defineAsyncComponent 处理。
   { path: '/admin', name: 'admin', component: () => import('../components/AdminPanel.vue') },
-  { path: '/:pathMatch(.*)*', redirect: '/shop' },
+  // 404 兜底：未知路径展示独立 404 页（而非静默跳回首页），提供返回首页 / 去逛逛入口。
+  { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('../pages/NotFoundPage.vue') },
 ]
 
 export function createAppRouter() {
