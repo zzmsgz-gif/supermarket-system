@@ -6,7 +6,7 @@ import { ref, reactive } from 'vue';
 export function useAdminContent({ api, isAdmin, run, showAlert, askConfirm, loadHotSearches }) {
   // ===== 公告管理（后台） + 首页公告详情弹层 =====
   const adminAnnouncements = ref([]);
-  const announcementForm = reactive({ id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
+  const announcementForm = reactive({ id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true, effectiveTime: '', expiryTime: '' });
   const announcementFormOpen = ref(false);
 
   async function loadAdminAnnouncements() {
@@ -19,9 +19,11 @@ export function useAdminContent({ api, isAdmin, run, showAlert, askConfirm, load
   }
 
   function openAnnouncementForm(a) {
+    // 后端返回 ISO（含秒），datetime-local 只需到分钟，取前 16 位；空值给 ''
+    const toLocal = (iso) => (iso ? String(iso).slice(0, 16) : '');
     Object.assign(announcementForm, a
-      ? { id: a.id, title: a.title, content: a.content, type: a.type || 'NOTICE', sortOrder: a.sortOrder || 0, enabled: Number(a.enabled) === 1 }
-      : { id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true });
+      ? { id: a.id, title: a.title, content: a.content, type: a.type || 'NOTICE', sortOrder: a.sortOrder || 0, enabled: Number(a.enabled) === 1, effectiveTime: toLocal(a.effectiveTime), expiryTime: toLocal(a.expiryTime) }
+      : { id: null, title: '', content: '', type: 'NOTICE', sortOrder: 0, enabled: true, effectiveTime: '', expiryTime: '' });
     announcementFormOpen.value = true;
   }
   function closeAnnouncementForm() {
@@ -33,7 +35,9 @@ export function useAdminContent({ api, isAdmin, run, showAlert, askConfirm, load
     const form = announcementForm;
     if (!form.title.trim() || !form.content.trim()) { showAlert('标题和内容都要填写'); return; }
     await run(async () => {
-      const payload = { title: form.title.trim(), content: form.content.trim(), type: form.type, sortOrder: Number(form.sortOrder) || 0, enabled: !!form.enabled };
+      // datetime-local 取值含到分钟（如 2026-10-25T14:30），后端 LocalDateTime 需补秒；空值 = 不设边界（一直生效 / 永不自动过期）
+      const toIso = (v) => (v ? v + ':00' : null);
+      const payload = { title: form.title.trim(), content: form.content.trim(), type: form.type, sortOrder: Number(form.sortOrder) || 0, enabled: !!form.enabled, effectiveTime: toIso(form.effectiveTime), expiryTime: toIso(form.expiryTime) };
       if (form.id) await api.put(`/admin/announcements/${form.id}`, payload);
       else await api.post('/admin/announcements', payload);
       closeAnnouncementForm();

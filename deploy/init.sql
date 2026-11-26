@@ -568,6 +568,8 @@ CREATE TABLE announcement (
     sort_order INT NOT NULL DEFAULT 0 COMMENT 'Display order, asc',
     enabled TINYINT NOT NULL DEFAULT 1 COMMENT '1 enabled, 0 disabled',
     publish_time DATETIME NOT NULL COMMENT 'Publish time',
+    effective_time DATETIME NULL DEFAULT NULL COMMENT '生效时间，NULL 表示从发布起一直生效',
+    expiry_time DATETIME NULL DEFAULT NULL COMMENT '失效时间，NULL 表示永不自动过期',
     deleted TINYINT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

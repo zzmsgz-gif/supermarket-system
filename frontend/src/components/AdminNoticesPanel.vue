@@ -51,6 +51,16 @@ const { adminAnnouncements, announcementForm, announcementFormOpen, openAnnounce
           <span class="field-label">是否启用</span>
           <label class="check-line"><input type="checkbox" v-model="announcementForm.enabled" /> 启用（前台可见）</label>
         </div>
+        <label class="field">
+          <span class="field-label">生效时间</span>
+          <input v-model="announcementForm.effectiveTime" type="datetime-local" />
+          <small class="field-hint">留空 = 发布起一直生效</small>
+        </label>
+        <label class="field">
+          <span class="field-label">失效时间</span>
+          <input v-model="announcementForm.expiryTime" type="datetime-local" />
+          <small class="field-hint">留空 = 永不自动过期</small>
+        </label>
       </div>
       <label class="field span-all">
         <span class="field-label">公告内容 <i class="req">*</i></span>
@@ -73,6 +83,10 @@ const { adminAnnouncements, announcementForm, announcementFormOpen, openAnnounce
               <span>发布 {{ formatDate(a.publishTime) }}</span>
               <span>排序 {{ a.sortOrder }} · 越小越靠前</span>
               <span :class="Number(a.enabled) === 1 ? 'on-word' : 'off-word'">{{ Number(a.enabled) === 1 ? '启用中' : '已停用' }}</span>
+            </p>
+            <p class="card-meta">
+              <span>生效 {{ a.effectiveTime ? formatDate(a.effectiveTime) : '发布起' }}</span>
+              <span>失效 {{ a.expiryTime ? formatDate(a.expiryTime) : '永不' }}</span>
             </p>
           </div>
           <div class="card-actions">
