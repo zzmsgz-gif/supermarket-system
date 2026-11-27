@@ -1738,18 +1738,18 @@ onReachBottom(() => {
   max-width: 100%;
 }
 .p-origin {
-  font-size: 20rpx;
+  font-size: 21rpx;
   color: #9CA3AF;
   text-decoration: line-through;
 }
 /* 会员折扣标签：与 PC 卡片「X折会员价」同语义，小尺寸下只放折率 */
 .p-vip {
   margin-left: 8rpx;
-  font-size: 18rpx;
+  font-size: 19rpx;
   color: #0F6E56;
   background: #E1F5EE;
   border-radius: 6rpx;
-  padding: 2rpx 6rpx;
+  padding: 2rpx 7rpx;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -1766,20 +1766,20 @@ onReachBottom(() => {
    改这一带的样式时注意别把整块替换掉。 */
 .p-sales {
   flex: 0 0 auto;
-  font-size: 18rpx;
+  font-size: 21rpx;
   color: #9CA3AF;
 }
 /* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c、条数更浅。
    字号跟「已售」拉齐 —— ★ 是符号，同字号下本来就比汉字显小，不需要再放大。 */
 .p-rate {
   margin-left: 10rpx;
-  font-size: 18rpx;
+  font-size: 21rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 .p-rate-n {
-  font-size: 16rpx;
+  font-size: 19rpx;
   color: #B09468;
 }
 .p-add {

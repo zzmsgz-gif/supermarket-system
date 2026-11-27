@@ -537,7 +537,7 @@ onPullDownRefresh(async () => {
 }
 /* 会员价标签：文案由 memberLabel 决定（专属会员价→「会员价」/ 等级折扣→「金卡9.5折」） */
 .p-vip {
-  font-size: 18rpx;
+  font-size: 19rpx;
   color: #0F6E56;
   background: #E1F5EE;
   border-radius: 6rpx;
@@ -546,7 +546,7 @@ onPullDownRefresh(async () => {
   line-height: 1.4;
 }
 .p-origin {
-  font-size: 19rpx;
+  font-size: 20rpx;
   color: #9CA3AF;
   text-decoration: line-through;
 }
@@ -560,18 +560,18 @@ onPullDownRefresh(async () => {
 }
 .p-sales {
   flex: 0 0 auto;
-  font-size: 18rpx;
+  font-size: 20rpx;
   color: #9CA3AF;
 }
 .p-rate {
   margin-left: 8rpx;
-  font-size: 18rpx;
+  font-size: 20rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 .p-rate-n {
-  font-size: 16rpx;
+  font-size: 18rpx;
   color: #B09468;
 }
 .p-add {
