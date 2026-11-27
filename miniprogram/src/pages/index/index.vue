@@ -213,14 +213,11 @@
           <view class="p-body">
             <text class="p-name">{{ p.name }}</text>
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
-            <!-- 价格行：实付价 + 划线价 + 会员折标同排，右侧圆形「＋」
-                 —— 与 PC 的 .price-line 同构（2026-11-27 用户要求「改成跟 PC 端一样」）。
-                 原来折标和划线价另起一行、加购按钮又落到底行，三行信息把卡片拉得很散。 -->
+            <!-- 价格行：实付价在左、「＋」吸到右边缘（与分类页卡片同结构，2026-11-27 用户指定）。
+                 首页宽度其实塞得下「价+划线+折标+＋」一行，但四项挤在一起偏紧，
+                 改成分类页那种「价格独占一行」的分层更清爽。 -->
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -229,7 +226,14 @@
                 <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
               </view>
             </view>
-            <!-- 信息行：已售 + 评分（带评价条数），对应 PC 的 .meta-line -->
+            <!-- 第二行：划线价 + 会员折标（与分类页一致）。
+                 划线价按身份取：会员 → 划「售价」，非会员 → 划「吊牌原价」；混用会让「省多少」对不上 -->
+            <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+            </view>
+            <!-- 第三行：已售 + 评分（带评价条数） -->
             <view class="p-meta">
               <text class="p-sales">{{ salesText(p) }}</text>
               <text class="p-rate" v-if="ratingOf(p.id)"
@@ -286,14 +290,11 @@
           <view class="p-body">
             <text class="p-name">{{ p.name }}</text>
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
-            <!-- 价格行：实付价 + 划线价 + 会员折标同排，右侧圆形「＋」
-                 —— 与 PC 的 .price-line 同构（2026-11-27 用户要求「改成跟 PC 端一样」）。
-                 原来折标和划线价另起一行、加购按钮又落到底行，三行信息把卡片拉得很散。 -->
+            <!-- 价格行：实付价在左、「＋」吸到右边缘（与分类页卡片同结构，2026-11-27 用户指定）。
+                 首页宽度其实塞得下「价+划线+折标+＋」一行，但四项挤在一起偏紧，
+                 改成分类页那种「价格独占一行」的分层更清爽。 -->
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -302,7 +303,14 @@
                 <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
               </view>
             </view>
-            <!-- 信息行：已售 + 评分（带评价条数），对应 PC 的 .meta-line -->
+            <!-- 第二行：划线价 + 会员折标（与分类页一致）。
+                 划线价按身份取：会员 → 划「售价」，非会员 → 划「吊牌原价」；混用会让「省多少」对不上 -->
+            <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+            </view>
+            <!-- 第三行：已售 + 评分（带评价条数） -->
             <view class="p-meta">
               <text class="p-sales">{{ salesText(p) }}</text>
               <text class="p-rate" v-if="ratingOf(p.id)"
@@ -1698,20 +1706,15 @@ onReachBottom(() => {
   height: 68rpx;
   overflow: hidden;
 }
-/* 价格区两行布局（对齐 PC 卡片）：第一行大号实付价独占整行，第二行划线价 + 会员折标 */
+/* 价格区分层（与分类页卡片完全一致）：
+   第一行 = 大号实付价 + 右侧「＋」；第二行 = 划线价 + 会员折标；
+   第三行（.p-meta）= 已售 + 评分。 */
 .p-price-row {
-  /* 横排：实付价 · 划线价 · 折标 · 右下角「＋」（对齐 PC .price-line）。
-     窄卡上宁可让划线价被裁掉尾部，也不能换行把卡片撑高 —— 所以 nowrap + overflow:hidden，
-     并且只有 .p-origin 允许收缩（flex:0 1 auto + min-width:0）。 */
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
   margin-top: 8rpx;
-  overflow: hidden;
 }
 .p-price {
-  flex: 0 0 auto;
-  margin-right: 8rpx;
   font-size: 32rpx;
   color: #C0392B;
   font-weight: 600;
@@ -1727,22 +1730,21 @@ onReachBottom(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 第二行：划线价 + 折标 */
+.p-price-sub {
+  display: flex;
+  align-items: center;
+  margin-top: 2rpx;
+  max-width: 100%;
+}
 .p-origin {
-  flex: 0 1 auto;
-  /* 兜底：极端情况下（4 位数价格 + 长折标）不许把划线价压成一条小竖线 ——
-     宁可让末尾的折标被裁一点。真实 24 张卡实测最紧的是 ¥189.00（划线价 23px），
-     这个 min-width 不会影响正常商品。 */
-  min-width: 24rpx;
-  margin-right: 8rpx;
   font-size: 20rpx;
   color: #9CA3AF;
   text-decoration: line-through;
-  white-space: nowrap;
-  overflow: hidden;
 }
 /* 会员折扣标签：与 PC 卡片「X折会员价」同语义，小尺寸下只放折率 */
 .p-vip {
-  flex: 0 0 auto;
+  margin-left: 8rpx;
   font-size: 18rpx;
   color: #0F6E56;
   background: #E1F5EE;
