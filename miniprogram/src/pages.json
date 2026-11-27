@@ -28,6 +28,12 @@
       }
     },
     {
+      "path": "pages/reviews/reviews",
+      "style": {
+        "navigationBarTitleText": "全部评价"
+      }
+    },
+    {
       "path": "pages/cart/cart",
       "style": {
         "navigationBarTitleText": "购物车"

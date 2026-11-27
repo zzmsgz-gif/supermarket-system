@@ -224,7 +224,11 @@
               </view>
             </view>
             <view class="p-foot">
-              <text class="p-sales">{{ salesText(p) }}</text>
+              <view class="p-foot-l">
+                <text class="p-sales">{{ salesText(p) }}</text>
+                <!-- 评分：与 PC 商品卡同源同口径（评价 <3 条不显示，见 utils/productRating） -->
+                <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
+              </view>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -294,7 +298,11 @@
               </view>
             </view>
             <view class="p-foot">
-              <text class="p-sales">{{ salesText(p) }}</text>
+              <view class="p-foot-l">
+                <text class="p-sales">{{ salesText(p) }}</text>
+                <!-- 评分：与 PC 商品卡同源同口径（评价 <3 条不显示，见 utils/productRating） -->
+                <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
+              </view>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -367,6 +375,7 @@ import { addToCart } from '@/api/cart'
 import { ensureMemberProfile, memberView, memberLabel, memberProfile } from '@/utils/memberPrice'
 // 图区角标（类目标签/省¥X/热/新/会员价）与活动标签：与 PC 卡片同一套口径
 import { pcardBadges, activityTagOf } from '@/utils/productBadge'
+import { ensureRatings, ratingOf } from '@/utils/productRating'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { isLoggedIn } from '@/store/auth'
 import { requireLogin } from '@/utils/authGuard'
@@ -592,7 +601,10 @@ async function load() {
     // 会员专区也跟首页的随机 seed 走：否则这 10 件永远同一个顺序，首屏 4 件永远不变
     // （后端 random_<seed> 与 memberOnly 可共存，已验证两个 seed 顺序不同、集合一致）
     grab(listProducts({ memberOnly: true, size: 10, sort: feedSort.value }), { items: [] }, '会员专区'),
-    grab(listActiveActivities(), [], '活动')
+    grab(listActiveActivities(), [], '活动'),
+    // 评分聚合：一次拿全量商品的均分/评价数，卡片共用。失败不影响商品列表，
+    // 只是卡上不显示星级（ratingOf 返回 null）
+    grab(ensureRatings(), {}, '评分')
   ])
   categories.value = cats || []
   banners.value = (bn || []).filter((b) => b.enabled !== false)
@@ -1741,6 +1753,21 @@ onReachBottom(() => {
 .p-sales {
   font-size: 20rpx;
   color: #9CA3AF;
+}
+/* 卡片底部左侧：已售 + 评分并排。min-width:0 + overflow 让两者在窄卡上不至于把
+   右侧加购按钮挤出去（336rpx 的卡，留给左侧约 240rpx） */
+.p-foot-l {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c */
+.p-rate {
+  margin-left: 10rpx;
+  font-size: 20rpx;
+  color: #9A6A1C;
+  flex: 0 0 auto;
 }
 .p-add {
   width: 52rpx;

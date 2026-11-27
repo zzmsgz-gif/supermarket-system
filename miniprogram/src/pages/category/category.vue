@@ -88,7 +88,10 @@
                 </view>
               </view>
               <view class="p-foot">
-                <text class="p-sales">{{ salesText(p) }}</text>
+                <view class="p-foot-l">
+                  <text class="p-sales">{{ salesText(p) }}</text>
+                  <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
+                </view>
                 <view
                   class="p-add"
                   :class="{ 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -135,6 +138,7 @@ import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPric
 import { listActiveActivities } from '@/api/activity'
 // 图区角标（类目标签/省¥X/热/新/会员价）与活动标签：与首页、PC 卡片同一套口径
 import { pcardBadges, activityTagOf } from '@/utils/productBadge'
+import { ensureRatings, ratingOf } from '@/utils/productRating'
 
 const PAGE_SIZE = 20
 // 进行中的营销活动（卡片右下角活动标签用）：与首页、PC 同口径（全场活动不显示）
@@ -219,6 +223,7 @@ function loadMore() {
 
 async function loadCategories() {
   ensureMemberProfile()   // 会员价：与首页/详情共用同一份 profile
+  ensureRatings()         // 评分：一次拉全量聚合，卡片共用（失败静默，卡上只是不显示星级）
   // 活动标签单独并行拉：失败只影响右下角标签，不影响分类骨架
   listActiveActivities()
     .then((list) => { activities.value = Array.isArray(list) ? list : [] })
@@ -550,6 +555,19 @@ onPullDownRefresh(async () => {
 .p-sales {
   font-size: 19rpx;
   color: #9CA3AF;
+}
+/* 已售 + 评分并排（分栏窄，min-width:0 防把加购按钮挤出去） */
+.p-foot-l {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.p-rate {
+  margin-left: 8rpx;
+  font-size: 19rpx;
+  color: #9A6A1C;
+  flex: 0 0 auto;
 }
 .p-add {
   width: 46rpx;

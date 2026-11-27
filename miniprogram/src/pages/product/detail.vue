@@ -55,7 +55,8 @@
       </view>
       <view class="stat-row">
         <text class="stat">已售 {{ product.sales || 0 }}</text>
-        <text class="stat">库存 {{ product.stock || 0 }}{{ unitText }}</text>
+        <!-- 精确库存不展示（2026-11-27 用户要求）：对买家没意义，还容易被比价/囤货的盯上。
+             库存紧张时的紧迫感由下一行「仅剩 N 件」单独表达，只在低库存时才出现。 -->
         <text class="stat-warn" v-if="stockTight">仅剩 {{ product.stock }} 件，手慢无</text>
       </view>
     </view>
@@ -145,8 +146,8 @@
     <view class="card review-card">
       <view class="sec-head">
         <text class="sec-title">商品评价<text class="sec-count">（{{ reviewTotal }}）</text></text>
-        <text class="sec-more" v-if="reviewTotal > reviews.length" @click="loadMoreReviews">
-          {{ loadingMore ? '加载中…' : '查看全部 ›' }}
+        <text class="sec-more" v-if="reviewTotal > reviews.length" @click="openAllReviews">
+          查看全部 ›
         </text>
       </view>
 
@@ -213,7 +214,11 @@
                   <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
                 </view>
               </view>
-              <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+              <view class="reco-side">
+                <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+                <!-- 评分与首页/分类页同源（utils/productRating），评价 <3 条不显示 -->
+                <text class="reco-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -245,11 +250,11 @@ import { requireLogin } from '@/utils/authGuard'
 import { syncCartBadge } from '@/utils/cartBadge'
 import { listFavoriteIds, addFavorite, removeFavorite } from '@/api/favorite'
 import { listProductReviews } from '@/api/review'
-import { request } from '@/api/request'
 import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { starString, formatTime } from '@/utils/format'
 import { ensureMemberProfile, memberView, memberRateText, memberLabel, shortTier } from '@/utils/memberPrice'
+import { ensureRatings, ratingOf, ratingMap } from '@/utils/productRating'
 
 const product = ref(null)
 // 生效中的活动（商品角标用）
@@ -259,7 +264,6 @@ const selectedSpec = reactive({})
 const faved = ref(false)
 const reviews = ref([])
 const reviewTotal = ref(0)
-const loadingMore = ref(false)
 const ratingSummary = ref(null)
 const recommends = ref([])
 const currentImg = ref(0)
@@ -449,7 +453,8 @@ async function toggleFav() {
   }
 }
 
-// —— 评价：首屏 3 条，点「查看全部」每次再加 10 条，直到全部展示 ——
+// —— 评价：详情页只展示首屏 3 条，「查看全部」另开一页（2026-11-27 用户要求）——
+// 原来是在这一页里每次追加 10 条：详情页越滑越长，还和「猜你喜欢」抢位置。
 // ⚠️ page 必须从 **1** 开始：后端分页参数带 @Min(1)，传 0 会直接 400
 // （"操作失败，请稍后重试"），异常被 catch 吞掉后 reviews 恒为空 ——
 // 于是详情页 42 条评价一条都不显示，页面看着特别空（2026-11-08 修）。
@@ -466,29 +471,26 @@ async function loadReviews(size = reviewSize.value) {
   }
 }
 
-async function loadMoreReviews() {
-  if (loadingMore.value) return
-  loadingMore.value = true
-  try {
-    // 每次多拉 10 条；超出总数时后端直接返回全部，按钮随即消失
-    await loadReviews(reviewSize.value + 10)
-  } finally {
-    loadingMore.value = false
-  }
+/** 「查看全部」跳独立评价页；带上商品名做页面标题，省一次请求 */
+function openAllReviews() {
+  const id = product.value && product.value.id
+  if (!id) return
+  const name = encodeURIComponent((product.value && product.value.name) || '')
+  uni.navigateTo({ url: '/pages/reviews/reviews?productId=' + id + '&name=' + name })
 }
 
-// —— 评分汇总：复用全站接口，按 productId 取当前商品（不额外加后端）——
+// —— 评分汇总：与商品卡共用同一份聚合缓存（utils/productRating），不重复打接口 ——
 async function loadRatingSummary() {
   try {
-    const list = await request('/products/rating-summary', { auth: false })
-    const hit = (list || []).find((it) => Number(it.productId) === Number(product.value.id))
-    if (hit && Number(hit.reviewCount) > 0) {
+    await ensureRatings()
+    const hit = ratingMap.value[Number(product.value.id)]
+    if (hit && Number(hit.count) > 0) {
       ratingSummary.value = {
-        avgRating: Number(hit.avgRating || 0).toFixed(1),
-        reviewCount: hit.reviewCount
+        avgRating: Number(hit.avg || 0).toFixed(1),
+        reviewCount: hit.count
       }
       // 列表接口的 total 与汇总同源（都排除 hidden），以较大的为准，避免显示 0 条却有评分
-      if (!reviewTotal.value) reviewTotal.value = hit.reviewCount
+      if (!reviewTotal.value) reviewTotal.value = hit.count
     }
   } catch (e) {
     /* 汇总失败不影响主流程 */
@@ -1154,6 +1156,18 @@ function buyNow() {
 .reco-sales {
   font-size: 20rpx;
   color: #9CA3AF;
+}
+/* 猜你喜欢卡很窄：右侧「N 人买过 / ★4.8」竖排，横排会把价格挤出卡外 */
+.reco-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+.reco-rate {
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #9A6A1C;
 }
 
 /* ---------- 10. 底部操作条 ---------- */
