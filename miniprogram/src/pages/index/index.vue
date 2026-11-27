@@ -1753,7 +1753,7 @@ onReachBottom(() => {
   line-height: 1.4;
   white-space: nowrap;
 }
-/* 信息行：已售 + 评分（对齐 PC .meta-line） */
+/* 信息行：已售 + 评分 */
 .p-meta {
   display: flex;
   align-items: center;
@@ -1761,16 +1761,25 @@ onReachBottom(() => {
   min-width: 0;
   overflow: hidden;
 }
-/* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c、条数更浅 */
+/* ⚠️ 这条曾经被误删过一次：`.p-sales` 没有样式就会继承默认 28rpx，
+   比旁边的评分（18~20rpx）大一圈，「已售 44」显得特别突兀（2026-11-27 用户反馈）。
+   改这一带的样式时注意别把整块替换掉。 */
+.p-sales {
+  flex: 0 0 auto;
+  font-size: 18rpx;
+  color: #9CA3AF;
+}
+/* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c、条数更浅。
+   字号跟「已售」拉齐 —— ★ 是符号，同字号下本来就比汉字显小，不需要再放大。 */
 .p-rate {
   margin-left: 10rpx;
-  font-size: 20rpx;
+  font-size: 18rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 .p-rate-n {
-  font-size: 18rpx;
+  font-size: 16rpx;
   color: #B09468;
 }
 .p-add {

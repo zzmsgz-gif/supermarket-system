@@ -559,18 +559,19 @@ onPullDownRefresh(async () => {
   overflow: hidden;
 }
 .p-sales {
-  font-size: 19rpx;
+  flex: 0 0 auto;
+  font-size: 18rpx;
   color: #9CA3AF;
 }
 .p-rate {
   margin-left: 8rpx;
-  font-size: 19rpx;
+  font-size: 18rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
   white-space: nowrap;
 }
 .p-rate-n {
-  font-size: 17rpx;
+  font-size: 16rpx;
   color: #B09468;
 }
 .p-add {
