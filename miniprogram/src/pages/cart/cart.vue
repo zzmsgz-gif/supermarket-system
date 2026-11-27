@@ -90,7 +90,11 @@
                   <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
                 </view>
               </view>
-              <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+              <view class="reco-side">
+                <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+                <!-- 评分与首页/分类/详情猜你喜欢同源（utils/productRating） -->
+                <text class="reco-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -195,7 +199,7 @@
 
 <script setup>
 import { ref, computed, nextTick, getCurrentInstance, watch } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { getCart, updateCartItem, removeCartItem, clearCart } from '@/api/cart'
 // 骨架屏组件（也可走 easycom 自动引入，这里显式 import 更明确）
 import CartSkeleton from '@/components/CartSkeleton/CartSkeleton.vue'
@@ -210,6 +214,7 @@ import { isLoggedIn } from '@/store/auth'
 import { fullUrl } from '@/config'
 import { formatAmount } from '@/utils/format'
 import { ensureMemberProfile, memberView, memberLabel } from '@/utils/memberPrice'
+import { ensureRatings, ratingOf } from '@/utils/productRating'
 // 「大家都在买」每次进入换一批：热销池内按 seed 洗牌（同 seed 顺序稳定，避免重渲染乱跳）
 import { seededPick, newSeed } from '@/utils/randomPick'
 
@@ -394,8 +399,21 @@ function specText(s) {
 // 用户取消后还能继续逛（电商标准做法）
 const needLogin = ref(false)
 
-async function load() {
-  loading.value = true
+/**
+ * 拉购物车。
+ *
+ * @param {{silent?: boolean}} opts
+ *   silent=true → 不显示骨架屏（改数量/删除后的静默校正走这条）。
+ *
+ * ⚠️ 骨架屏**只在「手上还没有数据」时**才出现。以前是无条件 `loading = true`：
+ * 改一次数量、切一次 tab 回来，整页就被骨架屏替换一下再长回来，屏幕上闪一下。
+ * 用户的原话是「在购物车添加商品时页面刷新了吗？怎么一闪一闪的」（2026-11-27）。
+ * 有数据时刷新只是把新数据换上去，视觉上不该有任何跳变。
+ */
+async function load(opts = {}) {
+  const silent = !!opts.silent
+  const showSkeleton = !silent && items.value.length === 0
+  if (showSkeleton) loading.value = true
   try {
     if (!isLoggedIn()) {
       needLogin.value = true
@@ -429,7 +447,7 @@ async function load() {
     couponState.value = { coupons: [], selectedId: null, selected: null, discount: 0 }
     uni.showToast({ title: (e && e.message) || '购物车加载失败', icon: 'none' })
   } finally {
-    loading.value = false
+    if (showSkeleton) loading.value = false
   }
 }
 
@@ -484,6 +502,7 @@ let recoSeed = newSeed()
 
 async function loadRecommends(refresh = false) {
   ensureMemberProfile()   // 会员价：与首页/详情页共用同一份 profile
+  ensureRatings()         // 评分：与首页/分类页共用同一份聚合缓存（失败静默）
   try {
     if (!recoPool || refresh) {
       recoPool = await listHotProducts(RECO_POOL)
@@ -503,14 +522,74 @@ function openProduct(p) {
   uni.navigateTo({ url: '/pages/product/detail?id=' + p.id })
 }
 
+// ==================== 改数量 ====================
+// 手感要求（2026-11-27 用户反馈）：
+//   ① 点「＋」数字要立刻变，不能等接口；
+//   ② 不能整页闪（以前是 `.then(load)`，load 会把页面换成骨架屏）；
+//   ③ 连点几下只发一次请求 —— PUT 是「设置绝对值」，乱序到达会让最终数量回退
+//      （点 3 次：请求 2/3/4 并发，若 4 先到 2 后到，最后落库就是 2）。
+// 做法：本地先改 → 220ms 防抖合并 → 只提交最终值 → 回来后静默校正（金额/优惠/角标以服务端为准）。
+//       失败时不用手动回滚：静默校正会把这个商品的数量刷回服务端的真实值。
+const QTY_DEBOUNCE = 220
+const qtyTimers = new Map()   // cartItemId -> timer
+const qtyPending = new Map()  // cartItemId -> item 引用（页面隐藏时要 flush）
+
+function bumpQty(it, delta) {
+  const next = Number(it.quantity || 0) + delta
+  if (next <= 0) {
+    removeRow(it)
+    return
+  }
+  it.quantity = next        // 立即反馈，不等接口
+  qtyPending.set(it.id, it)
+  clearTimeout(qtyTimers.get(it.id))
+  qtyTimers.set(it.id, setTimeout(() => commitQty(it), QTY_DEBOUNCE))
+}
+
+async function commitQty(it) {
+  if (!it) return
+  const id = it.id
+  clearTimeout(qtyTimers.get(id))
+  qtyTimers.delete(id)
+  qtyPending.delete(id)
+  const qty = Number(it.quantity || 0)
+  if (qty <= 0) return
+  try {
+    await updateCartItem(id, qty)
+  } catch (e) {
+    uni.showToast({ title: (e && e.message) || '数量修改失败', icon: 'none' })
+  } finally {
+    // 静默校正：库存上限被后端压下来、满减门槛变了、券可用性变了，都要跟着刷新
+    load({ silent: true })
+  }
+}
+
+/** 页面切走/销毁时把还没提交的数量补发，否则用户点完立刻切 tab 会丢改动 */
+function flushQty() {
+  Array.from(qtyPending.values()).forEach((it) => commitQty(it))
+}
+
+async function removeRow(it) {
+  const snapshot = items.value.slice()
+  items.value = items.value.filter((x) => x.id !== it.id)   // 乐观移除
+  try {
+    await removeCartItem(it.id)
+  } catch (e) {
+    items.value = snapshot
+    uni.showToast({ title: (e && e.message) || '删除失败', icon: 'none' })
+  } finally {
+    load({ silent: true })
+  }
+}
+
 function inc(it) {
-  updateCartItem(it.id, it.quantity + 1).then(load)
+  bumpQty(it, 1)
 }
 function dec(it) {
-  if (it.quantity <= 1) {
-    removeCartItem(it.id).then(load)
+  if (Number(it.quantity || 0) <= 1) {
+    removeRow(it)
   } else {
-    updateCartItem(it.id, it.quantity - 1).then(load)
+    bumpQty(it, -1)
   }
 }
 function goCheckout() {
@@ -598,6 +677,10 @@ onShow(async () => {
   }
   measureFooter()
 })
+
+// 防抖中的数量改动必须落库：用户点完「＋」立刻切 tab / 退出页面时补发
+onHide(flushQty)
+onUnload(flushQty)
 </script>
 
 <style scoped>
@@ -905,6 +988,18 @@ onShow(async () => {
 .reco-sales {
   font-size: 20rpx;
   color: #9CA3AF;
+}
+/* 推荐卡窄：右侧「N 人买过 / ★4.8」竖排（与详情页猜你喜欢一致） */
+.reco-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+.reco-rate {
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #9A6A1C;
 }
 .footer {
   position: fixed;
