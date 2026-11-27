@@ -58,7 +58,9 @@ public class CartService {
 
     @Transactional(readOnly = true)
     public CartResponse getCart(Long userId) {
-        List<CartItem> cartItems = cartItemRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+        // 按「加入时间」排，不按 updated_at —— 改数量不能让商品在列表里跳位置。
+        // 详见 CartItemRepository#findByUserIdOrderByCreatedAtDescIdDesc 的注释。
+        List<CartItem> cartItems = cartItemRepository.findByUserIdOrderByCreatedAtDescIdDesc(userId);
         return buildCartResponse(userId, cartItems);
     }
 
