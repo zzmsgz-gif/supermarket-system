@@ -204,21 +204,20 @@
           <image class="reco-img" :src="fullUrl(p.coverUrl)" mode="aspectFill" />
           <view class="reco-body">
             <text class="reco-name">{{ p.name }}</text>
-            <view class="reco-foot">
-              <view class="reco-price-wrap">
-                <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-                <!-- 第二行：划线价 + 会员折标（与 PC / 首页卡片同布局） -->
-                <view class="reco-price-sub" v-if="memberView(p) || recoShowOrigin(p)">
-                  <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                  <text class="reco-origin" v-else>¥{{ p.originalPrice }}</text>
-                  <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
-                </view>
-              </view>
-              <view class="reco-side">
-                <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
-                <!-- 评分与首页/分类页同源（utils/productRating），评价 <3 条不显示 -->
-                <text class="reco-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
-              </view>
+            <!-- 价格行：实付价 + 划线价 + 折标同排（对齐 PC .price-line）。
+                 推荐卡没有加购按钮，宽度够放这三个 -->
+            <view class="reco-price-row">
+              <text class="reco-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
+              <text class="reco-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="reco-origin" v-else-if="recoShowOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="reco-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+            </view>
+            <!-- 信息行：人买过 + 评分（带条数），对齐 PC .meta-line -->
+            <view class="reco-meta">
+              <text class="reco-sales">{{ p.sales || 0 }} 人买过</text>
+              <text class="reco-rate" v-if="ratingOf(p.id)"
+                >★{{ ratingOf(p.id).text }}<text class="reco-rate-n">({{ ratingOf(p.id).count }})</text></text
+              >
             </view>
           </view>
         </view>
@@ -1117,57 +1116,64 @@ function buyNow() {
   overflow: hidden;
   height: 66rpx;
 }
-.reco-foot {
+/* 价格行：实付价 + 划线价 + 折标同排（对齐 PC .price-line；推荐卡没有加购按钮，宽度够） */
+.reco-price-row {
   margin-top: 10rpx;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-}
-/* 价格区两行布局（对齐 PC / 首页卡片）：第一行实付价，第二行划线价 + 会员折标 */
-.reco-price-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .reco-price {
+  flex: 0 0 auto;
+  margin-right: 8rpx;
   color: #C0392B;
   font-size: 28rpx;
   font-weight: 700;
   line-height: 1.15;
 }
-.reco-price-sub {
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-  margin-top: 2rpx;
-}
 .reco-origin {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 8rpx;
   font-size: 18rpx;
   color: #9CA3AF;
   text-decoration: line-through;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .reco-vip {
+  flex: 0 0 auto;
   font-size: 17rpx;
   color: #0F6E56;
   background: #E1F5EE;
   border-radius: 6rpx;
   padding: 1rpx 6rpx;
+  white-space: nowrap;
+}
+/* 信息行：人买过 + 评分（对齐 PC .meta-line，替代原来右下角竖排） */
+.reco-meta {
+  display: flex;
+  align-items: center;
+  margin-top: 8rpx;
+  min-width: 0;
+  overflow: hidden;
 }
 .reco-sales {
   font-size: 20rpx;
   color: #9CA3AF;
-}
-/* 猜你喜欢卡很窄：右侧「N 人买过 / ★4.8」竖排，横排会把价格挤出卡外 */
-.reco-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
   flex: 0 0 auto;
 }
 .reco-rate {
-  margin-top: 2rpx;
+  margin-left: 10rpx;
   font-size: 20rpx;
   color: #9A6A1C;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.reco-rate-n {
+  font-size: 18rpx;
+  color: #B09468;
 }
 
 /* ---------- 10. 底部操作条 ---------- */

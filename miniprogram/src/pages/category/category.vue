@@ -76,22 +76,11 @@
             </view>
             <view class="p-body">
               <text class="p-name">{{ p.name }}</text>
+              <!-- 价格行：实付价在左、「＋」吸到右边缘（与 PC .price-line 的关系一致）。
+                   ⚠️ 分类页卡片只有 246rpx 宽（3 列），塞不下「价+划线+折标+＋」一行，
+                   所以划线价与折标保留在第二行 —— 这是宽度物理限制，不是偷懒。 -->
               <view class="p-price-row">
                 <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-                <!-- 第二行：划线价 + 会员折标（与 PC / 首页卡片同布局）。划线价按身份取：
-                     会员 → 划「售价」（实付基于售价打折，基准必须一致）；
-                     非会员 → 划「吊牌原价」。混用会让「省多少」对不上 -->
-                <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
-                  <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                  <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-                  <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
-                </view>
-              </view>
-              <view class="p-foot">
-                <view class="p-foot-l">
-                  <text class="p-sales">{{ salesText(p) }}</text>
-                  <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
-                </view>
                 <view
                   class="p-add"
                   :class="{ 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -99,6 +88,21 @@
                 >
                   <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
                 </view>
+              </view>
+              <!-- 第二行：划线价 + 会员折标（对齐 PC，窄卡分行）。
+                   划线价按身份取：会员 → 划「售价」（实付基于售价打折，基准必须一致）；
+                   非会员 → 划「吊牌原价」。混用会让「省多少」对不上 -->
+              <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
+                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
+              </view>
+              <!-- 信息行：已售 + 评分（带条数），对齐 PC .meta-line -->
+              <view class="p-meta">
+                <text class="p-sales">{{ salesText(p) }}</text>
+                <text class="p-rate" v-if="ratingOf(p.id)"
+                  >★{{ ratingOf(p.id).text }}<text class="p-rate-n">({{ ratingOf(p.id).count }})</text></text
+                >
               </view>
             </view>
           </view>
@@ -511,15 +515,15 @@ onPullDownRefresh(async () => {
   height: 64rpx;
   overflow: hidden;
 }
-/* 价格区两行布局（对齐 PC 卡片）：第一行实付价独占整行，第二行划线价 + 会员折标。
-   分类页卡片只有 246rpx 宽（3 列），字号别跟着首页放大，否则折标会被挤掉 */
+/* 价格行：实付价左、「＋」右（对齐 PC .price-line 布局关系）。
+   分类页 246rpx 窄卡只放得下「价 + 按钮」，划线价与折标见下一行 */
 .p-price-row {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   margin-top: 6rpx;
 }
 .p-price {
+  flex: 0 0 auto;
   font-size: 30rpx;
   color: #C0392B;
   font-weight: 600;
@@ -546,30 +550,32 @@ onPullDownRefresh(async () => {
   color: #9CA3AF;
   text-decoration: line-through;
 }
-.p-foot {
+/* 信息行：已售 + 评分（替代原来的 .p-foot，加购按钮已上移到价格行） */
+.p-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   margin-top: 8rpx;
+  min-width: 0;
+  overflow: hidden;
 }
 .p-sales {
   font-size: 19rpx;
   color: #9CA3AF;
-}
-/* 已售 + 评分并排（分栏窄，min-width:0 防把加购按钮挤出去） */
-.p-foot-l {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
 }
 .p-rate {
   margin-left: 8rpx;
   font-size: 19rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+.p-rate-n {
+  font-size: 17rpx;
+  color: #B09468;
 }
 .p-add {
+  flex: 0 0 auto;
+  margin-left: auto;
   width: 46rpx;
   height: 46rpx;
   border-radius: 50%;

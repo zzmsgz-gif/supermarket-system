@@ -213,22 +213,14 @@
           <view class="p-body">
             <text class="p-name">{{ p.name }}</text>
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
+            <!-- 价格行：实付价 + 划线价 + 会员折标同排，右侧圆形「＋」
+                 —— 与 PC 的 .price-line 同构（2026-11-27 用户要求「改成跟 PC 端一样」）。
+                 原来折标和划线价另起一行、加购按钮又落到底行，三行信息把卡片拉得很散。 -->
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <!-- 第二行：划线价 + 会员折标（与 PC 卡片同布局 —— 实付价独占第一行，
-                   划线价在左下、折扣/会员价在右下）。划线价按身份取：会员划售价、非会员划吊牌价 -->
-              <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
-                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
-              </view>
-            </view>
-            <view class="p-foot">
-              <view class="p-foot-l">
-                <text class="p-sales">{{ salesText(p) }}</text>
-                <!-- 评分：与 PC 商品卡同源同口径（评价 <3 条不显示，见 utils/productRating） -->
-                <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
-              </view>
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -236,6 +228,13 @@
               >
                 <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
               </view>
+            </view>
+            <!-- 信息行：已售 + 评分（带评价条数），对应 PC 的 .meta-line -->
+            <view class="p-meta">
+              <text class="p-sales">{{ salesText(p) }}</text>
+              <text class="p-rate" v-if="ratingOf(p.id)"
+                >★{{ ratingOf(p.id).text }}<text class="p-rate-n">({{ ratingOf(p.id).count }})</text></text
+              >
             </view>
           </view>
         </view>
@@ -287,22 +286,14 @@
           <view class="p-body">
             <text class="p-name">{{ p.name }}</text>
             <text class="p-sub" v-if="p.subtitle">{{ p.subtitle }}</text>
+            <!-- 价格行：实付价 + 划线价 + 会员折标同排，右侧圆形「＋」
+                 —— 与 PC 的 .price-line 同构（2026-11-27 用户要求「改成跟 PC 端一样」）。
+                 原来折标和划线价另起一行、加购按钮又落到底行，三行信息把卡片拉得很散。 -->
             <view class="p-price-row">
               <text class="p-price">¥{{ (memberView(p) && memberView(p).price) || p.price }}</text>
-              <!-- 第二行：划线价 + 会员折标（与 PC 卡片同布局 —— 实付价独占第一行，
-                   划线价在左下、折扣/会员价在右下）。划线价按身份取：会员划售价、非会员划吊牌价 -->
-              <view class="p-price-sub" v-if="memberView(p) || showOrigin(p)">
-                <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
-                <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
-                <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
-              </view>
-            </view>
-            <view class="p-foot">
-              <view class="p-foot-l">
-                <text class="p-sales">{{ salesText(p) }}</text>
-                <!-- 评分：与 PC 商品卡同源同口径（评价 <3 条不显示，见 utils/productRating） -->
-                <text class="p-rate" v-if="ratingOf(p.id)">★{{ ratingOf(p.id).text }}</text>
-              </view>
+              <text class="p-origin" v-if="memberView(p)">¥{{ p.price }}</text>
+              <text class="p-origin" v-else-if="showOrigin(p)">¥{{ p.originalPrice }}</text>
+              <text class="p-vip" v-if="memberView(p)">{{ memberLabel(memberView(p)) }}</text>
               <view
                 class="p-add"
                 :class="{ 'p-add-busy': addingId === p.id, 'p-add-off': (p.stock || 0) <= 0, 'p-add-pop': popId === p.id }"
@@ -310,6 +301,13 @@
               >
                 <text class="p-add-ico">{{ (p.stock || 0) <= 0 ? '·' : '+' }}</text>
               </view>
+            </view>
+            <!-- 信息行：已售 + 评分（带评价条数），对应 PC 的 .meta-line -->
+            <view class="p-meta">
+              <text class="p-sales">{{ salesText(p) }}</text>
+              <text class="p-rate" v-if="ratingOf(p.id)"
+                >★{{ ratingOf(p.id).text }}<text class="p-rate-n">({{ ratingOf(p.id).count }})</text></text
+              >
             </view>
           </view>
         </view>
@@ -1702,22 +1700,22 @@ onReachBottom(() => {
 }
 /* 价格区两行布局（对齐 PC 卡片）：第一行大号实付价独占整行，第二行划线价 + 会员折标 */
 .p-price-row {
+  /* 横排：实付价 · 划线价 · 折标 · 右下角「＋」（对齐 PC .price-line）。
+     窄卡上宁可让划线价被裁掉尾部，也不能换行把卡片撑高 —— 所以 nowrap + overflow:hidden，
+     并且只有 .p-origin 允许收缩（flex:0 1 auto + min-width:0）。 */
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  flex-wrap: nowrap;
   margin-top: 8rpx;
+  overflow: hidden;
 }
 .p-price {
+  flex: 0 0 auto;
+  margin-right: 8rpx;
   font-size: 32rpx;
   color: #C0392B;
   font-weight: 600;
   line-height: 1.15;
-}
-.p-price-sub {
-  display: flex;
-  align-items: center;
-  margin-top: 2rpx;
-  max-width: 100%;
 }
 .p-sub {
   display: block;
@@ -1730,46 +1728,53 @@ onReachBottom(() => {
   text-overflow: ellipsis;
 }
 .p-origin {
+  flex: 0 1 auto;
+  /* 兜底：极端情况下（4 位数价格 + 长折标）不许把划线价压成一条小竖线 ——
+     宁可让末尾的折标被裁一点。真实 24 张卡实测最紧的是 ¥189.00（划线价 23px），
+     这个 min-width 不会影响正常商品。 */
+  min-width: 24rpx;
+  margin-right: 8rpx;
   font-size: 20rpx;
   color: #9CA3AF;
   text-decoration: line-through;
+  white-space: nowrap;
+  overflow: hidden;
 }
 /* 会员折扣标签：与 PC 卡片「X折会员价」同语义，小尺寸下只放折率 */
 .p-vip {
+  flex: 0 0 auto;
   font-size: 18rpx;
   color: #0F6E56;
   background: #E1F5EE;
   border-radius: 6rpx;
   padding: 2rpx 6rpx;
-  margin-left: 8rpx;
   line-height: 1.4;
+  white-space: nowrap;
 }
-.p-foot {
+/* 信息行：已售 + 评分（对齐 PC .meta-line） */
+.p-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 10rpx;
-}
-.p-sales {
-  font-size: 20rpx;
-  color: #9CA3AF;
-}
-/* 卡片底部左侧：已售 + 评分并排。min-width:0 + overflow 让两者在窄卡上不至于把
-   右侧加购按钮挤出去（336rpx 的卡，留给左侧约 240rpx） */
-.p-foot-l {
-  display: flex;
-  align-items: center;
+  margin-top: 8rpx;
   min-width: 0;
   overflow: hidden;
 }
-/* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c */
+/* 评分配色抄 PC 的 .rating-brief：星 #ffa042、数字 #9a6a1c、条数更浅 */
 .p-rate {
   margin-left: 10rpx;
   font-size: 20rpx;
   color: #9A6A1C;
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+.p-rate-n {
+  font-size: 18rpx;
+  color: #B09468;
 }
 .p-add {
+  flex: 0 0 auto;
+  /* 靠右：价格行里只有它需要吸到右边缘（对齐 PC 的 .add-fab） */
+  margin-left: auto;
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
